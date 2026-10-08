@@ -1,5 +1,15 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { createDocument, createProjectStore, workspaceStore } from "../actions.js";
+import {
+  createDocument,
+  createIssueStore,
+  createProjectStore,
+  dateMenu,
+  documentContextMenu,
+  linkEntries,
+  workspaceStore,
+} from "../actions.js";
+import { graphql } from "../api.js";
+import { type ContextEntry, contextMenu } from "../contextMenu.js";
 import { confirmDialog, DatePicker, Select } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
@@ -132,6 +142,7 @@ export function ProjectsView() {
                   <button
                     type="button"
                     onClick={() => navigate(paths.project(p.id))}
+                    onContextMenu={contextMenu(() => projectContextMenu(p))}
                     className="flex w-full animate-fade-in items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
                   >
                     <ProjectDot color={p.color} />
@@ -328,6 +339,109 @@ const updateProject = (id: string, input: Record<string, unknown>) =>
     { id, input },
   );
 
+export async function archiveProject(p: { id: string; name: string }) {
+  if (!(await confirmDialog({ title: `Archive ${p.name}?`, confirmLabel: "Archive" }))) return;
+  if (await mutate("mutation($id: String!) { projectArchive(id: $id) { success } }", { id: p.id }))
+    navigate(paths.projects());
+}
+
+/** Linear's project menu: its properties, new work in it, its link, and archive. */
+export function projectContextMenu(p: ProjectRow): ContextEntry[] {
+  const users = workspaceStore.get()?.users.nodes ?? [];
+  const state = PROJECT_STATES.find((s) => s.value === p.state);
+  return [
+    {
+      id: "status",
+      label: "Status",
+      icon: <span className="size-2 rounded-full" style={{ background: state?.color }} />,
+      submenu: () => ({
+        placeholder: "Change project status…",
+        items: PROJECT_STATES.map((s) => ({
+          id: s.value,
+          label: s.label,
+          checked: s.value === p.state,
+          icon: <span className="size-2 rounded-full" style={{ background: s.color }} />,
+          onSelect: () => void updateProject(p.id, { state: s.value }),
+        })),
+      }),
+    },
+    {
+      id: "lead",
+      label: "Lead",
+      icon: p.lead && <Avatar name={p.lead.name} kind={p.lead.kind} size={14} />,
+      submenu: () => ({
+        placeholder: "Who leads this project?",
+        items: [
+          {
+            id: "none",
+            label: "No lead",
+            checked: !p.lead,
+            onSelect: () => void updateProject(p.id, { leadId: null }),
+          },
+          ...users.map((u) => ({
+            id: u.id,
+            label: u.name,
+            icon: <Avatar name={u.name} kind={u.kind} size={16} />,
+            checked: u.id === p.lead?.id,
+            onSelect: () => void updateProject(p.id, { leadId: u.id }),
+          })),
+        ],
+      }),
+    },
+    {
+      id: "target",
+      label: "Target date",
+      submenu: () =>
+        dateMenu({
+          placeholder: "Target date… try “end of june”",
+          value: p.targetDate,
+          onPick: (targetDate) => updateProject(p.id, { targetDate }),
+        }),
+    },
+    {
+      id: "initiative",
+      label: "Initiative",
+      submenu: async () => {
+        const data = await graphql<{ initiatives: { nodes: { id: string; name: string }[] } }>(
+          "{ initiatives { nodes { id name } } }",
+        );
+        return {
+          placeholder: "Add to initiative…",
+          items: [
+            {
+              id: "none",
+              label: "No initiative",
+              checked: !p.initiative,
+              onSelect: () => void updateProject(p.id, { initiativeId: null }),
+            },
+            ...data.initiatives.nodes.map((i) => ({
+              id: i.id,
+              label: i.name,
+              checked: i.id === p.initiative?.id,
+              onSelect: () => void updateProject(p.id, { initiativeId: i.id }),
+            })),
+          ],
+        };
+      },
+    },
+    "divider",
+    {
+      id: "new-issue",
+      label: "New issue in project",
+      onSelect: () => createIssueStore.set({ projectId: p.id }),
+    },
+    {
+      id: "new-document",
+      label: "New document in project",
+      onSelect: () => createDocument(p.id),
+    },
+    "divider",
+    ...linkEntries(paths.project(p.id)),
+    "divider",
+    { id: "archive", label: "Archive…", onSelect: () => archiveProject(p) },
+  ];
+}
+
 export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues" }) {
   const { data, error } = useQuery<{ project: ProjectDetail }>(PROJECT_DETAIL, { id });
   const p = data?.project;
@@ -469,6 +583,9 @@ function Overview({ project: p }: { project: ProjectDetail }) {
                 <button
                   type="button"
                   onClick={() => navigate(paths.document(d.id))}
+                  onContextMenu={contextMenu(() =>
+                    documentContextMenu({ ...d, project: { id: p.id } }),
+                  )}
                   className="flex w-full animate-fade-in items-center gap-3 px-4 py-2.5 text-left hover:bg-raised"
                 >
                   <span className="min-w-0 flex-1 truncate">{d.title}</span>
@@ -780,21 +897,7 @@ function ProjectProperties({ project: p }: { project: ProjectDetail }) {
       <span />
       <button
         type="button"
-        onClick={async () => {
-          if (
-            !(await confirmDialog({
-              title: `Archive ${p.name}?`,
-              confirmLabel: "Archive",
-            }))
-          )
-            return;
-          if (
-            await mutate("mutation($id: String!) { projectArchive(id: $id) { success } }", {
-              id: p.id,
-            })
-          )
-            navigate(paths.projects());
-        }}
+        onClick={() => void archiveProject(p)}
         className="mt-2 justify-self-start rounded-md px-2 py-1 text-[12px] text-faint hover:text-red-400"
       >
         Archive project

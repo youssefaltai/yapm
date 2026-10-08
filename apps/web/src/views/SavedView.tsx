@@ -1,10 +1,43 @@
 import { workspaceStore } from "../actions.js";
 import { confirmDialog, promptDialog } from "../controls.js";
-import { mutate, toast } from "../data.js";
+import { mutate, type SavedView, toast } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
 import { useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
+
+export async function renameView(view: SavedView) {
+  const name = await promptDialog({
+    title: "Rename view",
+    label: "View name",
+    initial: view.name,
+    confirmLabel: "Rename",
+  });
+  if (name && name !== view.name)
+    await mutate(
+      "mutation($id: String!, $name: String!) { customViewUpdate(id: $id, input: { name: $name }) { success } }",
+      { id: view.id, name },
+    );
+}
+
+/** Deletes a saved view; if it's the open page, goes to the Inbox. */
+export async function deleteView(view: SavedView) {
+  if (
+    !(await confirmDialog({
+      title: `Delete the view “${view.name}”?`,
+      body: "Its issues stay as they are.",
+      confirmLabel: "Delete",
+      destructive: true,
+    }))
+  )
+    return;
+  const deleted = await mutate("mutation($id: String!) { customViewDelete(id: $id) { success } }", {
+    id: view.id,
+  });
+  if (!deleted) return;
+  toast(`Deleted “${view.name}”`);
+  if (window.location.pathname === paths.view(view.id)) navigate(paths.inbox());
+}
 
 /** A saved filter from the sidebar's Views section. */
 export function ViewPage({ id }: { id: string }) {
@@ -21,34 +54,6 @@ export function ViewPage({ id }: { id: string }) {
       />
     );
 
-  const rename = async () => {
-    const name = await promptDialog({
-      title: "Rename view",
-      label: "View name",
-      initial: view.name,
-      confirmLabel: "Rename",
-    });
-    if (name && name !== view.name)
-      await mutate(
-        "mutation($id: String!, $name: String!) { customViewUpdate(id: $id, input: { name: $name }) { success } }",
-        { id, name },
-      );
-  };
-  const remove = async () => {
-    if (
-      !(await confirmDialog({
-        title: `Delete the view “${view.name}”?`,
-        body: "Its issues stay as they are.",
-        confirmLabel: "Delete",
-        destructive: true,
-      }))
-    )
-      return;
-    if (await mutate("mutation($id: String!) { customViewDelete(id: $id) { success } }", { id })) {
-      toast(`Deleted “${view.name}”`);
-      navigate(paths.inbox());
-    }
-  };
   return (
     <IssuesView
       source={{ kind: "view", view: { id, name: view.name, teamId: view.team?.id ?? null } }}
@@ -58,14 +63,14 @@ export function ViewPage({ id }: { id: string }) {
           {!view.shared && <span className="text-[12px] text-faint">Private</span>}
           <button
             type="button"
-            onClick={() => void rename()}
+            onClick={() => void renameView(view)}
             className="px-1 text-muted hover:text-ink"
           >
             Rename
           </button>
           <button
             type="button"
-            onClick={() => void remove()}
+            onClick={() => void deleteView(view)}
             className="px-1 text-muted hover:text-ink"
           >
             Delete

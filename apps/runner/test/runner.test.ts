@@ -298,6 +298,111 @@ describe("runner daemon", () => {
     expect(lines.some((l) => l.includes("Not now"))).toBe(true);
   });
 
+  it("reports the plan's limits from sessions, and reads them while idle", async () => {
+    const enrolment = await hub.enrol({
+      name: "Plan machine",
+      tags: [],
+      mcps: [],
+      capacity: 1,
+      version: "test",
+    });
+    await gql(
+      "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
+      { id: enrolment.id, code: enrolment.pairingCode },
+    );
+    let probes = 0;
+    const resetsAt = Date.now() + 3_600_000;
+    const planRunner = new Runner({
+      hub,
+      token: enrolment.token,
+      engine,
+      capacity: 1,
+      version: "test",
+      mcpServers: {},
+      mcp: new McpManager({ hubUrl: "http://localhost", machineName: "Plan machine" }),
+      workDir: await mkdtemp(join(tmpdir(), "runner-test-")),
+      pollMs: 10,
+      logFlushMs: 10,
+      log: (line) => lines.push(line),
+      probe: async () => {
+        probes++;
+        return [
+          {
+            account: {
+              email: "owner@example.com",
+              organization: null,
+              subscriptionType: "max",
+              apiProvider: "firstParty",
+            },
+          },
+          {
+            usage: {
+              observedAt: Date.now(),
+              source: "usage",
+              available: true,
+              limits: [
+                { kind: "five_hour", label: "Session", utilization: 40, resetsAt, status: null },
+                { kind: "seven_day", label: "Week", utilization: 10, resetsAt, status: null },
+              ],
+              extraUsage: null,
+            },
+          },
+        ];
+      },
+    });
+    planRunner.readPlan();
+    await until(() => planRunner.plan.usage !== null, "the idle reading");
+    // Readings are spaced out.
+    planRunner.readPlan();
+    expect(probes).toBe(1);
+
+    // A session's rate-limit event moves one window; it doesn't take a reading of its own.
+    script = async (run) => {
+      expect(run.readUsage).toBe(false);
+      run.onPlan?.({
+        rateLimit: {
+          status: "allowed_warning",
+          rateLimitType: "five_hour",
+          utilization: 0.82,
+          resetsAt: Math.floor(resetsAt / 1000),
+        },
+      });
+      return {
+        output: { outcome: "done", summary: "Done." },
+        sessionId: "session-plan",
+        usage: {},
+      };
+    };
+    await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }", {
+      input: { agentId, goal: "Check the plan" },
+    });
+    expect(await planRunner.claim()).toBe(1);
+    await planRunner.idle();
+    await planRunner.heartbeat();
+
+    const plan = await gql<{
+      claudeSubscriptions: {
+        id: string;
+        account: { subscriptionType: string };
+        planUsage: { limits: { kind: string; utilization: number; status: string | null }[] };
+      }[];
+    }>(
+      "{ claudeSubscriptions { id account { subscriptionType } planUsage { limits { kind utilization status } } } }",
+    );
+    expect(plan.claudeSubscriptions.find((s) => s.id === "owner@example.com")).toEqual({
+      id: "owner@example.com",
+      account: { subscriptionType: "max" },
+      planUsage: {
+        limits: [
+          { kind: "five_hour", utilization: 82, status: "allowed_warning" },
+          { kind: "seven_day", utilization: 10, status: null },
+        ],
+      },
+    });
+    // Nothing new: the next check-in doesn't send the reading again.
+    expect(planRunner.plan.pending()).toEqual({});
+  });
+
   it("runs hub-managed MCP servers, signing in through the hub", async () => {
     const { machines } = await gql<{ machines: { id: string }[] }>("{ machines { id } }");
     const machineId = machines[0]?.id;

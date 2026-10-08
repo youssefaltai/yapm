@@ -11,6 +11,15 @@
   --color-faint: #5c6068;
   --color-accent: #5e6ad2;
   --color-accent-hover: #6e79d6;
+  /* Chart series, in fixed order, and status colors that only ever mean status. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-other: #6b6f78;
+  --color-warning: #fab219;
+  --color-critical: #d03b3b;
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -25,6 +34,12 @@
   --color-faint: #9a9ea6;
   --color-accent: #5e6ad2;
   --color-accent-hover: #4e5ac4;
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-other: #a3a7ae;
   color-scheme: light;
 }
 

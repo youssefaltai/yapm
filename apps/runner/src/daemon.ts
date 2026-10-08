@@ -1,9 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { type Engine, MODELS } from "./engine.js";
+import { type Engine, MODELS, type PlanProbe } from "./engine.js";
 import { type Claim, type Completion, type HubClient, HubError, type Usage } from "./hub.js";
 import { McpManager } from "./mcp.js";
 import { decideTool } from "./permissions.js";
+import { PlanTracker } from "./plan.js";
 
 export interface RunnerOptions {
   hub: HubClient;
@@ -18,6 +19,10 @@ export interface RunnerOptions {
   mcp?: McpManager;
   /** Where agents work; each gets its own folder, so resumed sessions find their files. */
   workDir: string;
+  /** Reads the plan's limits while no session is running; left out, only sessions read them. */
+  probe?: PlanProbe;
+  /** How often to take a full reading of the plan's limits. */
+  planEveryMs?: number;
   pollMs?: number;
   heartbeatMs?: number;
   logFlushMs?: number;
@@ -50,12 +55,15 @@ export class Runner {
   private readonly logFlushMs: number;
   private readonly log: (line: string) => void;
   private readonly mcp: McpManager;
+  readonly plan: PlanTracker;
+  private probing = false;
 
   constructor(private readonly options: RunnerOptions) {
     this.pollMs = options.pollMs ?? 5000;
     this.heartbeatMs = options.heartbeatMs ?? 30_000;
     this.logFlushMs = options.logFlushMs ?? 2000;
     this.log = options.log ?? ((line) => console.log(line));
+    this.plan = new PlanTracker(options.planEveryMs);
     this.mcp =
       options.mcp ??
       new McpManager({ hubUrl: options.hub.url, machineName: "this machine", log: this.log });
@@ -68,14 +76,19 @@ export class Runner {
   /** One check-in: stops what the hub wants stopped, then claims up to capacity. */
   async heartbeat() {
     const { hub, token } = this.options;
-    const beat = () =>
-      hub.heartbeat(token, {
+    const beat = async () => {
+      const plan = this.plan.pending();
+      const answer = await hub.heartbeat(token, {
         mcps: Object.keys(this.options.mcpServers),
         capacity: this.options.capacity,
         version: this.options.version,
         runIds: this.running,
         mcpServers: this.mcp.reports(),
+        ...plan,
       });
+      this.plan.sent(plan);
+      return answer;
+    };
     const answer = await beat();
     for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
     // Tell the hub straight away when a server needs a sign-in or became ready.
@@ -197,6 +210,8 @@ export class Runner {
         onSession: (id) => {
           sessionId = id;
         },
+        onPlan: (update) => this.plan.update(update),
+        readUsage: this.plan.claimReading(),
       });
       sessionId = result.sessionId ?? sessionId;
       usage = result.usage;
@@ -226,6 +241,24 @@ export class Runner {
     );
   }
 
+  /**
+   * Takes a full reading of the plan when one is due and no session is running to take it.
+   * Runs in the background; a failed reading waits for the next turn.
+   */
+  readPlan() {
+    const { probe } = this.options;
+    if (!probe || this.probing || this.active.size > 0 || !this.plan.claimReading()) return;
+    this.probing = true;
+    void probe()
+      .then((updates) => {
+        for (const update of updates) this.plan.update(update);
+      })
+      .catch((error) => this.log(`Couldn't read the plan's usage: ${String(error)}`))
+      .finally(() => {
+        this.probing = false;
+      });
+  }
+
   /** Runs until `shutdown()`: heartbeats on a timer, claims on every poll. */
   async run() {
     let lastBeat = 0;
@@ -240,6 +273,7 @@ export class Runner {
           }
         }
         await this.claim();
+        this.readPlan();
       } catch (error) {
         if (error instanceof HubError && error.status === 401) {
           this.log("The hub doesn't know this machine any more. Enrol again to rejoin.");

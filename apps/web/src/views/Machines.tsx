@@ -18,6 +18,11 @@ interface Machine {
   createdAt: string;
   runningCount: number;
   mcpServers: McpServer[];
+  claudeAccount: { email: string | null; subscriptionType: string | null } | null;
+  planUsage: {
+    available: boolean;
+    limits: { kind: string; utilization: number | null; resetsAt: string | null }[];
+  } | null;
 }
 
 interface McpServer {
@@ -35,6 +40,8 @@ interface McpServer {
 
 const MACHINES = `{ machines {
   id name status tags mcps capacity version online lastSeenAt createdAt runningCount
+  claudeAccount { email subscriptionType }
+  planUsage { available limits { kind utilization resetsAt } }
   mcpServers { id name url command args status statusDetail authUrl allAgents agents { id name } }
 } }`;
 
@@ -269,6 +276,20 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
             <dd className="text-muted">{m.mcps.join(", ")}</dd>
           </>
         )}
+        {m.claudeAccount && (
+          <>
+            <dt className="text-faint">Claude</dt>
+            <dd>
+              <button
+                type="button"
+                onClick={() => navigate(paths.usage())}
+                className="text-left text-muted hover:text-ink"
+              >
+                {planSummary(m)}
+              </button>
+            </dd>
+          </>
+        )}
         {m.version && (
           <>
             <dt className="text-faint">Runner</dt>
@@ -490,4 +511,22 @@ function AddServer({ machine, onDone }: { machine: Machine; onDone: () => void }
       </button>
     </form>
   );
+}
+
+/** The login and how full its main windows are, e.g. "you@example.com · max · session 42%". */
+function planSummary(m: Machine) {
+  const parts = [m.claudeAccount?.email, m.claudeAccount?.subscriptionType].filter(Boolean);
+  const live = (kind: string) =>
+    m.planUsage?.limits.find(
+      (l) =>
+        l.kind === kind &&
+        l.utilization !== null &&
+        (!l.resetsAt || new Date(l.resetsAt).getTime() > Date.now()),
+    );
+  const session = live("five_hour");
+  const week = live("seven_day");
+  if (session) parts.push(`session ${Math.round(session.utilization ?? 0)}%`);
+  if (week) parts.push(`week ${Math.round(week.utilization ?? 0)}%`);
+  if (m.planUsage && !m.planUsage.available) parts.push("no plan limits");
+  return parts.join(" · ") || "Signed in";
 }

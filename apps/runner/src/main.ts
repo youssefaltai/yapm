@@ -8,7 +8,7 @@ import { claudeLogin } from "./claude.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
 import { McpManager } from "./mcp.js";
-import { sdkEngine } from "./sdk.js";
+import { probePlan, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
 const VERSION = "0.2.0";
@@ -171,6 +171,7 @@ async function main() {
       hub,
       token: config.token,
       engine: sdkEngine,
+      probe: probePlan,
       capacity: config.capacity,
       version: VERSION,
       mcpServers: config.mcpServers ?? {},

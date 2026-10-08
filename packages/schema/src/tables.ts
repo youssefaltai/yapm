@@ -20,6 +20,8 @@ export const workspaces = sqliteTable("workspaces", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   urlKey: text("url_key").notNull().unique(),
+  /** IANA time zone for cycles, rituals and "today", e.g. `Europe/Berlin`. */
+  timezone: text("timezone").notNull().default("UTC"),
   ...timestamps,
 });
 
@@ -63,6 +65,19 @@ export const teams = sqliteTable("teams", {
   leadId: text("lead_id"),
   /** Last issue number handed out in this team, for identifiers like FIN-42. */
   issueCount: integer("issue_count").notNull().default(0),
+  /** New issues from agents wait in Triage for the owner to accept or decline. */
+  triageEnabled: integer("triage_enabled", { mode: "boolean" }).notNull().default(false),
+  cyclesEnabled: integer("cycles_enabled", { mode: "boolean" }).notNull().default(false),
+  /** Weeks per cycle. */
+  cycleDuration: integer("cycle_duration").notNull().default(1),
+  /** Day cycles start on: 0 Sunday … 6 Saturday. */
+  cycleStartDay: integer("cycle_start_day").notNull().default(1),
+  /** Weeks of rest between cycles. */
+  cycleCooldown: integer("cycle_cooldown").notNull().default(0),
+  /** How many future cycles to keep ready. */
+  upcomingCycleCount: integer("upcoming_cycle_count").notNull().default(2),
+  /** Last cycle number handed out. */
+  cycleCount: integer("cycle_count").notNull().default(0),
   archivedAt: integer("archived_at", { mode: "number" }),
   ...timestamps,
 });
@@ -236,10 +251,12 @@ export const issues = sqliteTable(
     archivedAt: integer("archived_at", { mode: "number" }),
     projectId: text("project_id"),
     projectMilestoneId: text("project_milestone_id"),
+    cycleId: text("cycle_id"),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("issues_team_number_idx").on(t.teamId, t.number),
+    index("issues_cycle_idx").on(t.cycleId),
     index("issues_project_idx").on(t.projectId),
     index("issues_state_idx").on(t.stateId),
     index("issues_assignee_idx").on(t.assigneeId),
@@ -684,3 +701,42 @@ export const documents = sqliteTable(
     index("documents_updated_idx").on(t.updatedAt),
   ],
 );
+
+/** A team's time-boxed sprint, like Linear's cycles. Created and closed by the scheduler. */
+export const cycles = sqliteTable(
+  "cycles",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id").notNull(),
+    number: integer("number").notNull(),
+    name: text("name"),
+    startsAt: integer("starts_at", { mode: "number" }).notNull(),
+    endsAt: integer("ends_at", { mode: "number" }).notNull(),
+    completedAt: integer("completed_at", { mode: "number" }),
+    /** Daily issue counts since the start, for the burn-up chart. */
+    history: text("history", { mode: "json" })
+      .$type<{ scope: number[]; completed: number[] }>()
+      .notNull(),
+    /** Issues still open when it closed (they move to the next cycle). */
+    uncompletedCount: integer("uncompleted_count"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("cycles_team_number_idx").on(t.teamId, t.number)],
+);
+
+/** A saved filter over issues, like Linear's custom views. */
+export const customViews = sqliteTable("custom_views", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"),
+  color: text("color"),
+  /** An IssueFilter, as the API takes it. */
+  filterData: text("filter_data", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  teamId: text("team_id"),
+  ownerId: text("owner_id").notNull(),
+  /** Visible to every member, not only its owner. */
+  shared: integer("shared", { mode: "boolean" }).notNull().default(true),
+  sortOrder: real("sort_order").notNull(),
+  ...timestamps,
+});

@@ -337,6 +337,57 @@ test.describe
       ).toBeVisible();
     });
 
+    test("runs the team in cycles, triages agents' issues and saves a view", async () => {
+      await page.getByRole("link", { name: /Personal Finance/ }).click();
+      await page.getByRole("link", { name: "Settings" }).click();
+      await page.getByRole("switch", { name: "Triage" }).click();
+      await expect(page.getByRole("switch", { name: "Triage" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      await page.getByRole("switch", { name: "Cycles" }).click();
+      await page.getByLabel("Cycle length").selectOption({ label: "2 weeks" });
+
+      await page.getByRole("link", { name: "Cycles", exact: true }).click();
+      await expect(page.getByRole("button", { name: /Cycle 1.*Current/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Cycle 3.*Upcoming/ })).toBeVisible();
+
+      // Ada files an issue: it waits in Triage, already in the current cycle.
+      const filed = await mcp("create_issue", {
+        team: "PF",
+        title: "Cancel the unused gym membership",
+        cycle: "current",
+      });
+      expect(filed).toMatchObject({ status: "Triage", cycle: 1 });
+      await page.getByRole("button", { name: /Cycle 1.*Current/ }).click();
+      await expect(page.getByRole("img", { name: "Cycle progress" })).toBeVisible();
+      const row = page.getByRole("button", { name: /Cancel the unused gym membership/ });
+      await expect(row).toBeVisible();
+
+      await page.getByRole("link", { name: /Personal Finance/ }).click();
+      await page.getByRole("link", { name: "Triage" }).first().click();
+      await row.getByRole("button", { name: "Accept" }).click();
+      await expect(row).toBeHidden();
+
+      // Shift+C moves an issue into a cycle; a filter becomes a saved view.
+      await page.getByRole("link", { name: "Personal Finance" }).first().click();
+      await page.getByRole("button", { name: /cheaper tariff/ }).hover();
+      await page.keyboard.press("Shift+C");
+      await page.getByRole("option", { name: /Cycle 2/ }).click();
+      await page.getByRole("button", { name: "Filter" }).click();
+      await page.getByRole("option", { name: "Status" }).click();
+      await page.getByRole("option", { name: "Todo" }).click();
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      page.once("dialog", (prompt) => prompt.accept("Ready to start"));
+      await page.getByRole("button", { name: "Save view" }).click();
+      await expect(page).toHaveURL(/\/view\//);
+      await expect(page.getByRole("link", { name: "Ready to start" })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /Cancel the unused gym membership/ }),
+      ).toBeVisible();
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

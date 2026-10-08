@@ -3,6 +3,7 @@ import {
   archiveIssues,
   assigneeMenu,
   createIssueStore,
+  cycleMenu,
   estimateMenu,
   labelsMenu,
   priorityMenu,
@@ -14,15 +15,17 @@ import {
 import {
   ISSUE_FIELDS,
   type Issue,
+  mutate,
   PRIORITIES,
   priorityRank,
   type StateType,
   type Team,
+  toast,
   updateIssues,
   useQuery,
   type WorkflowState,
 } from "../data.js";
-import { navigate, paths } from "../router.js";
+import { navigate, paths, type TeamView } from "../router.js";
 import {
   Avatar,
   dueLabel,
@@ -40,9 +43,16 @@ import {
 } from "../ui.js";
 
 export type IssueSource =
-  | { kind: "team"; team: Team; view: "all" | "active" | "backlog" }
+  | { kind: "team"; team: Team; view: TeamView }
   | { kind: "my"; tab: "assigned" | "created" }
-  | { kind: "project"; project: { id: string; name: string } };
+  | { kind: "project"; project: { id: string; name: string } }
+  | { kind: "cycle"; cycle: { id: string }; team: Team }
+  | { kind: "view"; view: { id: string; name: string; teamId: string | null } };
+
+/** The team whose workflow the issues follow, when the list is one team's. */
+function teamOf(source: IssueSource): Team | null {
+  return source.kind === "team" || source.kind === "cycle" ? source.team : null;
+}
 
 interface Filters {
   stateTypes: StateType[];
@@ -62,10 +72,11 @@ const STATE_TYPES: { type: StateType; label: string; color: string }[] = [
   { type: "canceled", label: "Canceled", color: "#95a2b3" },
 ];
 
-const VIEW_TYPES: Record<"all" | "active" | "backlog", StateType[] | null> = {
+const VIEW_TYPES: Record<TeamView, StateType[] | null> = {
   all: null,
   active: ["unstarted", "started"],
   backlog: ["triage", "backlog"],
+  triage: ["triage"],
 };
 
 /** Turns the toolbar's filters into Linear's IssueFilter. */
@@ -93,21 +104,42 @@ function readLayout(key: string): "list" | "board" {
   }
 }
 
+const SOURCE_QUERIES: Record<Exclude<IssueSource["kind"], "my">, string> = {
+  team: "team(id: $key)",
+  project: "project(id: $key)",
+  cycle: "cycle(id: $key)",
+  view: "customView(id: $key)",
+};
+
+function sourceId(source: IssueSource) {
+  switch (source.kind) {
+    case "team":
+      return source.team.key;
+    case "project":
+      return source.project.id;
+    case "cycle":
+      return source.cycle.id;
+    case "view":
+      return source.view.id;
+    case "my":
+      return source.tab;
+  }
+}
+
 export function IssuesView({
   source,
   title,
   tabs,
+  banner,
 }: {
   source: IssueSource;
   title: ReactNode;
   tabs: ReactNode;
+  /** Shown above the list, e.g. a cycle's chart. */
+  banner?: ReactNode;
 }) {
-  const sourceKey =
-    source.kind === "team"
-      ? `team:${source.team.key}`
-      : source.kind === "project"
-        ? `project:${source.project.id}`
-        : "my";
+  const sourceKey = `${source.kind}:${sourceId(source)}`;
+  const team = teamOf(source);
   const [layout, setLayoutState] = useState<"list" | "board">(() => readLayout(sourceKey));
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const filtersRef = useRef(filters);
@@ -125,31 +157,16 @@ export function IssuesView({
   const viewTypes = source.kind === "team" ? VIEW_TYPES[source.view] : null;
   const filter = toIssueFilter(filters, viewTypes);
   const query =
-    source.kind === "team"
-      ? `query($key: String!, $filter: IssueFilter) { team(id: $key) { issues(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`
-      : source.kind === "project"
-        ? `query($key: String!, $filter: IssueFilter) { project(id: $key) { issues(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`
-        : `query($filter: IssueFilter) { viewer { list: ${source.tab === "assigned" ? "assignedIssues" : "createdIssues"}(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`;
-  const { data, error } = useQuery<{
-    team?: { issues: { nodes: Issue[] } };
-    project?: { issues: { nodes: Issue[] } };
-    viewer?: { list: { nodes: Issue[] } };
-  }>(
+    source.kind === "my"
+      ? `query($filter: IssueFilter) { source: viewer { issues: ${source.tab === "assigned" ? "assignedIssues" : "createdIssues"}(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`
+      : `query($key: String!, $filter: IssueFilter) { source: ${SOURCE_QUERIES[source.kind]} { issues(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`;
+  const { data, error } = useQuery<{ source: { issues: { nodes: Issue[] } } }>(
     query,
-    source.kind === "team"
-      ? { key: source.team.key, filter }
-      : source.kind === "project"
-        ? { key: source.project.id, filter }
-        : { filter },
+    source.kind === "my" ? { filter } : { key: sourceId(source), filter },
   );
   const issues = useMemo(
     () =>
-      [
-        ...(data?.team?.issues.nodes ??
-          data?.project?.issues.nodes ??
-          data?.viewer?.list.nodes ??
-          []),
-      ].sort(
+      [...(data?.source.issues.nodes ?? [])].sort(
         (a, b) =>
           priorityRank(a.priority) - priorityRank(b.priority) ||
           b.updatedAt.localeCompare(a.updatedAt),
@@ -211,6 +228,8 @@ export function IssuesView({
     l: withTargets(labelsMenu),
     e: withTargets(estimateMenu),
     "shift+p": () => targets.length && void projectMenu(targets).then(openMenu),
+    "shift+c": () =>
+      targets.length && void cycleMenu(targets).then((spec) => spec && openMenu(spec)),
     "mod+b": () => setLayout(layout === "list" ? "board" : "list"),
   });
 
@@ -222,11 +241,16 @@ export function IssuesView({
         </div>
         <div className="flex min-w-0 items-center gap-1 overflow-x-auto">{tabs}</div>
         <div className="ml-auto flex items-center gap-1">
-          <FilterButton
-            filters={filtersRef}
-            setFilters={setFilters}
-            team={source.kind === "team" ? source.team : null}
-          />
+          {filter && source.kind !== "view" && (
+            <button
+              type="button"
+              onClick={() => void saveView(filter, source)}
+              className="rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-ink"
+            >
+              Save view
+            </button>
+          )}
+          <FilterButton filters={filtersRef} setFilters={setFilters} team={team} />
           <fieldset className="flex rounded-md border border-line p-0.5" aria-label="Layout">
             {(["list", "board"] as const).map((option) => (
               <button
@@ -243,6 +267,7 @@ export function IssuesView({
         </div>
       </header>
       <FilterChips filters={filters} setFilters={setFilters} />
+      {banner}
 
       {error && <p className="px-6 py-4 text-red-400">{error}</p>}
       {data && issues.length === 0 && (
@@ -250,11 +275,13 @@ export function IssuesView({
           filtered={filter !== null}
           onCreate={() =>
             createIssueStore.set(
-              source.kind === "team"
-                ? { teamId: source.team.id }
-                : source.kind === "project"
-                  ? { projectId: source.project.id }
-                  : {},
+              source.kind === "project"
+                ? { projectId: source.project.id }
+                : source.kind === "cycle"
+                  ? { teamId: source.team.id, cycleId: source.cycle.id }
+                  : team
+                    ? { teamId: team.id }
+                    : {},
             )
           }
         />
@@ -268,12 +295,16 @@ export function IssuesView({
                   <StatusIcon type={group.type} color={group.color} />
                   <span className="font-medium">{group.label}</span>
                   <span className="text-faint">{group.issues.length}</span>
-                  {source.kind === "team" && group.state && (
+                  {team && group.state && (
                     <button
                       type="button"
                       aria-label={`New issue in ${group.label}`}
                       onClick={() =>
-                        createIssueStore.set({ teamId: source.team.id, stateId: group.state?.id })
+                        createIssueStore.set({
+                          teamId: team.id,
+                          stateId: group.state?.id,
+                          ...(source.kind === "cycle" ? { cycleId: source.cycle.id } : {}),
+                        })
                       }
                       className="ml-auto px-1 text-faint hover:text-ink"
                     >
@@ -289,7 +320,8 @@ export function IssuesView({
                     selected={selected.has(issue.id)}
                     onFocus={() => setFocusedId(issue.id)}
                     onToggle={() => toggle(issue.id)}
-                    showTeam={source.kind !== "team"}
+                    showTeam={!team}
+                    triage={issue.state.type === "triage" ? team : null}
                   />
                 ))}
               </section>
@@ -329,27 +361,27 @@ function groupIssues(
   viewTypes: StateType[] | null,
   layout: "list" | "board",
 ): Group[] {
-  const groups: Group[] =
-    source.kind === "team"
-      ? source.team.states.nodes.map((state) => ({
-          key: state.id,
-          label: state.name,
-          type: state.type,
-          color: state.color,
-          state,
-          issues: [],
-        }))
-      : STATE_TYPES.map((t) => ({
-          key: t.type,
-          label: t.label,
-          type: t.type,
-          color: t.color,
-          state: null,
-          issues: [],
-        }));
+  const team = teamOf(source);
+  const groups: Group[] = team
+    ? team.states.nodes.map((state) => ({
+        key: state.id,
+        label: state.name,
+        type: state.type,
+        color: state.color,
+        state,
+        issues: [],
+      }))
+    : STATE_TYPES.map((t) => ({
+        key: t.type,
+        label: t.label,
+        type: t.type,
+        color: t.color,
+        state: null,
+        issues: [],
+      }));
   const byKey = new Map(groups.map((g) => [g.key, g]));
   for (const issue of issues) {
-    byKey.get(source.kind === "team" ? issue.state.id : issue.state.type)?.issues.push(issue);
+    byKey.get(team ? issue.state.id : issue.state.type)?.issues.push(issue);
   }
   // Boards show every column the view allows, even empty ones, so issues can be dragged there.
   // Like Linear, an empty Triage column stays hidden.
@@ -360,6 +392,61 @@ function groupIssues(
   );
 }
 
+/** Saves the current filters as a view everyone can open from the sidebar. */
+async function saveView(filter: Record<string, unknown>, source: IssueSource) {
+  const name = window.prompt("Name this view")?.trim();
+  if (!name) return;
+  const team = teamOf(source);
+  const scoped =
+    source.kind === "project"
+      ? { and: [{ project: { id: { eq: source.project.id } } }, filter] }
+      : source.kind === "my"
+        ? {
+            and: [
+              { [source.tab === "assigned" ? "assignee" : "creator"]: { isMe: { eq: true } } },
+              filter,
+            ],
+          }
+        : source.kind === "cycle"
+          ? { and: [{ cycle: { id: { eq: source.cycle.id } } }, filter] }
+          : filter;
+  const data = await mutate<{ customViewCreate: { customView: { id: string } } }>(
+    "mutation($input: CustomViewCreateInput!) { customViewCreate(input: $input) { customView { id } } }",
+    { input: { name, filterData: scoped, ...(team ? { teamId: team.id } : {}) } },
+  );
+  if (data) {
+    toast(`Saved view “${name}”`);
+    navigate(paths.view(data.customViewCreate.customView.id));
+  }
+}
+
+/** Triage: accept into the team's first unstarted state, or decline as canceled. */
+function TriageActions({ issue, team }: { issue: Issue; team: Team }) {
+  const states = team.states.nodes;
+  const accept =
+    states.find((s) => s.type === "unstarted") ?? states.find((s) => s.type === "backlog");
+  const decline = states.find((s) => s.type === "canceled");
+  const button = (label: string, stateId: string | undefined) =>
+    stateId && (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          void updateIssues([issue.id], { stateId });
+        }}
+        className="rounded-md border border-line px-2 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-ink"
+      >
+        {label}
+      </button>
+    );
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {button("Accept", accept?.id)}
+      {button("Decline", decline?.id)}
+    </span>
+  );
+}
+
 function IssueRow({
   issue,
   focused,
@@ -367,6 +454,7 @@ function IssueRow({
   onFocus,
   onToggle,
   showTeam,
+  triage,
 }: {
   issue: Issue;
   focused: boolean;
@@ -374,6 +462,8 @@ function IssueRow({
   onFocus: () => void;
   onToggle: () => void;
   showTeam: boolean;
+  /** The team, when the issue waits in its Triage. */
+  triage: Team | null;
 }) {
   const due = issue.dueDate ? dueLabel(issue.dueDate) : null;
   return (
@@ -425,6 +515,7 @@ function IssueRow({
       {showTeam && (
         <span className="shrink-0 text-[11px] text-faint max-sm:hidden">{issue.team.key}</span>
       )}
+      {triage && <TriageActions issue={issue} team={triage} />}
       <span className="w-12 shrink-0 text-right text-[12px] text-faint max-md:hidden">
         {shortDate(issue.createdAt)}
       </span>
@@ -454,6 +545,7 @@ function Board({
 }) {
   const [over, setOver] = useState<string | null>(null);
   const teams = useStore(workspaceStore)?.teams.nodes ?? [];
+  const team = teamOf(source);
 
   function drop(group: Group, issueId: string) {
     setOver(null);
@@ -485,12 +577,16 @@ function Board({
             <StatusIcon type={group.type} color={group.color} />
             <span className="font-medium">{group.label}</span>
             <span className="text-faint">{group.issues.length}</span>
-            {source.kind === "team" && group.state && (
+            {team && group.state && (
               <button
                 type="button"
                 aria-label={`New issue in ${group.label}`}
                 onClick={() =>
-                  createIssueStore.set({ teamId: source.team.id, stateId: group.state?.id })
+                  createIssueStore.set({
+                    teamId: team.id,
+                    stateId: group.state?.id,
+                    ...(source.kind === "cycle" ? { cycleId: source.cycle.id } : {}),
+                  })
                 }
                 className="ml-auto px-1 text-faint hover:text-ink"
               >

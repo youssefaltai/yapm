@@ -1,4 +1,4 @@
-import { issueLabels, issues, labels, teams, workflowStates } from "@life-os/schema";
+import { cycles, issueLabels, issues, labels, teams, workflowStates } from "@life-os/schema";
 import {
   and,
   type Column,
@@ -183,6 +183,26 @@ const NullableProjectFilter = builder
     }),
   });
 
+interface CycleFilterShape {
+  id?: IDComparatorShape | null;
+  number?: NumberComparatorShape | null;
+  isActive?: { eq?: boolean | null } | null;
+  null?: boolean | null;
+}
+
+const NullableCycleFilter = builder.inputRef<CycleFilterShape>("NullableCycleFilter").implement({
+  fields: (t) => ({
+    id: t.field({ type: IDComparator, required: false }),
+    number: t.field({ type: NullableNumberComparator, required: false }),
+    isActive: t.field({
+      type: BooleanComparator,
+      required: false,
+      description: "The cycle running now.",
+    }),
+    null: t.boolean({ required: false }),
+  }),
+});
+
 export interface IssueFilterShape {
   id?: IDComparatorShape | null;
   number?: NumberComparatorShape | null;
@@ -198,6 +218,7 @@ export interface IssueFilterShape {
   parent?: { id?: IDComparatorShape | null; null?: boolean | null } | null;
   project?: { id?: IDComparatorShape | null; null?: boolean | null } | null;
   projectMilestone?: { id?: IDComparatorShape | null; null?: boolean | null } | null;
+  cycle?: CycleFilterShape | null;
   and?: IssueFilterShape[] | null;
   or?: IssueFilterShape[] | null;
 }
@@ -219,6 +240,7 @@ export const IssueFilter = builder.inputRef<IssueFilterShape>("IssueFilter").imp
     parent: t.field({ type: NullableIssueFilter, required: false }),
     project: t.field({ type: NullableProjectFilter, required: false }),
     projectMilestone: t.field({ type: NullableProjectFilter, required: false }),
+    cycle: t.field({ type: NullableCycleFilter, required: false }),
     and: t.field({ type: [IssueFilter], required: false }),
     or: t.field({ type: [IssueFilter], required: false }),
   }),
@@ -365,6 +387,28 @@ export function issueWhere(
     parts.push(
       compare(column, f.id),
       f.null === true ? isNull(column) : f.null === false ? isNotNull(column) : undefined,
+    );
+  }
+  if (filter.cycle) {
+    const f = filter.cycle;
+    const at = Date.now();
+    const active =
+      f.isActive?.eq == null
+        ? undefined
+        : f.isActive.eq
+          ? and(isNull(cycles.completedAt), lte(cycles.startsAt, at), gt(cycles.endsAt, at))
+          : or(isNotNull(cycles.completedAt), gt(cycles.startsAt, at), lte(cycles.endsAt, at));
+    const cond = and(compareNumber(cycles.number, f.number), active);
+    parts.push(
+      compare(issues.cycleId, f.id),
+      cond
+        ? inArray(issues.cycleId, db.select({ id: cycles.id }).from(cycles).where(cond))
+        : undefined,
+      f.null === true
+        ? isNull(issues.cycleId)
+        : f.null === false
+          ? isNotNull(issues.cycleId)
+          : undefined,
     );
   }
   if (filter.and?.length) parts.push(...filter.and.map((f) => issueWhere(db, f, viewerId)));

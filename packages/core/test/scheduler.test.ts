@@ -9,7 +9,8 @@ import { seedCompany } from "../src/seed.js";
 import { syncCycles } from "../src/services/cycles.js";
 import { createIssue, updateIssue } from "../src/services/issues.js";
 import { createTeam, updateTeam } from "../src/services/teams.js";
-import { addDays, localDate, weekday, zonedTime } from "../src/time.js";
+import { createRecurringIssues, createTemplate } from "../src/services/templates.js";
+import { addDays, localDate, nextOccurrence, weekday, zonedTime } from "../src/time.js";
 
 const migrationsFolder = decodeURIComponent(
   new URL("../../schema/migrations", import.meta.url).pathname,
@@ -136,5 +137,71 @@ describe("cycles", () => {
     expect(current).toBeDefined();
     expect(cycles.filter((c) => c.completedAt)).toHaveLength(2);
     expect(cycles.filter((c) => c.startsAt > later)).toHaveLength(1);
+  });
+});
+
+describe("recurring issues", () => {
+  it("finds the next time a schedule fires", () => {
+    // Thursday 8 October 2026, 10:00 in Berlin.
+    const at = Date.parse("2026-10-08T08:00:00Z");
+    const iso = (ms: number) => new Date(ms).toISOString();
+    expect(iso(nextOccurrence({ frequency: "daily", time: "08:00" }, "Europe/Berlin", at))).toBe(
+      "2026-10-09T06:00:00.000Z",
+    );
+    expect(iso(nextOccurrence({ frequency: "weekdays", time: "11:00" }, "Europe/Berlin", at))).toBe(
+      "2026-10-08T09:00:00.000Z",
+    );
+    // Friday → Monday, across the end of summer time on 25 October.
+    expect(
+      iso(
+        nextOccurrence(
+          { frequency: "weekly", time: "09:00", weekday: 1 },
+          "Europe/Berlin",
+          Date.parse("2026-10-24T00:00:00Z"),
+        ),
+      ),
+    ).toBe("2026-10-26T08:00:00.000Z");
+    // The 31st in a 30-day month falls on its last day.
+    expect(
+      iso(
+        nextOccurrence(
+          { frequency: "monthly", time: "07:00", monthDay: 31 },
+          "UTC",
+          Date.parse("2026-11-02T00:00:00Z"),
+        ),
+      ),
+    ).toBe("2026-11-30T07:00:00.000Z");
+  });
+
+  it("creates the issue each time and wakes an agent that assigned it to itself", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const owner = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(owner, { name: "Home", key: "HOM" });
+    const ceo = await db.select().from(schema.users).where(eq(schema.users.name, "CEO")).get();
+    const ceoId = ceo?.id ?? "";
+    await createTemplate(
+      { db, actorId: ceoId, now: start },
+      {
+        teamId,
+        templateData: { title: "Morning brief {date}", assigneeId: ceoId, priority: 3 },
+        schedule: { frequency: "daily", time: "08:00" },
+      },
+    );
+    const deps = { db, config: { platform: "node" as const, version: "test" } };
+    expect(await createRecurringIssues(deps, start + 30 * 60_000)).toBe(false);
+    expect(await createRecurringIssues(deps, start + 61 * 60_000)).toBe(true);
+    await createRecurringIssues(deps, start + 62 * 60_000);
+    const created = await db.select().from(schema.issues).all();
+    expect(created.map((i) => i.title)).toEqual(["Morning brief 2026-10-08"]);
+    expect(created[0]?.assigneeId).toBe(ceoId);
+    const woke = await db
+      .select()
+      .from(schema.notifications)
+      .where(eq(schema.notifications.userId, ceoId))
+      .all();
+    expect(woke.map((n) => n.type)).toEqual(["issueAssignedToYou"]);
+    await createRecurringIssues(deps, start + DAY + 61 * 60_000);
+    expect(await db.select().from(schema.issues).all()).toHaveLength(2);
   });
 });

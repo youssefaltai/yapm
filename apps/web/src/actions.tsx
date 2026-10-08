@@ -2,6 +2,7 @@ import { graphql } from "./api.js";
 import {
   ISSUE_FIELDS,
   type Issue,
+  type IssueTemplate,
   type Label,
   mutate,
   PRIORITIES,
@@ -32,6 +33,8 @@ export interface CreateIssueDefaults {
   assigneeId?: string;
   projectId?: string;
   cycleId?: string;
+  /** Edit or create a template (with a schedule, a recurring issue) instead of an issue. */
+  template?: IssueTemplate | { recurring: boolean };
 }
 
 export const createIssueStore = createStore<CreateIssueDefaults | null>(null);

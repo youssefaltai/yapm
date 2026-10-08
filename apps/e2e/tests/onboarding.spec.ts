@@ -837,7 +837,13 @@ test.describe
       const comment = page.getByText("Paid through the bank app.");
       await comment.click({ button: "right" });
       await page.getByRole("menuitem", { name: /Add reaction/ }).hover();
-      await page.getByRole("menuitem", { name: "🎉" }).click();
+      await page.getByRole("menuitem", { name: /Party Popper/ }).click();
       await expect(page.getByRole("button", { name: /🎉 1/ })).toBeVisible();
+
+      // Or search the full picker, and pick with the keyboard.
+      await page.getByRole("button", { name: "Add reaction" }).last().click();
+      await page.getByPlaceholder("Search emoji…").fill("rocket");
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("button", { name: /🚀 1/ })).toBeVisible();
     });
   });

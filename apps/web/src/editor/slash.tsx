@@ -1,6 +1,7 @@
 import { type Editor, Extension, type Range } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import Suggestion from "@tiptap/suggestion";
+import { openEmojiPicker } from "../emoji/EmojiPicker.js";
 import { icons } from "./icons.js";
 import { type SuggestionItem, suggestionMenu } from "./SuggestionMenu.js";
 
@@ -129,7 +130,19 @@ const COMMANDS: {
     keywords: "smiley icon",
     hint: ":",
     icon: icons.emoji,
-    run: (editor, range) => editor.chain().focus().insertContentAt(range, ":").run(),
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run();
+      const { from } = editor.state.selection;
+      const caret = editor.view.coordsAtPos(from);
+      openEmojiPicker({
+        anchor: {
+          getBoundingClientRect: () =>
+            new DOMRect(caret.left, caret.top, 0, caret.bottom - caret.top),
+        },
+        onPick: (emoji) => editor.chain().focus().insertContent(emoji).run(),
+        onClose: () => editor.commands.focus(),
+      });
+    },
   },
 ];
 

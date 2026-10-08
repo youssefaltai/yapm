@@ -1,6 +1,22 @@
 @import "tailwindcss";
 @import "./motion.css";
 
+/*
+ * Emoji draw in colour from the system's emoji font on every platform. Symbols such as ❤ ✔ ☺
+ * otherwise come out of Inter or the system font as flat black glyphs. The unicode-range keeps
+ * digits, #, *, ©, ® and arrows in the text font, as Linear does.
+ */
+@font-face {
+  font-family: "Emoji";
+  src:
+    local("Apple Color Emoji"), local("AppleColorEmoji"), local("Segoe UI Emoji"),
+    local("SegoeUIEmoji"), local("Noto Color Emoji"), local("NotoColorEmoji");
+  unicode-range:
+    U+203C, U+2049, U+2139, U+231A-231B, U+2328, U+23CF, U+23E9-23F3, U+23F8-23FA, U+24C2,
+    U+2600-27BF, U+2934-2935, U+2B1B-2B1C, U+2B50, U+2B55, U+3030, U+303D, U+3297, U+3299,
+    U+200D, U+20E3, U+FE0F, U+1F000-1FAFF, U+E0020-E007F;
+}
+
 @theme {
   --color-canvas: #0f0f11;
   --color-panel: #161618;
@@ -11,7 +27,9 @@
   --color-faint: #5c6068;
   --color-accent: #5e6ad2;
   --color-accent-hover: #6e79d6;
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans:
+    "Emoji", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
 }
 
 /* The light theme swaps the palette; components only use these tokens. */
@@ -44,6 +62,15 @@ body {
   font-family: var(--font-sans);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* An emoji on its own, as in reactions and the picker: always in colour, never as text. */
+.emoji {
+  font-family: "Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-style: normal;
+  font-weight: normal;
+  font-variant-emoji: emoji;
+  line-height: 1;
 }
 
 /*

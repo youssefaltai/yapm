@@ -22,6 +22,7 @@
     "hono": "4.13.13"
   },
   "devDependencies": {
+    "@emoji-mart/data": "1.2.1",
     "@libsql/client": "0.18.0",
     "typescript": "5.9.3",
     "vitest": "4.1.11"

@@ -95,7 +95,7 @@ const SuggestionList = forwardRef<MenuHandle, MenuProps>(function SuggestionList
               }`}
             >
               {item.icon && (
-                <span className="flex w-4 shrink-0 justify-center text-muted">{item.icon}</span>
+                <span className="flex min-w-4 shrink-0 justify-center text-muted">{item.icon}</span>
               )}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
               {item.hint && <span className="shrink-0 text-[11px] text-faint">{item.hint}</span>}

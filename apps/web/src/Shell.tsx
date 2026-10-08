@@ -11,6 +11,7 @@ import {
 import type { Viewer } from "./api.js";
 import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
+import { EmojiPickerHost } from "./emoji/EmojiPicker.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
 import { EmptyState, SelectedPill, TabLink } from "./states.js";
@@ -123,6 +124,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       <CreateProjectHost />
       <MenuHost />
       <ContextMenuHost />
+      <EmojiPickerHost />
       <ToastHost />
     </div>
   );

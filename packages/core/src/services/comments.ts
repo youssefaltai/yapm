@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit } from "../db.js";
+import { normalizeEmoji } from "../emoji.js";
 import { badRequest, forbidden, notFound } from "../errors.js";
 import { type Ctx, cleanText, event } from "./common.js";
 import { requireIssue } from "./issues.js";
@@ -116,7 +117,7 @@ export async function createReaction(
   input: { emoji: string; commentId?: string | null; issueId?: string | null },
 ): Promise<string> {
   const { db, actorId, now } = ctx;
-  const emoji = cleanText(input.emoji, "Emoji", 32);
+  const emoji = normalizeEmoji(cleanText(input.emoji, "Emoji", 32));
   if (!!input.commentId === !!input.issueId)
     throw badRequest("React to exactly one comment or issue");
   let commentId: string | null = null;

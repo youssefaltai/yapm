@@ -34,7 +34,9 @@ import {
   type MenuSpec,
   openMenu,
   PriorityIcon,
+  SlaBadge,
   StatusIcon,
+  shortDate,
   timeAgo,
   UnassignedIcon,
   useHotkeys,
@@ -368,6 +370,18 @@ function Properties({
           <span className="text-faint">Add to project</span>
         )}
       </PropertyButton>
+      {issue.slaBreachesAt && (
+        <>
+          <PropertyLabel>SLA</PropertyLabel>
+          <span className="flex items-center gap-2 px-2 py-1 text-muted">
+            <SlaBadge
+              breachesAt={issue.slaBreachesAt}
+              open={issue.state.type !== "completed" && issue.state.type !== "canceled"}
+            />
+            {shortDate(issue.slaBreachesAt)}
+          </span>
+        </>
+      )}
       <PropertyLabel>Cycle</PropertyLabel>
       <PropertyButton
         onClick={() => void cycleMenu([issue]).then((spec) => spec && openMenu(spec))}

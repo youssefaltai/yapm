@@ -495,3 +495,30 @@ export function Markdown({ source, className = "" }: { source: string; className
   // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by DOMPurify above
   return <div className={`markdown ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }
+
+/** "SLA 5h" while an open issue's SLA runs, red once it's breached; nothing otherwise. */
+export function SlaBadge({ breachesAt, open }: { breachesAt: string | null; open: boolean }) {
+  if (!breachesAt || !open) return null;
+  const left = Date.parse(breachesAt) - Date.now();
+  const hours = Math.round(left / 3_600_000);
+  const text =
+    left <= 0
+      ? "SLA breached"
+      : hours < 48
+        ? `SLA ${Math.max(hours, 1)}h`
+        : `SLA ${Math.round(hours / 24)}d`;
+  const tone =
+    left <= 0
+      ? "border-red-500/40 text-red-400"
+      : hours < 24
+        ? "border-amber-500/40 text-amber-400"
+        : "border-line text-muted";
+  return (
+    <span
+      title={`Due by ${new Date(breachesAt).toLocaleString()}`}
+      className={`shrink-0 rounded border px-1 text-[11px] ${tone}`}
+    >
+      {text}
+    </span>
+  );
+}

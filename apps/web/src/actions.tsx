@@ -559,6 +559,12 @@ export function commandPalette(): MenuSpec {
       onSelect: () => navigate(paths.projects()),
     },
     {
+      id: "roadmap",
+      label: "Go to Roadmap",
+      section: "Navigation",
+      onSelect: () => navigate(paths.roadmap()),
+    },
+    {
       id: "initiatives",
       label: "Go to Initiatives",
       section: "Navigation",
@@ -615,8 +621,35 @@ export function commandPalette(): MenuSpec {
     })),
   );
   return {
-    placeholder: "Type a command or search issues…",
+    placeholder: "Type a command or search…",
     items,
-    search: (query) => searchIssueItems(query, (issue) => navigate(paths.issue(issue.identifier))),
+    search: async (query) => {
+      const [issues, other] = await Promise.all([
+        searchIssueItems(query, (issue) => navigate(paths.issue(issue.identifier))),
+        graphql<{
+          searchProjects: { nodes: { id: string; name: string; color: string }[] };
+          searchDocuments: { nodes: { id: string; title: string }[] };
+        }>(
+          "query($term: String!) { searchProjects(term: $term, first: 5) { nodes { id name color } } searchDocuments(term: $term, first: 8) { nodes { id title } } }",
+          { term: query },
+        ).catch(() => null),
+      ]);
+      return [
+        ...issues,
+        ...(other?.searchProjects.nodes ?? []).map((p) => ({
+          id: `project-${p.id}`,
+          label: p.name,
+          section: "Projects",
+          icon: <span className="size-2.5 rounded-full" style={{ background: p.color }} />,
+          onSelect: () => navigate(paths.project(p.id)),
+        })),
+        ...(other?.searchDocuments.nodes ?? []).map((d) => ({
+          id: `document-${d.id}`,
+          label: d.title || "Untitled",
+          section: "Documents",
+          onSelect: () => navigate(paths.document(d.id)),
+        })),
+      ];
+    },
   };
 }

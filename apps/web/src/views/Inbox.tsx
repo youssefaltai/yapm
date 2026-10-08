@@ -16,7 +16,8 @@ type NotificationType =
   | "issueStatusChanged"
   | "requestCreated"
   | "requestAnswered"
-  | "projectUpdateCreated";
+  | "projectUpdateCreated"
+  | "issueSlaBreached";
 
 interface Notification {
   id: string;
@@ -52,7 +53,7 @@ function describe(n: Notification): string {
   const who = n.actor?.name ?? "Someone";
   switch (n.type) {
     case "issueAssignedToYou":
-      return `${who} assigned it to you`;
+      return n.actor ? `${who} assigned it to you` : "Assigned to you";
     case "issueUnassignedFromYou":
       return `${who} unassigned you`;
     case "issueMention":
@@ -71,6 +72,8 @@ function describe(n: Notification): string {
         : `${who} approved your request${n.data?.always ? " for good" : ""}`;
     case "projectUpdateCreated":
       return `${who} posted an update: ${snippet(n.projectUpdate?.body)}`;
+    case "issueSlaBreached":
+      return "Missed its SLA";
   }
 }
 

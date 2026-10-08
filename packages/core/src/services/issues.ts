@@ -178,6 +178,18 @@ async function checkParent(db: HubDb, issueId: string | null, parentId: string) 
   }
 }
 
+const HOUR = 3_600_000;
+
+/** When an issue of this priority must be done by, under the team's SLA; null when none applies. */
+export function slaDeadline(
+  team: { slaHours: Record<string, number> | null },
+  priority: number,
+  startedAt: number,
+) {
+  const hours = team.slaHours?.[String(priority)];
+  return hours && hours > 0 ? startedAt + hours * HOUR : null;
+}
+
 /** Timestamps for a new issue created directly in a state. */
 function stateTimestamps(type: WorkflowStateType, now: number) {
   return {
@@ -230,6 +242,9 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
       projectId: project.projectId ?? null,
       projectMilestoneId: project.projectMilestoneId ?? null,
       cycleId: input.cycleId ?? null,
+      ...(slaDeadline(team, priority, now)
+        ? { slaStartedAt: now, slaBreachesAt: slaDeadline(team, priority, now) }
+        : {}),
       ...stateTimestamps(state.type, now),
       createdAt: now,
       updatedAt: now,
@@ -424,6 +439,30 @@ export async function updateIssues(
         })
         .where(inArray(issues.id, stateChangedIds)),
     );
+  }
+  if (next.priority !== undefined) {
+    // A new priority moves the SLA deadline, counted from when the SLA first started.
+    const slaTeams = await db
+      .select({ id: teams.id, slaHours: teams.slaHours })
+      .from(teams)
+      .where(inArray(teams.id, [...teamIds]))
+      .all();
+    for (const row of rows.filter((r) => changedIds.includes(r.id))) {
+      const team = slaTeams.find((t) => t.id === row.teamId);
+      const start = row.slaStartedAt ?? now;
+      const deadline = team ? slaDeadline(team, next.priority, start) : null;
+      if (deadline === row.slaBreachesAt) continue;
+      ops.push(
+        db
+          .update(issues)
+          .set({
+            slaStartedAt: deadline ? start : null,
+            slaBreachesAt: deadline,
+            slaBreachedAt: deadline && deadline <= now ? row.slaBreachedAt : null,
+          })
+          .where(eq(issues.id, row.id)),
+      );
+    }
   }
   for (const removal of labelRemovals) {
     ops.push(

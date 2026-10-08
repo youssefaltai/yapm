@@ -45,6 +45,91 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Checkboxes and radios drawn in the app's own style rather than the browser's.
+ * :where() keeps these at zero specificity so the editor's task list can restyle them.
+ */
+:where(input[type="checkbox"], input[type="radio"]) {
+  appearance: none;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  display: inline-grid;
+  place-content: center;
+  border: 1.5px solid var(--color-faint);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  vertical-align: middle;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+}
+:where(input[type="radio"]) {
+  border-radius: 50%;
+}
+:where(input[type="checkbox"], input[type="radio"]):hover {
+  border-color: var(--color-muted);
+}
+:where(input[type="checkbox"], input[type="radio"]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+:where(input[type="checkbox"], input[type="radio"]):checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+:where(input[type="checkbox"]):checked::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border: solid white;
+  border-width: 0 0 1.5px 1.5px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+:where(input[type="radio"]):checked::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: white;
+}
+:where(input[type="checkbox"], input[type="radio"]):disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Number fields without the browser's spinner arrows. */
+input[type="number"] {
+  appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* Dropdowns, date pickers and tooltips fade in, like Linear's. */
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.98);
+  }
+}
+.popover {
+  animation: float-in 0.12s ease-out;
+}
+.tooltip {
+  animation: float-in 0.1s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .popover,
+  .tooltip {
+    animation: none;
+  }
+}
+
 /* Rendered Markdown: documents, project descriptions and updates. */
 .markdown {
   line-height: 1.65;

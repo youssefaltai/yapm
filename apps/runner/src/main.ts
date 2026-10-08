@@ -11,7 +11,7 @@ import { McpManager } from "./mcp.js";
 import { sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 interface Config {
   hub: string;

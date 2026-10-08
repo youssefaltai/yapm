@@ -2024,6 +2024,25 @@ export function hubContract(
       );
       expect(self.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
 
+      // Feedback can be about an issue: it is listed there, by id or identifier.
+      const onIssue = await gql<{
+        feedbackCreate: { feedback: { id: string; issue: { identifier: string } } };
+      }>(
+        'mutation($id: String!, $issue: String!) { feedbackCreate(input: { agentId: $id, issueId: $issue, body: "Check the due date first." }) { feedback { id issue { identifier } } } }',
+        { id: ceoId, issue: issueId },
+      );
+      const about = await gql<{ feedbacks: { id: string; body: string }[] }>(
+        "query($issue: String) { feedbacks(issueId: $issue) { id body } }",
+        { issue: onIssue.feedbackCreate.feedback.issue.identifier },
+      );
+      expect(about.feedbacks.map((f) => f.id)).toContain(onIssue.feedbackCreate.feedback.id);
+      expect(about.feedbacks.map((f) => f.id)).not.toContain(note.feedbackCreate.feedback.id);
+      const nowhere = await client.graphql(
+        'mutation($id: String!) { feedbackCreate(input: { agentId: $id, issueId: "NOPE-999", body: "Hi" }) { success } }',
+        { id: ceoId },
+      );
+      expect(nowhere.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
+
       // The agent rewrites its own lessons without asking, then marks the note addressed.
       await gql(
         'mutation($id: String!) { userUpdate(id: $id, input: { lessons: "- Lead money updates with the total." }) { success } }',

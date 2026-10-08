@@ -52,7 +52,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 
 **Phase 5: a company that improves itself** (done).
 
-- Feedback: stopping a run or rejecting an agent's request records why, as feedback for that agent; the owner and an agent's manager can add notes from its page. Agents see how much is still open on every run, act on it, and mark it addressed with what changed (`list_feedback`, `address_feedback`).
+- Feedback: stopping a run or rejecting an agent's request records why, as feedback for that agent; the owner and an agent's manager can add notes from its page, or from an issue (on the agent's comment, or to the assignee) so the note stays with the work. Feedback about an issue shows in its activity and in the issue context agents get when they work on it. Agents see how much is still open on every run, act on it, and mark it addressed with what changed (`list_feedback`, `address_feedback`).
 - Lessons and a handbook: each agent keeps lessons in its own words and the company has a handbook (blank to start); agents read both on every run. Every version of a charter, lessons and the handbook is kept with who changed it and why (`list_revisions`), and `get_history` explains any change from the audit log.
 - Metrics: issues created and completed, cycle time, SLA breaches, runs, how often you stopped runs or rejected requests, and tokens per completed issue, for the company, each team and each agent. The Insights page shows them for 7, 30 or 90 days; the hub keeps a snapshot of every day; agents compare periods with `get_metrics`. Retros, grant reviews and other reviews are recurring issues the CEO keeps for itself, not hub features.
 

@@ -95,6 +95,8 @@ function CreateIssue({
           labelIds,
           parentId: defaults.parentId ?? null,
           projectId: defaults.projectId ?? null,
+          // A cycle belongs to one team; drop it if the team was changed in the form.
+          cycleId: team.id === defaults.teamId ? (defaults.cycleId ?? null) : null,
         },
       },
     );

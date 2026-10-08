@@ -1677,5 +1677,156 @@ export function hubContract(
           .nodes,
       ).toEqual([]);
     });
+    it("runs cycles, triage and saved views", async () => {
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+        token?: string,
+      ) => {
+        const result = await client.graphql<T>(query, variables, token);
+        if (result.errors) throw new Error(result.errors[0]?.message);
+        return result.data as T;
+      };
+      const mcp = async (name: string, args: Record<string, unknown>) => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+          token: ceoToken,
+        });
+        const body = (await response.json()) as {
+          result: { content: { text: string }[]; isError?: boolean };
+        };
+        const text = body.result.content[0]?.text ?? "";
+        if (body.result.isError) throw new Error(text);
+        return JSON.parse(text);
+      };
+
+      // Only the owner sets the company's time zone, and only to a real one.
+      const { organizationUpdate } = await gql<{
+        organizationUpdate: { organization: { timezone: string } };
+      }>(
+        'mutation { organizationUpdate(input: { timezone: "Europe/Berlin" }) { organization { timezone } } }',
+      );
+      expect(organizationUpdate.organization.timezone).toBe("Europe/Berlin");
+      const badZone = await client.graphql(
+        'mutation { organizationUpdate(input: { timezone: "Mars/Olympus" }) { success } }',
+      );
+      expect(badZone.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const asAgent = await client.graphql(
+        'mutation { organizationUpdate(input: { timezone: "UTC" }) { success } }',
+        undefined,
+        ceoToken,
+      );
+      expect(asAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+
+      // Turning cycles on opens the current cycle and the upcoming ones straight away.
+      const { teamUpdate } = await gql<{
+        teamUpdate: {
+          team: {
+            cyclesEnabled: boolean;
+            activeCycle: { id: string; number: number; isActive: boolean } | null;
+            cycles: { nodes: { id: string; number: number; isFuture: boolean }[] };
+          };
+        };
+      }>(
+        `mutation($id: String!) {
+          teamUpdate(id: $id, input: { cyclesEnabled: true, cycleDuration: 2, triageEnabled: true }) {
+            team { cyclesEnabled activeCycle { id number isActive } cycles { nodes { id number isFuture } } }
+          }
+        }`,
+        { id: teamId },
+      );
+      expect(teamUpdate.team.cyclesEnabled).toBe(true);
+      expect(teamUpdate.team.activeCycle).toMatchObject({ number: 1, isActive: true });
+      expect(teamUpdate.team.cycles.nodes.map((c) => c.number)).toEqual([3, 2, 1]);
+      const current = teamUpdate.team.activeCycle?.id ?? "";
+      const badLength = await client.graphql(
+        "mutation($id: String!) { teamUpdate(id: $id, input: { cycleDuration: 20 }) { success } }",
+        { id: teamId },
+      );
+      expect(badLength.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+
+      // An agent's new issue waits in Triage; the CEO can put it in the current cycle.
+      const triaged = await mcp("create_issue", {
+        team: teamId,
+        title: "Renew passport",
+        cycle: "current",
+      });
+      expect(triaged).toMatchObject({ status: "Triage", cycle: 1 });
+      const ownIssue = await gql<{
+        issueCreate: { issue: { id: string; state: { type: string }; cycle: { number: number } } };
+      }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id state { type } cycle { number } } } }",
+        { input: { teamId, title: "Plan the week", cycleId: current } },
+      );
+      expect(ownIssue.issueCreate.issue).toMatchObject({
+        state: { type: "backlog" },
+        cycle: { number: 1 },
+      });
+      const listed = await mcp("list_cycles", { team: teamId });
+      expect(listed.cycles.at(-1)).toMatchObject({
+        number: 1,
+        status: "current",
+        progress: { scope: 2, completed: 0 },
+      });
+
+      const inCycle = await gql<{
+        cycle: { issues: { nodes: { title: string }[] }; progress: number };
+        issues: { nodes: { title: string }[] };
+      }>(
+        `query($id: String!) {
+          cycle(id: $id) { issues { nodes { title } } progress }
+          issues(filter: { cycle: { isActive: { eq: true } }, state: { type: { eq: "triage" } } }) { nodes { title } }
+        }`,
+        { id: current },
+      );
+      expect(inCycle.cycle.issues.nodes.map((i) => i.title).sort()).toEqual([
+        "Plan the week",
+        "Renew passport",
+      ]);
+      expect(inCycle.issues.nodes.map((i) => i.title)).toEqual(["Renew passport"]);
+
+      // A saved view keeps a filter; private views stay with their creator.
+      const { customViewCreate } = await gql<{
+        customViewCreate: { customView: { id: string; issues: { nodes: { title: string }[] } } };
+      }>(
+        `mutation($input: CustomViewCreateInput!) {
+          customViewCreate(input: $input) { customView { id issues { nodes { title } } } }
+        }`,
+        {
+          input: {
+            name: "Needs triage",
+            shared: false,
+            filterData: { state: { type: { eq: "triage" } } },
+          },
+        },
+      );
+      const viewId = customViewCreate.customView.id;
+      expect(customViewCreate.customView.issues.nodes.map((i) => i.title)).toContain(
+        "Renew passport",
+      );
+      const hidden = await client.graphql(
+        "query($id: String!) { customView(id: $id) { id } }",
+        { id: viewId },
+        ceoToken,
+      );
+      expect(hidden.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
+      await gql(
+        'mutation($id: String!) { customViewUpdate(id: $id, input: { name: "Triage", shared: true }) { success } }',
+        { id: viewId },
+      );
+      const seen = await gql<{ customViews: { nodes: { name: string }[] } }>(
+        "{ customViews { nodes { name } } }",
+        undefined,
+        ceoToken,
+      );
+      expect(seen.customViews.nodes.map((v) => v.name)).toEqual(["Triage"]);
+      await gql("mutation($id: String!) { customViewDelete(id: $id) { success } }", { id: viewId });
+
+      await gql(
+        "mutation($id: String!) { teamUpdate(id: $id, input: { triageEnabled: false }) { success } }",
+        { id: teamId },
+      );
+    });
   });
 }

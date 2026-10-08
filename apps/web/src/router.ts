@@ -26,11 +26,16 @@ export function usePath(): string {
 
 export type RequestsTab = "pending" | "answered" | "grants";
 export type RunsTab = "active" | "all";
+export type TeamView = "all" | "active" | "backlog" | "triage";
 
 export type Route =
   | { name: "inbox" }
   | { name: "myIssues"; tab: "assigned" | "created" }
-  | { name: "team"; key: string; view: "all" | "active" | "backlog" }
+  | { name: "team"; key: string; view: TeamView }
+  | { name: "cycles"; key: string }
+  | { name: "cycle"; id: string }
+  | { name: "teamSettings"; key: string }
+  | { name: "view"; id: string }
   | { name: "issue"; identifier: string }
   | { name: "company" }
   | { name: "member"; id: string }
@@ -70,8 +75,14 @@ export function parseRoute(path: string): Route {
   if (first === "documents") return { name: "documents" };
   if (first === "document" && second) return { name: "document", id: second };
   if (first === "issue" && second) return { name: "issue", identifier: second.toUpperCase() };
+  if (first === "cycle" && second) return { name: "cycle", id: second };
+  if (first === "view" && second) return { name: "view", id: second };
+  if (first === "team" && second && third === "cycles")
+    return { name: "cycles", key: second.toUpperCase() };
+  if (first === "team" && second && third === "settings")
+    return { name: "teamSettings", key: second.toUpperCase() };
   if (first === "team" && second) {
-    const view = third === "active" || third === "backlog" ? third : "all";
+    const view = third === "active" || third === "backlog" || third === "triage" ? third : "all";
     return { name: "team", key: second.toUpperCase(), view };
   }
   return { name: "notFound" };
@@ -81,8 +92,12 @@ export const paths = {
   inbox: () => "/inbox",
   myIssues: (tab: "assigned" | "created" = "assigned") =>
     tab === "assigned" ? "/my-issues" : "/my-issues/created",
-  team: (key: string, view: "all" | "active" | "backlog" = "all") =>
+  team: (key: string, view: TeamView = "all") =>
     view === "all" ? `/team/${key}` : `/team/${key}/${view}`,
+  cycles: (key: string) => `/team/${key}/cycles`,
+  cycle: (id: string) => `/cycle/${id}`,
+  teamSettings: (key: string) => `/team/${key}/settings`,
+  view: (id: string) => `/view/${id}`,
   issue: (identifier: string) => `/issue/${identifier}`,
   company: () => "/company",
   member: (id: string) => `/member/${id}`,

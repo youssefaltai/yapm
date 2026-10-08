@@ -9,6 +9,7 @@ import "./runs.js";
 import "./projects.js";
 import "./cycles.js";
 import "./templates.js";
+import "./feedback.js";
 
 export type { GraphQLContext } from "./builder.js";
 

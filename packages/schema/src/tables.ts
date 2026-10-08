@@ -20,8 +20,10 @@ export const workspaces = sqliteTable("workspaces", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   urlKey: text("url_key").notNull().unique(),
-  /** IANA time zone for cycles, rituals and "today", e.g. `Europe/Berlin`. */
+  /** IANA time zone for cycles, recurring issues and "today", e.g. `Europe/Berlin`. */
   timezone: text("timezone").notNull().default("UTC"),
+  /** How the company works, in markdown: every agent reads it. Starts empty. */
+  handbook: text("handbook"),
   ...timestamps,
 });
 
@@ -42,6 +44,8 @@ export const users = sqliteTable(
     managerId: text("manager_id"),
     /** An agent's job description: responsibilities, ownership, when to escalate. */
     charter: text("charter"),
+    /** What the agent has learned, in its own words: it reads them on every run. */
+    lessons: text("lessons"),
     /** Machines must have all of these tags to run this agent, e.g. `["employer-a"]`. */
     runnerTags: text("runner_tags", { mode: "json" }).$type<string[]>(),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
@@ -784,4 +788,51 @@ export const templates = sqliteTable(
     ...timestamps,
   },
   (t) => [index("templates_team_idx").on(t.teamId), index("templates_next_idx").on(t.nextRunAt)],
+);
+
+export const FEEDBACK_KINDS = ["stop", "rejection", "note"] as const;
+export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
+
+/**
+ * What an agent should learn from: why the owner stopped a run, why a request was rejected,
+ * or a note. Retros read the open ones and mark them addressed with what changed.
+ */
+export const feedback = sqliteTable(
+  "feedback",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind", { enum: FEEDBACK_KINDS }).notNull(),
+    body: text("body").notNull(),
+    authorId: text("author_id"),
+    runId: text("run_id"),
+    issueId: text("issue_id"),
+    requestId: text("request_id"),
+    addressedAt: integer("addressed_at", { mode: "number" }),
+    addressedById: text("addressed_by_id"),
+    /** What changed because of it, e.g. "Added a lesson about receipts". */
+    addressedNote: text("addressed_note"),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [index("feedback_agent_idx").on(t.agentId, t.createdAt)],
+);
+
+export const REVISION_SUBJECTS = ["charter", "lessons", "handbook"] as const;
+export type RevisionSubject = (typeof REVISION_SUBJECTS)[number];
+
+/** Every version of a charter, an agent's lessons and the handbook, with who changed it and why. */
+export const revisions = sqliteTable(
+  "revisions",
+  {
+    id: text("id").primaryKey(),
+    subject: text("subject", { enum: REVISION_SUBJECTS }).notNull(),
+    /** The agent for charters and lessons; the workspace for the handbook. */
+    entityId: text("entity_id").notNull(),
+    content: text("content").notNull(),
+    authorId: text("author_id"),
+    runId: text("run_id"),
+    reason: text("reason"),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [index("revisions_entity_idx").on(t.subject, t.entityId, t.createdAt)],
 );

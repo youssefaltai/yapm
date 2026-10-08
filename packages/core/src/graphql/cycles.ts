@@ -6,6 +6,7 @@ import { commit } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
 import { changes, event } from "../services/common.js";
 import { activeCycle, requireCycle, updateCycle } from "../services/cycles.js";
+import { updateHandbook } from "../services/feedback.js";
 import { rescheduleAll } from "../services/templates.js";
 import { canSeeView, createView, deleteView, requireView, updateView } from "../services/views.js";
 import { isTimeZone } from "../time.js";
@@ -265,6 +266,7 @@ const OrganizationUpdateInput = builder.inputType("OrganizationUpdateInput", {
   fields: (t) => ({
     name: t.string({ required: false }),
     timezone: t.string({ required: false, description: "IANA name, e.g. Europe/Berlin." }),
+    handbook: t.string({ required: false, description: "Markdown; an empty string clears it." }),
   }),
 });
 
@@ -282,7 +284,7 @@ builder.mutationFields((t) => ({
   }),
   organizationUpdate: t.field({
     type: OrganizationPayload,
-    description: "Renames the company or sets its time zone. Owner only.",
+    description: "Renames the company, sets its time zone or rewrites its handbook. Owner only.",
     args: { input: t.arg({ type: OrganizationUpdateInput, required: true }) },
     resolve: async (_root, args, ctx) => {
       requireOwner(ctx);
@@ -299,6 +301,7 @@ builder.mutationFields((t) => ({
           if (!isTimeZone(args.input.timezone)) throw badRequest("Unknown time zone");
           next.timezone = args.input.timezone;
         }
+        if (args.input.handbook != null) await updateHandbook(s, args.input.handbook);
         const diff = changes(company, next);
         if (!diff) return;
         await commit(s.db, [

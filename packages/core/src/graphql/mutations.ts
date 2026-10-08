@@ -233,6 +233,7 @@ const UserUpdateInput = builder.inputType("UserUpdateInput", {
     name: t.string({ required: false }),
     title: t.string({ required: false }),
     charter: t.string({ required: false }),
+    lessons: t.string({ required: false }),
     managerId: t.string({ required: false }),
     runnerTags: t.stringList({
       required: false,

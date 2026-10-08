@@ -79,6 +79,10 @@ Organization.implement({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
     urlKey: t.exposeString("urlKey"),
+    handbook: t.exposeString("handbook", {
+      nullable: true,
+      description: "How the company works, in markdown. Every agent reads it.",
+    }),
     createdAt: t.field({ type: "DateTime", resolve: (o) => o.createdAt }),
   }),
 });
@@ -94,6 +98,10 @@ User.implement({
     title: t.exposeString("title", { nullable: true }),
     avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
     charter: t.exposeString("charter", { nullable: true }),
+    lessons: t.exposeString("lessons", {
+      nullable: true,
+      description: "What an agent has learned, in its own words. It reads them on every run.",
+    }),
     active: t.exposeBoolean("active"),
     isMe: t.boolean({ resolve: (u, _args, ctx) => ctx.viewer?.user.id === u.id }),
     createdAt: t.field({ type: "DateTime", resolve: (u) => u.createdAt }),

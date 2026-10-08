@@ -1,6 +1,7 @@
 import { cycleName, workspaceStore } from "../actions.js";
 import { type Team, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState, PageSkeleton } from "../states.js";
 import { shortDate, useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 import { Progress } from "./Projects.js";
@@ -49,16 +50,15 @@ export function CyclesView({ team }: { team: Team }) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
         {!team.cyclesEnabled && (
-          <div className="px-6 py-16 text-center text-muted">
-            <p>Cycles are short, repeating stretches of focused work, like sprints.</p>
-            <button
-              type="button"
-              onClick={() => navigate(paths.teamSettings(team.key))}
-              className="mt-4 rounded-md bg-accent px-3 py-1.5 font-medium text-white"
-            >
-              Turn on cycles
-            </button>
-          </div>
+          <EmptyState
+            icon="cycle"
+            title="Cycles are off"
+            description="Cycles are short, repeating stretches of focused work, like sprints."
+            action={{
+              label: "Turn on cycles",
+              onClick: () => navigate(paths.teamSettings(team.key)),
+            }}
+          />
         )}
         <ul>
           {cycles.map((c) => (
@@ -103,7 +103,7 @@ export function CyclePage({ id }: { id: string }) {
   const cycle = data?.cycle;
   const team = workspace?.teams.nodes.find((t) => t.key === cycle?.team.key);
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
-  if (!cycle || !team) return null;
+  if (!cycle || !team) return <PageSkeleton />;
   return (
     <IssuesView
       source={{ kind: "cycle", cycle, team }}

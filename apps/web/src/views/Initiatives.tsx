@@ -2,6 +2,7 @@ import { useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { mutate, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState } from "../states.js";
 import { Avatar, openMenu, shortDate, useStore } from "../ui.js";
 import { type Health, HealthBadge, ProjectDot } from "./Projects.js";
 
@@ -90,6 +91,15 @@ export function InitiativesView() {
               Add
             </button>
           </form>
+          {data && data.initiatives.nodes.length === 0 && (
+            <EmptyState
+              compact
+              icon="initiative"
+              title="No initiatives yet"
+              description="Name one above, like “Get fit” or “Buy a home”, then link the projects that move it."
+              className="rounded-xl border border-dashed border-line"
+            />
+          )}
           <div className="space-y-4">
             {data?.initiatives.nodes.map((i) => (
               <section key={i.id} className="rounded-lg border border-line">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createTeamStore, hireAgentStore } from "../actions.js";
 import { type Member, mutate, type Workspace } from "../data.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState } from "../states.js";
 import { Avatar } from "../ui.js";
 
 export function Company({ workspace }: { workspace: Workspace }) {
@@ -53,9 +54,14 @@ export function Company({ workspace }: { workspace: Workspace }) {
           </button>
         </div>
         {teams.length === 0 && (
-          <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-muted">
-            No teams yet. Your CEO creates them as your life's work takes shape.
-          </p>
+          <EmptyState
+            compact
+            icon="team"
+            title="No teams yet"
+            description="Your CEO creates them as your life's work takes shape."
+            action={{ label: "New team", onClick: () => createTeamStore.set(true) }}
+            className="rounded-xl border border-dashed border-line"
+          />
         )}
         <TeamList teams={teams} />
         {workspace.viewer.kind === "owner" && <MoveData />}

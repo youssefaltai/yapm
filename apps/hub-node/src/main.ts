@@ -1,7 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
+import { WebSocketServer } from "ws";
 import { createNodeApp } from "./app.js";
 import { openDatabase } from "./db.js";
+import { createNodeRealtime } from "./realtime.js";
 
 const env = process.env;
 const port = Number(env.PORT ?? 8787);
@@ -24,10 +26,14 @@ const app = createNodeApp(
       ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
       ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
     },
+    realtime: createNodeRealtime(),
   },
   webDir,
 );
 
-serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`Life OS hub listening on http://localhost:${info.port}`);
-});
+serve(
+  { fetch: app.fetch, port, websocket: { server: new WebSocketServer({ noServer: true }) } },
+  (info) => {
+    console.log(`Life OS hub listening on http://localhost:${info.port}`);
+  },
+);

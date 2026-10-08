@@ -6,13 +6,15 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 
 ## Status
 
-**Phase 0: foundations.** What works today:
+**Phase 1: Linear's core.** What works today:
 
 - First-run setup: name your company and create your owner passkey. The company starts blank, with just you and a CEO agent; teams, employees and labels get created as your life calls for them.
 - Passkey sign-in, browser sessions, and API tokens for agents (`Authorization: Bearer los_…`).
-- A Linear-shaped GraphQL API at `/graphql`: `viewer`, `organization`, `users`, `teams`, `team`, `workflowStates`, `issueLabels`, `auditEntries`, `apiTokenCreate`.
+- Teams with Linear's default workflow, and issues with identifiers like `PF-1`: status, priority, assignee, labels, estimate, due date, sub-issues, relations, threaded comments, reactions and full history.
+- A Linear-shaped GraphQL API at `/graphql`: `issues(filter: IssueFilter)`, `issue(id: "PF-1")`, `searchIssues`, `issueCreate`, `issueUpdate`, `issueBatchUpdate`, `commentCreate`, `teamCreate` and more, with `{ nodes, pageInfo }` connections.
+- Live updates at `/api/live`: a WebSocket that announces every change, so open apps and runners refetch. Node keeps sockets in process; Cloudflare uses a hibernating Durable Object.
 - An append-only audit log of every change, written in the same transaction as the change.
-- A web app shell showing the company, its org chart and teams.
+- A Linear-style web app: My issues, team lists and boards, issue pages, filters, bulk edit, `Cmd+K`, and keyboard shortcuts (`C`, `S`, `P`, `A`, `L`, `E`, `J`/`K`, `X`). It works on a phone too.
 
 ## Repository layout
 

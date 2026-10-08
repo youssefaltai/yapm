@@ -3,6 +3,7 @@ import { mutate, useQuery } from "../data.js";
 import { plainText } from "../editor/plain.js";
 import { usePushState } from "../push.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState, ListSkeleton } from "../states.js";
 import { Avatar, timeAgo } from "../ui.js";
 import { IssuePage } from "./IssuePage.js";
 import { ProjectPage } from "./Projects.js";
@@ -134,11 +135,14 @@ export function InboxView() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           <PushBanner />
           {error && <p className="p-6 text-red-400">{error}</p>}
+          {!data && !error && <ListSkeleton rows={6} />}
           {data && items.length === 0 && (
-            <p className="px-6 py-16 text-center text-muted">
-              You're all caught up. Assignments, mentions, comments on issues you follow and agents'
-              requests land here.
-            </p>
+            <EmptyState
+              fill={false}
+              icon="inbox"
+              title="You're all caught up."
+              description="Assignments, mentions, comments on issues you follow and agents' requests land here."
+            />
           )}
           <ul aria-label="Notifications">
             {items.map((n) => (
@@ -207,7 +211,13 @@ export function InboxView() {
         ) : current?.issue ? (
           <IssuePage key={current.issue.identifier} identifier={current.issue.identifier} />
         ) : (
-          <p className="px-6 py-16 text-center text-faint">Select a notification</p>
+          items.length > 0 && (
+            <EmptyState
+              icon="select"
+              title="Select a notification"
+              description="Its issue or request opens here, so you can answer without leaving the Inbox."
+            />
+          )
         )}
       </section>
     </div>

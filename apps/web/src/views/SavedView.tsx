@@ -2,6 +2,7 @@ import { workspaceStore } from "../actions.js";
 import { confirmDialog, promptDialog } from "../controls.js";
 import { mutate, toast } from "../data.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState } from "../states.js";
 import { useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 
@@ -10,7 +11,15 @@ export function ViewPage({ id }: { id: string }) {
   const workspace = useStore(workspaceStore);
   const view = workspace?.customViews.nodes.find((v) => v.id === id);
   if (!workspace) return null;
-  if (!view) return <p className="px-6 py-10 text-center text-muted">View not found.</p>;
+  if (!view)
+    return (
+      <EmptyState
+        icon="compass"
+        title="View not found"
+        description="It may have been deleted. Saved views live under Views in the sidebar."
+        action={{ label: "Go to My issues", onClick: () => navigate(paths.myIssues()) }}
+      />
+    );
 
   const rename = async () => {
     const name = await promptDialog({

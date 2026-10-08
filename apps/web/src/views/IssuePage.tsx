@@ -28,6 +28,7 @@ import {
 } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState, PageSkeleton } from "../states.js";
 import {
   Avatar,
   dueLabel,
@@ -149,17 +150,22 @@ export function IssuePage({ identifier }: { identifier: string }) {
   });
 
   if (error) {
-    return (
-      <p className="px-6 py-10 text-center text-muted">
-        {error.includes("not found") ? "Issue not found." : error}
-      </p>
+    return error.includes("not found") ? (
+      <EmptyState
+        icon="compass"
+        title="Issue not found"
+        description="It may have been deleted or moved to another team, or the link is mistyped."
+        action={{ label: "Go to My issues", onClick: () => navigate(paths.myIssues()) }}
+      />
+    ) : (
+      <p className="px-6 py-10 text-center text-muted">{error}</p>
     );
   }
-  if (!issue || !workspace) return null;
+  if (!issue || !workspace) return <PageSkeleton />;
   const team = workspace.teams.nodes.find((t) => t.id === issue.team.id);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 animate-fade-in flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
         <button
           type="button"

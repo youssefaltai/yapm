@@ -3,6 +3,7 @@ import { workspaceStore } from "../actions.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState } from "../states.js";
 import { openMenu, timeAgo, useStore } from "../ui.js";
 
 interface Machine {
@@ -107,7 +108,17 @@ export function MachinesView() {
           )}
           <div className="mt-6 space-y-3">
             {data && machines.length === 0 && (
-              <p className="py-8 text-center text-muted">No machines yet.</p>
+              <EmptyState
+                compact
+                icon="machine"
+                title="No machines yet"
+                description={
+                  isOwner
+                    ? "Add machine gives you one command to paste on a Mac or Linux computer."
+                    : "Once the owner adds a computer, agents can run on it."
+                }
+                className="rounded-xl border border-dashed border-line"
+              />
             )}
             {machines.map((m) => (
               <MachineCard key={m.id} machine={m} canEdit={isOwner} />

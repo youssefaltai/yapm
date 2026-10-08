@@ -73,7 +73,7 @@ function Card({
 }) {
   return (
     <Centered>
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm animate-rise-in">
         <img src="/icon.svg" alt="" className="mb-6 size-10" />
         <h1 className="text-xl font-medium">{title}</h1>
         <p className="mt-1 mb-6 text-muted">{subtitle}</p>

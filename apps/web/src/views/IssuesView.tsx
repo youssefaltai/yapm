@@ -27,6 +27,7 @@ import {
   type WorkflowState,
 } from "../data.js";
 import { navigate, paths, type TeamView } from "../router.js";
+import { EmptyState, ListSkeleton, SelectedPill } from "../states.js";
 import {
   Avatar,
   dueLabel,
@@ -162,7 +163,7 @@ export function IssuesView({
     source.kind === "my"
       ? `query($filter: IssueFilter) { source: viewer { issues: ${source.tab === "assigned" ? "assignedIssues" : "createdIssues"}(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`
       : `query($key: String!, $filter: IssueFilter) { source: ${SOURCE_QUERIES[source.kind]} { issues(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`;
-  const { data, error } = useQuery<{ source: { issues: { nodes: Issue[] } } }>(
+  const { data, error, stale } = useQuery<{ source: { issues: { nodes: Issue[] } } }>(
     query,
     source.kind === "my" ? { filter } : { key: sourceId(source), filter },
   );
@@ -237,7 +238,7 @@ export function IssuesView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-4 md:px-6">
+      <header className="isolate flex h-11 shrink-0 items-center gap-3 border-b border-line px-4 md:px-6">
         <div className="flex shrink-0 items-center gap-2 font-medium whitespace-nowrap">
           {title}
         </div>
@@ -260,8 +261,11 @@ export function IssuesView({
                 type="button"
                 aria-pressed={layout === option}
                 onClick={() => setLayout(option)}
-                className={`rounded px-2 py-0.5 capitalize ${layout === option ? "bg-raised text-ink" : "text-faint hover:text-muted"}`}
+                className={`relative rounded px-2 py-0.5 capitalize ${layout === option ? "text-ink" : "text-faint hover:text-muted"}`}
               >
+                {layout === option && (
+                  <SelectedPill group="issues-layout" className="rounded bg-raised" />
+                )}
                 {option}
               </button>
             ))}
@@ -272,9 +276,12 @@ export function IssuesView({
       {banner}
 
       {error && <p className="px-6 py-4 text-red-400">{error}</p>}
+      {!data && !error && <ListSkeleton />}
       {data && issues.length === 0 && (
-        <EmptyState
-          filtered={filter !== null}
+        <IssuesEmpty
+          source={source}
+          filtered={Object.values(filters).some((values) => values.length > 0)}
+          onClear={() => setFilters(NO_FILTERS)}
           onCreate={() =>
             createIssueStore.set(
               source.kind === "project"
@@ -289,7 +296,7 @@ export function IssuesView({
         />
       )}
       {issues.length > 0 && layout === "list" && (
-        <div className="min-h-0 flex-1 overflow-y-auto pb-24">
+        <div className={`min-h-0 flex-1 overflow-y-auto pb-24 ${stale ? "stale" : "fresh"}`}>
           {groups.map((group) =>
             group.issues.length === 0 ? null : (
               <section key={group.key} aria-label={group.label}>
@@ -732,22 +739,81 @@ function BulkBar({ issues, onClear }: { issues: Issue[]; onClear: () => void }) 
   );
 }
 
-function EmptyState({ filtered, onCreate }: { filtered: boolean; onCreate: () => void }) {
+function IssuesEmpty({
+  source,
+  filtered,
+  onClear,
+  onCreate,
+}: {
+  source: IssueSource;
+  filtered: boolean;
+  onClear: () => void;
+  onCreate: () => void;
+}) {
+  const create = { label: "Create issue", shortcut: "C", onClick: onCreate };
+  if (filtered)
+    return (
+      <EmptyState
+        icon="filter"
+        title="No issues match these filters"
+        description="Try fewer filters, or clear them to see everything here again."
+        action={{ label: "Clear filters", onClick: onClear }}
+      />
+    );
+  const copy: { title: string; description: string; icon?: "issues" | "approval" } =
+    source.kind === "my"
+      ? source.tab === "assigned"
+        ? {
+            title: "Nothing assigned to you",
+            description: "Issues land here when you, your CEO or an agent assigns them to you.",
+          }
+        : {
+            title: "You haven't created any issues",
+            description: "Issues you file show up here, wherever they end up.",
+          }
+      : source.kind === "team" && source.view === "active"
+        ? {
+            title: "Nothing in progress",
+            description: "Issues that are up next or underway in this team show up here.",
+          }
+        : source.kind === "team" && source.view === "backlog"
+          ? {
+              title: "The backlog is clear",
+              description: "Work for later waits here until someone plans it.",
+            }
+          : source.kind === "team" && source.view === "triage"
+            ? {
+                icon: "approval",
+                title: "Triage is clear",
+                description: "Issues agents file wait here until you accept or decline them.",
+              }
+            : source.kind === "project"
+              ? {
+                  title: "No issues in this project yet",
+                  description: "Break the goal into issues, and agents pick them up from here.",
+                }
+              : source.kind === "cycle"
+                ? {
+                    title: "Nothing planned for this cycle",
+                    description: "Add issues to the cycle to commit to them for these weeks.",
+                  }
+                : source.kind === "team"
+                  ? {
+                      title: `No issues in ${source.team.name} yet`,
+                      description:
+                        "Issues are the work this team tracks. File one, or let your agents do it.",
+                    }
+                  : {
+                      title: "No issues in this view",
+                      description: "Issues that fit this view show up here as they're filed.",
+                    };
   return (
-    <div className="flex flex-1 animate-fade-in flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-      <p className="text-muted">
-        {filtered ? "No issues match these filters." : "No issues here yet."}
-      </p>
-      {!filtered && (
-        <button
-          type="button"
-          onClick={onCreate}
-          className="flex items-center gap-2 rounded-md border border-line px-3 py-1.5 hover:bg-raised"
-        >
-          Create issue <Kbd>C</Kbd>
-        </button>
-      )}
-    </div>
+    <EmptyState
+      icon={copy.icon ?? "issues"}
+      title={copy.title}
+      description={copy.description}
+      action={create}
+    />
   );
 }
 

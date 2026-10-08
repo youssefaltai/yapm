@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
+import { Bone, EmptyState, SelectedPill } from "../states.js";
 import { Avatar } from "../ui.js";
 
 interface Metrics {
@@ -58,7 +59,7 @@ const compact = (v: number | null) =>
 /** How the company is working: throughput, speed, and how often agents needed correcting. */
 export function Insights() {
   const [days, setDays] = useState<number>(7);
-  const { data, error } = useQuery<InsightsData>(QUERY, { days });
+  const { data, error, stale } = useQuery<InsightsData>(QUERY, { days });
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   const insights = data?.insights;
   const company = insights?.company;
@@ -67,7 +68,7 @@ export function Insights() {
     .sort((a, b) => b.metrics.completed - a.metrics.completed || b.metrics.runs - a.metrics.runs);
   return (
     <div className="h-full overflow-y-auto">
-      <header className="flex h-11 items-center gap-3 border-b border-line px-4 md:px-6">
+      <header className="isolate flex h-11 items-center gap-3 border-b border-line px-4 md:px-6">
         <span className="font-medium">Insights</span>
         <div className="ml-auto flex gap-1" role="tablist" aria-label="Period">
           {PERIODS.map((p) => (
@@ -77,15 +78,29 @@ export function Insights() {
               role="tab"
               aria-selected={days === p}
               onClick={() => setDays(p)}
-              className={`rounded-md px-2 py-0.5 ${days === p ? "bg-raised text-ink" : "text-muted hover:text-ink"}`}
+              className={`relative rounded-md px-2 py-0.5 ${days === p ? "text-ink" : "text-muted hover:text-ink"}`}
             >
+              {days === p && <SelectedPill group="insights-period" />}
               {p} days
             </button>
           ))}
         </div>
       </header>
+      {!company && !error && (
+        <div
+          aria-hidden
+          className="mx-auto grid max-w-5xl animate-skeleton-in grid-cols-2 gap-3 px-4 py-6 md:grid-cols-4 md:px-6"
+        >
+          {["a", "b", "c", "d", "e", "f", "g", "h"].map((k) => (
+            <div key={k} className="space-y-2.5 rounded-lg border border-line px-4 py-3">
+              <Bone className="h-2.5 w-20" />
+              <Bone className="h-5 w-12" />
+            </div>
+          ))}
+        </div>
+      )}
       {company && (
-        <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
+        <div className={`mx-auto max-w-5xl px-4 py-6 md:px-6 ${stale ? "stale" : "fresh"}`}>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat
               label="Completed"
@@ -117,7 +132,13 @@ export function Insights() {
 
           <h2 className="mt-8 mb-2 text-[12px] font-medium text-faint uppercase">Agents</h2>
           {agents.length === 0 ? (
-            <p className="text-muted">No agent activity in this period.</p>
+            <EmptyState
+              compact
+              icon="chart"
+              title="No agent activity in this period"
+              description="Once agents finish runs and close issues, how each one is doing shows up here."
+              className="rounded-xl border border-dashed border-line"
+            />
           ) : (
             <Table
               rows={agents.map((a) => ({
@@ -136,7 +157,13 @@ export function Insights() {
 
           <h2 className="mt-8 mb-2 text-[12px] font-medium text-faint uppercase">Teams</h2>
           {(insights?.teams ?? []).length === 0 ? (
-            <p className="text-muted">No team activity in this period.</p>
+            <EmptyState
+              compact
+              icon="team"
+              title="No team activity in this period"
+              description="Teams show up here as their issues move."
+              className="rounded-xl border border-dashed border-line"
+            />
           ) : (
             <Table
               teams
@@ -161,7 +188,9 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   return (
     <section aria-label={label} className="rounded-lg border border-line px-4 py-3">
       <p className="text-[12px] text-faint">{label}</p>
-      <p className="mt-1 text-xl font-medium">{value}</p>
+      <p key={value} className="mt-1 animate-fade-in text-xl font-medium tabular-nums">
+        {value}
+      </p>
       {hint && <p className="text-[12px] text-faint">{hint}</p>}
     </section>
   );

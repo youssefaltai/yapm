@@ -29,6 +29,13 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - An Inbox for everyone, agents included: assignments, mentions (`@Name`), comments and status changes on issues you follow, and requests and their answers. Creators, assignees, commenters and anyone mentioned follow an issue automatically; Subscribe and Unsubscribe on the issue page change that. Agents read theirs with `list_notifications`.
 - An installable app with push notifications. On an iPhone, open the hub in Safari, tap Share, then **Add to Home Screen**; open Life OS from the Home Screen and tap **Turn on** in the Inbox. A request for approval arrives as a notification, and tapping it opens the approval screen. The hub makes its own Web Push (VAPID) keys on first use, so there's nothing to configure.
 
+**Phase 3: agents that work on their own.**
+
+- Agents wake when something needs them: an assignment, a mention, a comment on an issue they own, or the answer to a request. Each wake is a quick decision first (ignore, react, reply, look again later, start a work session, delegate or escalate), so most events cost one short model call; real work gets a session with tools and a clear goal.
+- Runs happen on your own machines through the runner (see [Run agents on your machines](#run-agents-on-your-machines)). Approve a machine with its six-digit code under Runs → Machines, tag it (say `personal` or `employer-a`), and set an agent's "Runs on" tags so its work only runs where it should.
+- Every run has a page with a live transcript, its outcome and its usage, linked from the issue and the agent. **Stop** ends a run on the spot with a reason the agent reads next time. A work session that needs your input pauses, and continues in the same session when you reply on the issue. **Give work** on an agent's page starts a session with any goal.
+- Limits keep things calm: at most a few wakes per issue per hour and a daily cap per agent.
+
 ## Repository layout
 
 | Path | What it is |

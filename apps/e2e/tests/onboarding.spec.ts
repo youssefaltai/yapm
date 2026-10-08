@@ -239,6 +239,64 @@ test.describe
       await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(0);
     });
 
+    test("runs an agent on a machine, follows the transcript and stops it", async () => {
+      const runner = async (path: string, token: string, data: unknown) => {
+        const response = await page.request.post(`/api/runner${path}`, {
+          headers: token ? { authorization: `Bearer ${token}` } : {},
+          data,
+        });
+        return response.status() === 204 ? null : await response.json();
+      };
+      const machine = await runner("/enrol", "", { name: "MacBook", tags: [], capacity: 2 });
+      await page.getByRole("link", { name: "Runs" }).click();
+      await page.getByRole("link", { name: "Machines" }).click();
+      await expect(page.getByText("Waiting for approval")).toBeVisible();
+      await page.getByLabel("Pairing code").fill(machine.pairingCode);
+      await page.getByRole("button", { name: "Approve" }).click();
+      await expect(page.getByText("Online · 0/2 running")).toBeVisible();
+
+      await page.goto("/company");
+      await page.getByRole("button", { name: /Ada/ }).first().click();
+      await page.getByRole("button", { name: "Give Ada work" }).click();
+      await page.getByLabel("Goal").fill("Reconcile last month's statements");
+      await page.getByRole("textbox", { name: "On issue" }).fill("PF-1");
+      await page.getByRole("button", { name: "Start" }).click();
+      await expect(
+        page.getByRole("heading", { name: "Reconcile last month's statements" }),
+      ).toBeVisible();
+      await expect(page.getByText("Queued", { exact: true })).toBeVisible();
+      const runId = new URL(page.url()).pathname.split("/").pop();
+
+      // Earlier tests woke Ada too; the machine finishes those first.
+      let claim = await runner("/claim", machine.token, {});
+      while (claim && claim.run.id !== runId) {
+        await runner(`/runs/${claim.run.id}/complete`, machine.token, {
+          status: "failed",
+          error: "Skipped in the test",
+        });
+        claim = await runner("/claim", machine.token, {});
+      }
+      expect(claim?.input.prompt).toContain("Reconcile last month's statements");
+      await runner(`/runs/${runId}/logs`, machine.token, {
+        seq: 0,
+        events: [
+          { type: "text", text: "Pulling the statements from the bank export." },
+          { type: "tool", name: "mcp__life-os__get_issue", input: '{"id":"PF-1"}' },
+        ],
+      });
+      await expect(page.getByText("Pulling the statements from the bank export.")).toBeVisible();
+      await expect(page.getByText("get_issue", { exact: true })).toBeVisible();
+      await expect(page.getByText("Running", { exact: true })).toBeVisible();
+
+      await page.getByRole("button", { name: "Stop", exact: true }).click();
+      await page.getByLabel("Reason").fill("Wait until payday");
+      await page.getByRole("button", { name: "Stop run" }).click();
+      const beat = await runner("/heartbeat", machine.token, { runIds: [runId] });
+      expect(beat.stop).toEqual([{ id: runId, reason: "Wait until payday" }]);
+      await runner(`/runs/${runId}/complete`, machine.token, { status: "stopped" });
+      await expect(page.getByText("Stopped by Youssef: Wait until payday")).toBeVisible();
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

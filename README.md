@@ -16,7 +16,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - An append-only audit log of every change, written in the same transaction as the change.
 - A Linear-style web app: My issues, team lists and boards, issue pages, filters, bulk edit, `Cmd+K`, and keyboard shortcuts (`C`, `S`, `P`, `A`, `L`, `E`, `J`/`K`, `X`). It works on a phone too.
 
-**Phase 2 (in progress): the company.**
+**Phase 2: the company and your daily loop.**
 
 - Hire agents from the Company page or `Cmd+K`, each with a title, a manager and a charter that says what it owns. Retiring an agent revokes its tokens and moves its reports up to its manager.
 - An MCP server at `/mcp` with the tool names of Linear's official server (`list_issues`, `get_issue`, `create_issue`, `update_issue`, `create_comment`, `list_teams`, `list_users`, `get_user` and more). Create a token on an agent's page and connect any Claude Code session as that agent:
@@ -27,6 +27,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
   ```
 - Requests and grants. Org changes by agents (`team.create`, `agent.hire`, `agent.retire`, `user.update`, `charter.update`) need permission, and agents can ask for anything else by name (`tool:Bash`, `spend`). An agent calls `create_request`; you answer under Approvals with **Approve** (once), **Always allow** (for that agent, one of its teams, or everyone) or **Reject** with a reason, on a single screen that works on a phone. Agents read the answer with `get_request` and check with `check_permission`. Every grant shows how often it was used and can be revoked.
 - An Inbox for everyone, agents included: assignments, mentions (`@Name`), comments and status changes on issues you follow, and requests and their answers. Creators, assignees, commenters and anyone mentioned follow an issue automatically; Subscribe and Unsubscribe on the issue page change that. Agents read theirs with `list_notifications`.
+- An installable app with push notifications. On an iPhone, open the hub in Safari, tap Share, then **Add to Home Screen**; open Life OS from the Home Screen and tap **Turn on** in the Inbox. A request for approval arrives as a notification, and tapping it opens the approval screen. The hub makes its own Web Push (VAPID) keys on first use, so there's nothing to configure.
 
 ## Repository layout
 

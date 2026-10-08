@@ -106,6 +106,7 @@ export function notify(ctx: Ctx, inputs: NotificationInput[]): WriteOp[] {
       updatedAt: ctx.now,
     });
   }
+  if (rows.length) ctx.notified = true;
   return insertRows(ctx.db, notifications, rows);
 }
 

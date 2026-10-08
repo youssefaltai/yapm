@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { fromBase64Url } from "../crypto.js";
+import { encryptPayload } from "../push.js";
 import { SoftwareAuthenticator } from "./authenticator.js";
+import { TestPushReceiver, verifyVapid } from "./webpush.js";
 
 export type FetchLike = (request: Request) => Promise<Response>;
 
@@ -83,6 +86,11 @@ export interface ContractOptions {
    * where the platform's fetch can do that (Workers can; Node's is covered end to end).
    */
   liveSocket?: (response: Response) => WebSocket | null;
+  /**
+   * Requests the hub sent to push services, where the adapter could swap in a recording
+   * fetch (Node can; the Workers test runs the real worker).
+   */
+  pushOutbox?: Request[];
 }
 
 export function hubContract(
@@ -1095,6 +1103,83 @@ export function hubContract(
         "issueMention",
       ]);
       expect(listed.notifications[1]).toMatchObject({ actor: "Youssef", issue: issue?.identifier });
+    });
+
+    it("sends notifications as encrypted Web Push to the owner's devices", async () => {
+      const receiver = await TestPushReceiver.create("https://push.example.com/send/abc");
+      const { p256dh, auth } = receiver.toJSON().keys;
+      const sealed = await encryptPayload(p256dh, auth, new TextEncoder().encode('{"hi":1}'));
+      expect(await receiver.decrypt(sealed)).toEqual({ hi: 1 });
+
+      const key = await client.graphql<{ pushVapidPublicKey: string }>("{ pushVapidPublicKey }");
+      const publicKey = key.data?.pushVapidPublicKey ?? "";
+      expect(fromBase64Url(publicKey)).toHaveLength(65);
+      expect(
+        (await client.graphql<{ pushVapidPublicKey: string }>("{ pushVapidPublicKey }")).data
+          ?.pushVapidPublicKey,
+      ).toBe(publicKey);
+
+      const subscribe = (data: unknown) =>
+        client.graphql<{ pushSubscriptionCreate: { pushSubscription: { id: string } } }>(
+          'mutation($data: String!) { pushSubscriptionCreate(input: { data: $data, userAgent: "iPhone" }) { pushSubscription { id } } }',
+          { data: JSON.stringify(data) },
+        );
+      const insecure = await subscribe({
+        ...receiver.toJSON(),
+        endpoint: "http://push.example.com/x",
+      });
+      expect(insecure.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const first = await subscribe(receiver);
+      expect(first.errors).toBeUndefined();
+      const again = await subscribe(receiver);
+      expect(again.data?.pushSubscriptionCreate.pushSubscription.id).toBe(
+        first.data?.pushSubscriptionCreate.pushSubscription.id,
+      );
+
+      const outbox = options.pushOutbox;
+      if (outbox) {
+        outbox.length = 0;
+        await client.graphql(
+          'mutation { requestCreate(input: { title: "Buy running shoes", action: "spend", resource: "120 EUR", reason: "The old pair is done." }) { success } }',
+          undefined,
+          ceoToken,
+        );
+        for (let i = 0; i < 100 && !outbox.length; i++) await new Promise((r) => setTimeout(r, 20));
+        const sent = outbox[0];
+        expect(sent?.url).toBe(receiver.endpoint);
+        expect(sent?.headers.get("content-encoding")).toBe("aes128gcm");
+        expect(sent?.headers.get("urgency")).toBe("high");
+        const vapid = await verifyVapid(sent?.headers.get("authorization") ?? "");
+        expect(vapid).toMatchObject({
+          valid: true,
+          publicKey,
+          claims: { aud: "https://push.example.com" },
+        });
+        const payload = await receiver.decrypt(
+          new Uint8Array(await (sent as Request).arrayBuffer()),
+        );
+        expect(payload).toMatchObject({
+          title: "CEO asks for approval",
+          body: "Buy running shoes",
+          url: expect.stringMatching(/^http:\/\/localhost\/request\//),
+        });
+
+        const test = await client.graphql<{ pushSubscriptionTest: number }>(
+          "mutation { pushSubscriptionTest }",
+        );
+        expect(test.data?.pushSubscriptionTest).toBe(1);
+      }
+
+      await client.graphql(
+        "mutation($e: String) { pushSubscriptionDelete(endpoint: $e) { success } }",
+        {
+          e: receiver.endpoint,
+        },
+      );
+      const devices = await client.graphql<{ pushSubscriptions: unknown[] }>(
+        "{ pushSubscriptions { id } }",
+      );
+      expect(devices.data?.pushSubscriptions).toEqual([]);
     });
   });
 }

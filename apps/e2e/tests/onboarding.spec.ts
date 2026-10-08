@@ -238,4 +238,69 @@ test.describe
       await page.getByRole("button", { name: "Mark all read" }).click();
       await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(0);
     });
+
+    test("installs as an app and shows pushed notifications", async () => {
+      const manifest = await page.request.get("/manifest.webmanifest");
+      expect(manifest.ok()).toBe(true);
+      expect(await manifest.json()).toMatchObject({ display: "standalone", start_url: "/inbox" });
+      const worker = await page.request.get("/sw.js");
+      expect(worker.headers()["content-type"]).toContain("javascript");
+
+      await page.goto("/inbox");
+      const scope = await page.evaluate(async () => (await navigator.serviceWorker.ready).scope);
+      expect(new URL(scope).pathname).toBe("/");
+
+      // Headless Chromium can't show notifications, so run the worker's handlers against a
+      // stand-in for its global scope and check what it would show and open.
+      const source = await worker.text();
+      const result = await page.evaluate(async (code) => {
+        const handlers: Record<string, (event: unknown) => void> = {};
+        const shown: { title: string; options: { body: string; data: { url: string } } }[] = [];
+        const opened: string[] = [];
+        const waits: Promise<unknown>[] = [];
+        const self = {
+          location: { origin: location.origin },
+          addEventListener: (type: string, fn: (event: unknown) => void) => {
+            handlers[type] = fn;
+          },
+          skipWaiting: () => {},
+          registration: {
+            showNotification: async (title: string, options: (typeof shown)[number]["options"]) => {
+              shown.push({ title, options });
+            },
+          },
+          clients: {
+            claim: async () => {},
+            matchAll: async () => [],
+            openWindow: async (url: string) => {
+              opened.push(url);
+            },
+          },
+        };
+        new Function("self", code)(self);
+        handlers.push?.({
+          data: {
+            json: () => ({
+              title: "Ada asks for approval",
+              body: "Push the budget sheet",
+              url: "/request/r1",
+              tag: "r1",
+            }),
+          },
+          waitUntil: (p: Promise<unknown>) => waits.push(p),
+        });
+        await Promise.all(waits);
+        handlers.notificationclick?.({
+          notification: { close: () => {}, data: shown[0]?.options.data },
+          waitUntil: (p: Promise<unknown>) => waits.push(p),
+        });
+        await Promise.all(waits);
+        return { shown, opened };
+      }, source);
+      expect(result.shown[0]).toMatchObject({
+        title: "Ada asks for approval",
+        options: { body: "Push the budget sheet" },
+      });
+      expect(result.opened).toEqual([`${new URL(scope).origin}/request/r1`]);
+    });
   });

@@ -3,7 +3,9 @@ import { HTTPException } from "hono/http-exception";
 import { relyingParty } from "../auth.js";
 import type { HubEnv } from "../context.js";
 import { createLoaders } from "../loaders.js";
+import { background, deliverPush, waitUntilOf } from "../push.js";
 import { CLIENT_ID_HEADER } from "../realtime.js";
+import type { Ctx } from "../services/common.js";
 import { handleMessage } from "./protocol.js";
 import { type McpContext, tools } from "./tools.js";
 
@@ -31,14 +33,18 @@ export async function mcpHandler(c: Context<HubEnv>) {
   const { deps } = c.var;
   const loaders = createLoaders(deps.db);
   const clientId = c.req.header(CLIENT_ID_HEADER) ?? null;
+  const appUrl = relyingParty(c).origin;
+  const waitUntil = waitUntilOf(c);
   const ctx: McpContext = {
     db: deps.db,
     viewer: viewer.user,
     loaders,
-    appUrl: relyingParty(c).origin,
+    appUrl,
     async act(fn) {
       const at = deps.now?.() ?? Date.now();
-      const result = await fn({ db: deps.db, actorId: viewer.user.id, now: at });
+      const service: Ctx = { db: deps.db, actorId: viewer.user.id, now: at };
+      const result = await fn(service);
+      if (service.notified) background(waitUntil, deliverPush(deps, at, appUrl));
       // Later reads in the same call must see the change.
       for (const loader of Object.values(loaders)) loader.clearAll();
       try {

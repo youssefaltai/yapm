@@ -72,7 +72,7 @@ function TeamList({ teams }: { teams: Workspace["teams"]["nodes"] }) {
           key={team.id}
           type="button"
           onClick={() => navigate(paths.team(team.key))}
-          className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-raised"
+          className="flex w-full animate-fade-in items-start gap-3 px-4 py-3 text-left hover:bg-raised"
         >
           <span className="mt-0.5 w-10 shrink-0 text-[11px] font-medium text-faint">
             {team.key}

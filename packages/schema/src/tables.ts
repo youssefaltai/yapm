@@ -519,6 +519,26 @@ export const machines = sqliteTable(
   (t) => [uniqueIndex("machines_token_idx").on(t.tokenHash)],
 );
 
+/**
+ * A one-time setup token the owner creates on the Machines page and pastes into the install
+ * command; a runner that enrols with it is approved straight away, without a pairing code.
+ */
+export const machineSetupTokens = sqliteTable(
+  "machine_setup_tokens",
+  {
+    id: text("id").primaryKey(),
+    /** SHA-256 of the token (`lms_…`); the token itself is shown once. */
+    tokenHash: text("token_hash").notNull(),
+    createdById: text("created_by_id").notNull(),
+    expiresAt: integer("expires_at", { mode: "number" }).notNull(),
+    /** Set when a machine enrols with it; a token works once. */
+    usedAt: integer("used_at", { mode: "number" }),
+    machineId: text("machine_id"),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [uniqueIndex("machine_setup_tokens_hash_idx").on(t.tokenHash)],
+);
+
 export const RUN_KINDS = ["decision", "work"] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
 export const RUN_STATUSES = [

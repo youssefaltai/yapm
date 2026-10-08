@@ -38,13 +38,26 @@ const MACHINES = `{ machines {
   mcpServers { id name url command args status statusDetail authUrl allAgents agents { id name } }
 } }`;
 
-/** The computers agents run on: approve new ones with their code, tag them, remove them. */
+interface SetupCommand {
+  command: string;
+  expiresAt: string;
+  /** Machines that were already here, so the new one can be spotted when it connects. */
+  known: Set<string>;
+}
+
+/** The computers agents run on: add them with one command, tag them, remove them. */
 export function MachinesView() {
-  const { data, error } = useQuery<{ machines: Machine[] }>(MACHINES, undefined, 15_000);
+  const [setup, setSetup] = useState<SetupCommand | null>(null);
+  // Poll quickly while a setup command is out, so the new machine shows up as it connects.
+  const { data, error } = useQuery<{ machines: Machine[] }>(
+    MACHINES,
+    undefined,
+    setup ? 3_000 : 15_000,
+  );
   const workspace = useStore(workspaceStore);
   const isOwner = workspace?.viewer.kind === "owner";
   const machines = (data?.machines ?? []).filter((m) => m.status !== "revoked");
-  const enrol = `node apps/runner/dist/main.js enrol --hub ${location.origin} --name "My laptop"`;
+  const added = setup ? machines.find((m) => !setup.known.has(m.id)) : undefined;
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
@@ -57,22 +70,41 @@ export function MachinesView() {
         </button>
         <span className="text-faint">›</span>
         <span className="font-medium">Machines</span>
+        {isOwner && !setup && (
+          <button
+            type="button"
+            onClick={async () => {
+              const result = await mutate<{
+                machineSetupTokenCreate: { token: string; expiresAt: string };
+              }>("mutation { machineSetupTokenCreate { token expiresAt } }");
+              if (!result) return;
+              const { token, expiresAt } = result.machineSetupTokenCreate;
+              setSetup({
+                command: `curl -fsSL ${location.origin}/install.sh | sh -s -- --token ${token}`,
+                expiresAt,
+                known: new Set((data?.machines ?? []).map((m) => m.id)),
+              });
+            }}
+            className="ml-auto rounded-md bg-accent px-3 py-1 font-medium text-white"
+          >
+            Add machine
+          </button>
+        )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">
           {error && <p className="text-red-400">{error}</p>}
-          <p className="text-muted">
-            Agents think and work on your own machines, signed in with your Claude subscription. To
-            add one, open a checkout of Life OS there, run{" "}
-            <code>pnpm install && pnpm --filter @life-os/runner build</code>, then:
-          </p>
-          <code className="mt-2 block rounded-lg border border-line bg-panel px-3 py-2 text-[12px] break-all">
-            {enrol}
-          </code>
-          <p className="mt-2 text-faint">
-            It shows a six-digit code. Type it below to approve the machine, then run{" "}
-            <code>node apps/runner/dist/main.js start</code> there.
-          </p>
+          {setup ? (
+            <SetupPanel setup={setup} added={added} onDone={() => setSetup(null)} />
+          ) : (
+            <p className="text-muted">
+              Agents think and work on your own Mac or Linux computers, signed in with your Claude
+              subscription.{" "}
+              {isOwner
+                ? "Add machine gives you one command to paste on the computer; it sets everything up."
+                : "The owner adds them."}
+            </p>
+          )}
           <div className="mt-6 space-y-3">
             {data && machines.length === 0 && (
               <p className="py-8 text-center text-muted">No machines yet.</p>
@@ -81,7 +113,76 @@ export function MachinesView() {
               <MachineCard key={m.id} machine={m} canEdit={isOwner} />
             ))}
           </div>
+          {machines.length > 0 && (
+            <p className="mt-6 text-[12px] text-faint">
+              To update a machine's runner, run{" "}
+              <code className="break-all">curl -fsSL {location.origin}/install.sh | sh</code> on it.
+            </p>
+          )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** The one command that installs, connects and starts the runner on a new machine. */
+function SetupPanel({
+  setup,
+  added,
+  onDone,
+}: {
+  setup: SetupCommand;
+  added: Machine | undefined;
+  onDone: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  if (added)
+    return (
+      <div className="rounded-lg border border-emerald-400/40 bg-emerald-400/5 p-4">
+        <p className="font-medium">{added.name} is connected.</p>
+        <p className="mt-1 text-muted">
+          It runs in the background and starts again when the computer does. Give it tags below to
+          choose which agents work there.
+        </p>
+        <button
+          type="button"
+          onClick={onDone}
+          className="mt-3 rounded-md bg-accent px-3 py-1 font-medium text-white"
+        >
+          Done
+        </button>
+      </div>
+    );
+  return (
+    <div className="rounded-lg border border-accent/50 bg-accent/5 p-4">
+      <p className="font-medium">Paste this into Terminal on the computer you're adding</p>
+      <code className="mt-2 block rounded bg-canvas px-3 py-2 text-[12px] break-all">
+        {setup.command}
+      </code>
+      <p className="mt-2 text-muted">
+        It installs the runner, asks you to sign in to Claude if the computer isn't already, and
+        keeps it running in the background. Works on macOS and Linux, once, until{" "}
+        {new Date(setup.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard?.writeText(setup.command);
+            setCopied(true);
+          }}
+          className="rounded-md bg-accent px-3 py-1 font-medium text-white"
+        >
+          {copied ? "Copied" : "Copy command"}
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          className="rounded-md px-3 py-1 text-muted hover:text-ink"
+        >
+          Cancel
+        </button>
+        <span className="ml-auto text-[12px] text-faint">Waiting for the machine…</span>
       </div>
     </div>
   );

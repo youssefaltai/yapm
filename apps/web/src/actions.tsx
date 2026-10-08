@@ -426,6 +426,18 @@ export function commandPalette(): MenuSpec {
       onSelect: () => navigate(paths.requests()),
     },
     {
+      id: "runs",
+      label: "Go to Runs",
+      section: "Navigation",
+      onSelect: () => navigate(paths.runs()),
+    },
+    {
+      id: "machines",
+      label: "Go to Machines",
+      section: "Navigation",
+      onSelect: () => navigate(paths.machines()),
+    },
+    {
       id: "company",
       label: "Go to Company",
       section: "Navigation",

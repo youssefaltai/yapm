@@ -12,8 +12,10 @@ import { HireAgentHost } from "./views/HireAgent.js";
 import { InboxView, useUnreadCount } from "./views/Inbox.js";
 import { IssuePage } from "./views/IssuePage.js";
 import { IssuesView } from "./views/IssuesView.js";
+import { MachinesView } from "./views/Machines.js";
 import { MemberPage } from "./views/MemberPage.js";
 import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
+import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
 
 export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => void }) {
   const { data: workspace, error } = useQuery<Workspace>(WORKSPACE_QUERY);
@@ -143,6 +145,12 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <RequestsView key={route.tab} tab={route.tab} />;
     case "request":
       return <RequestPage key={route.id} id={route.id} />;
+    case "runs":
+      return <RunsView key={route.tab} tab={route.tab} />;
+    case "run":
+      return <RunPage key={route.id} id={route.id} />;
+    case "machines":
+      return <MachinesView />;
     case "notFound":
       return <NotFound what="Page" />;
   }
@@ -181,6 +189,7 @@ function Sidebar({
   onSignOut: () => void;
 }) {
   const pending = usePendingCount();
+  const running = useRunningCount();
   const unread = useUnreadCount();
   return (
     <>
@@ -230,6 +239,15 @@ function Sidebar({
                 {pending}
               </span>
             )}
+          </span>
+        </NavLink>
+        <NavLink
+          to={paths.runs()}
+          active={route.name === "runs" || route.name === "run" || route.name === "machines"}
+        >
+          <span className="flex w-full items-center justify-between">
+            Runs
+            {running > 0 && <span className="text-[11px] text-accent">{running}</span>}
           </span>
         </NavLink>
         <NavLink to={paths.company()} active={route.name === "company"}>

@@ -5,6 +5,7 @@ import { authRoutes, relyingParty, resolveViewer } from "./auth.js";
 import type { HubDeps, HubEnv } from "./context.js";
 import { ServiceError } from "./errors.js";
 import { type GraphQLContext, schema } from "./graphql/schema.js";
+import { installScript } from "./install.js";
 import { createLoaders } from "./loaders.js";
 import { mcpHandler } from "./mcp/index.js";
 import { waitUntilOf } from "./push.js";
@@ -61,6 +62,14 @@ export function createHub(deps: HubDeps) {
 
   app.get("/api/health", (c) =>
     c.json({ ok: true, platform: deps.config.platform, version: deps.config.version }),
+  );
+
+  /** The one-line runner installer, pointed at this hub (see install.ts). */
+  app.get("/install.sh", (c) =>
+    c.body(installScript(relyingParty(c).origin), 200, {
+      "content-type": "text/x-shellscript; charset=utf-8",
+      "cache-control": "no-cache",
+    }),
   );
 
   // Runners authenticate as machines, not members (see runs/routes.ts).

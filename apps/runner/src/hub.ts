@@ -39,6 +39,8 @@ export interface Enrolment {
   id: string;
   token: string;
   pairingCode: string;
+  /** "active" when a setup token approved the machine straight away. */
+  status: "pending" | "active";
   approveAt: string;
 }
 
@@ -95,6 +97,7 @@ export class HubClient {
     mcps: string[];
     capacity: number;
     version: string;
+    setupToken?: string;
   }) {
     return this.call<Enrolment>("/api/runner/enrol", "", input) as Promise<Enrolment>;
   }

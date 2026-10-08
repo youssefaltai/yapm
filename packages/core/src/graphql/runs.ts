@@ -19,6 +19,7 @@ import { event } from "../services/common.js";
 import { findIssue } from "../services/issues.js";
 import {
   approveMachine,
+  createSetupToken,
   listMachines,
   revokeMachine,
   updateMachine,
@@ -295,6 +296,18 @@ const MachinePayload = builder.objectRef<{ id: string }>("MachinePayload").imple
   }),
 });
 
+const MachineSetupTokenPayload = builder
+  .objectRef<{ token: string; expiresAt: number }>("MachineSetupTokenPayload")
+  .implement({
+    fields: (t) => ({
+      success: t.boolean({ resolve: () => true }),
+      token: t.exposeString("token", {
+        description: "Shown once. Pass it to the install command on the new machine.",
+      }),
+      expiresAt: t.field({ type: "DateTime", resolve: (p) => p.expiresAt }),
+    }),
+  });
+
 const RunCreateInput = builder.inputType("RunCreateInput", {
   fields: (t) => ({
     agentId: t.string({ required: true }),
@@ -369,6 +382,12 @@ builder.mutationFields((t) => ({
       await ctx.deps.realtime?.publish({ type: "runs", at: now(ctx) });
       return { id: args.id };
     },
+  }),
+  machineSetupTokenCreate: t.field({
+    type: MachineSetupTokenPayload,
+    description:
+      "Owner only: a one-time token for the install command. The machine that enrols with it within the hour is approved without a pairing code.",
+    resolve: (_root, _args, ctx) => act(ctx, (s) => createSetupToken(s)),
   }),
   machineApprove: t.field({
     type: MachinePayload,

@@ -235,6 +235,7 @@ export interface ClaimedRun {
     /** Resume this Agent SDK session (needs-input runs continue where they paused). */
     sessionId: string | null;
     issue: string | null;
+    issueId: string | null;
   };
   agent: { id: string; name: string };
   /** Acts as the agent on the hub, for this run only. */
@@ -322,6 +323,7 @@ async function prepare(db: HubDb, run: RunRow, at: number): Promise<ClaimedRun> 
       modelTier: run.modelTier as ModelTier,
       sessionId: run.resumeOfRunId ? run.sessionId : null,
       issue: issue ? await identifierOf(db, issue) : null,
+      issueId: issue?.id ?? null,
     },
     agent: { id: agent.id, name: agent.name },
     token,

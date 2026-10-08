@@ -37,6 +37,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 | `packages/core` | The hub: Hono HTTP app, passkey auth, GraphQL (Pothos + Yoga), audit log, company seed. Platform-agnostic |
 | `apps/hub-node` | Runs the hub on Node.js with a SQLite file (VPS, Docker) |
 | `apps/hub-cloudflare` | Runs the hub on Cloudflare Workers with D1, serving the web app as static assets |
+| `apps/runner` | The runner daemon: runs your agents on your own machines with the Claude Agent SDK |
 | `apps/web` | React + Vite single-page app |
 | `apps/e2e` | Playwright browser tests |
 
@@ -84,6 +85,18 @@ npx wrangler login
 node scripts/ensure-d1.mjs          # creates the D1 database and points wrangler.jsonc at it
 pnpm run deploy                     # builds the web app, applies migrations, deploys the Worker
 ```
+
+### Run agents on your machines
+
+Agents think and work on machines you own, signed in with your Claude subscription; the hub only coordinates. On each machine (Node 22+, with Claude Code installed and logged in to your Max plan):
+
+```sh
+pnpm --filter @life-os/runner build
+node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBook" --tags personal
+node apps/runner/dist/main.js start
+```
+
+`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent in its own folder under `~/.life-os-runner/work`, streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files, the machine's own MCP servers) asks you first, and the agent waits for your answer. Add the machine's own MCP servers under `mcpServers` in `~/.life-os-runner/config.json`.
 
 ### Configuration
 

@@ -1,4 +1,5 @@
 import {
+  apiTokens,
   auditEvents,
   type comments,
   ISSUE_RELATION_TYPES,
@@ -15,7 +16,7 @@ import {
   type workflowStates,
   type workspaces,
 } from "@life-os/schema";
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
 import { builder, connection, db, type GraphQLContext, pageArgs, paginate } from "./builder.js";
 import { issueArgs, queryIssues } from "./filters.js";
@@ -30,6 +31,7 @@ export type IssueRow = typeof issues.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
 export type ReactionRow = typeof reactions.$inferSelect;
 export type RelationRow = typeof issueRelations.$inferSelect;
+export type ApiTokenRow = typeof apiTokens.$inferSelect;
 
 export const UserKind = builder.enumType("UserKind", { values: USER_KINDS });
 export const WorkflowStateType = builder.enumType("WorkflowStateType", {
@@ -49,6 +51,7 @@ export const Issue = builder.objectRef<IssueRow>("Issue");
 export const Comment = builder.objectRef<CommentRow>("Comment");
 export const Reaction = builder.objectRef<ReactionRow>("Reaction");
 export const IssueRelation = builder.objectRef<RelationRow>("IssueRelation");
+export const ApiToken = builder.objectRef<ApiTokenRow>("ApiToken");
 
 export const UserConnection = connection<UserRow>("User", User);
 export const TeamConnection = connection<TeamRow>("Team", Team);
@@ -137,6 +140,21 @@ User.implement({
       args: issueArgs,
       resolve: (u, args, ctx) =>
         queryIssues(db(ctx), args, viewerId(ctx), eq(issues.assigneeId, u.id)),
+    }),
+    apiTokens: t.field({
+      type: [ApiToken],
+      description:
+        "This member's API tokens, newest first. Only the owner and the member can see them.",
+      resolve: async (u, _args, ctx) => {
+        const viewer = ctx.viewer?.user;
+        if (!viewer || (viewer.kind !== "owner" && viewer.id !== u.id)) return [];
+        return db(ctx)
+          .select()
+          .from(apiTokens)
+          .where(eq(apiTokens.userId, u.id))
+          .orderBy(desc(apiTokens.createdAt))
+          .all();
+      },
     }),
     createdIssues: t.field({
       type: IssueConnection,
@@ -451,6 +469,25 @@ IssueRelation.implement({
     relatedIssue: t.field({
       type: Issue,
       resolve: (r, _args, ctx) => must(ctx.loaders.issue.load(r.relatedIssueId), "Issue"),
+    }),
+  }),
+});
+
+ApiToken.implement({
+  description:
+    "A credential an agent, runner or script uses to act as a member. The secret is shown once.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    prefix: t.exposeString("prefix", {
+      description: "The token's first characters, to tell tokens apart.",
+    }),
+    createdAt: t.field({ type: "DateTime", resolve: (k) => k.createdAt }),
+    lastUsedAt: t.field({ type: "DateTime", nullable: true, resolve: (k) => k.lastUsedAt }),
+    revokedAt: t.field({ type: "DateTime", nullable: true, resolve: (k) => k.revokedAt }),
+    user: t.field({
+      type: User,
+      resolve: (k, _args, ctx) => must(ctx.loaders.user.load(k.userId), "User"),
     }),
   }),
 });

@@ -61,7 +61,7 @@ test.describe
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
       await expect(page.getByText("1 AI employee, no teams yet.")).toBeVisible();
       await expect(page.getByText("Chief Executive Officer")).toBeVisible();
-      await expect(page.getByText("No teams yet. Your CEO creates them")).toBeVisible();
+      await expect(page.getByText("Your CEO creates them")).toBeVisible();
 
       await page.getByRole("button", { name: "Sign out" }).first().click();
       await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
@@ -79,7 +79,7 @@ test.describe
       await expect(page.getByLabel("Identifier")).toHaveValue("PF");
       await page.getByRole("button", { name: "Create team" }).last().click();
       await expect(page).toHaveURL(/\/team\/PF$/);
-      await expect(page.getByText("No issues here yet.")).toBeVisible();
+      await expect(page.getByText("No issues in Personal Finance yet")).toBeVisible();
 
       await page.keyboard.press("c");
       await page.getByLabel("Issue title").fill("Pay the electricity bill");
@@ -311,7 +311,7 @@ test.describe
 
     test("plans a project with milestones, updates and a document", async () => {
       await page.getByRole("link", { name: "Projects" }).click();
-      await page.getByRole("button", { name: "New project" }).click();
+      await page.getByRole("button", { name: "New project" }).first().click();
       const dialog = page.getByRole("dialog", { name: "New project" });
       await dialog.getByLabel("Name").fill("Pay off the car");
       await dialog.getByLabel("Summary").fill("Owe nothing on the car by spring");

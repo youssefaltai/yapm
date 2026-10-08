@@ -1,9 +1,10 @@
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createDocument, createProjectStore, workspaceStore } from "../actions.js";
 import { confirmDialog, DatePicker, Select } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
 import { Avatar, Modal, openMenu, shortDate, timeAgo, useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 
@@ -108,10 +109,15 @@ export function ProjectsView() {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
+        {!data && !error && <ListSkeleton rows={6} />}
         {data && rows.length === 0 && (
-          <p className="px-6 py-16 text-center text-muted">
-            No projects yet. A project is a goal with a date: a move, a marathon, a launch.
-          </p>
+          <EmptyState
+            icon="project"
+            title="No projects yet"
+            description="A project is a goal with a date: a move, a marathon, a launch. Agents plan the issues that get it done."
+            action={{ label: "New project", onClick: () => createProjectStore.set(true) }}
+            secondary={{ label: "See initiatives", onClick: () => navigate(paths.initiatives()) }}
+          />
         )}
         {groups.map((g) => (
           <section key={g.value}>
@@ -326,15 +332,15 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
   const { data, error } = useQuery<{ project: ProjectDetail }>(PROJECT_DETAIL, { id });
   const p = data?.project;
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
-  if (!p) return null;
+  if (!p) return <PageSkeleton />;
   const tabs = (
     <>
-      <Tab active={tab === "overview"} to={paths.project(p.id)}>
+      <TabLink group="project-tabs" active={tab === "overview"} to={paths.project(p.id)}>
         Overview
-      </Tab>
-      <Tab active={tab === "issues"} to={paths.project(p.id, "issues")}>
+      </TabLink>
+      <TabLink group="project-tabs" active={tab === "issues"} to={paths.project(p.id, "issues")}>
         Issues
-      </Tab>
+      </TabLink>
     </>
   );
   if (tab === "issues")
@@ -360,8 +366,8 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
       />
     );
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
+    <div className="flex h-full animate-fade-in flex-col">
+      <header className="isolate flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
         <button
           type="button"
           onClick={() => navigate(paths.projects())}
@@ -385,23 +391,6 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
         </div>
       </div>
     </div>
-  );
-}
-
-function Tab({ active, to, children }: { active: boolean; to: string; children: ReactNode }) {
-  return (
-    <a
-      href={to}
-      onClick={(e) => {
-        e.preventDefault();
-        navigate(to);
-      }}
-      className={`shrink-0 rounded-md border px-2 py-0.5 font-normal ${
-        active ? "border-line bg-raised text-ink" : "border-transparent text-muted hover:text-ink"
-      }`}
-    >
-      {children}
-    </a>
   );
 }
 

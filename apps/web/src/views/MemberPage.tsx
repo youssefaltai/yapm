@@ -4,6 +4,7 @@ import { confirmDialog, promptDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
+import { PageSkeleton } from "../states.js";
 import { Avatar, openMenu, timeAgo, useStore } from "../ui.js";
 import { FeedbackSection, Prose, RevisionList } from "./Learning.js";
 import { RunsSection } from "./Runs.js";
@@ -51,7 +52,7 @@ export function MemberPage({ id }: { id: string }) {
   const [newToken, setNewToken] = useState<string | null>(null);
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
-  if (!member || !workspace) return null;
+  if (!member || !workspace) return <PageSkeleton />;
   const canEdit = workspace.viewer.kind === "owner";
   const update = (input: Record<string, unknown>) =>
     mutate(
@@ -63,7 +64,7 @@ export function MemberPage({ id }: { id: string }) {
     );
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full animate-fade-in overflow-y-auto">
       <header className="flex h-11 items-center gap-2 border-b border-line px-4 md:px-6">
         <button
           type="button"

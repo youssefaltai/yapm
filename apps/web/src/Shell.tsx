@@ -10,6 +10,7 @@ import type { Viewer } from "./api.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
+import { EmptyState, SelectedPill, TabLink } from "./states.js";
 import { Kbd, MenuHost, openMenu, useHotkeys, usePresence } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
@@ -66,9 +67,9 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
   });
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full animate-fade-in">
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border-line bg-panel px-3 py-3 md:static md:flex md:w-60 md:animate-none ${
+        className={`isolate fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border-line bg-panel px-3 py-3 md:static md:flex md:w-60 md:animate-none ${
           drawer ? "flex animate-drawer-in" : "hidden"
         }`}
       >
@@ -135,12 +136,20 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
           title="My issues"
           tabs={
             <>
-              <Tab active={route.tab === "assigned"} to={paths.myIssues("assigned")}>
+              <TabLink
+                group="view-tabs"
+                active={route.tab === "assigned"}
+                to={paths.myIssues("assigned")}
+              >
                 Assigned
-              </Tab>
-              <Tab active={route.tab === "created"} to={paths.myIssues("created")}>
+              </TabLink>
+              <TabLink
+                group="view-tabs"
+                active={route.tab === "created"}
+                to={paths.myIssues("created")}
+              >
                 Created
-              </Tab>
+              </TabLink>
             </>
           }
         />
@@ -155,24 +164,40 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
           title={team.name}
           tabs={
             <>
-              <Tab active={route.view === "all"} to={paths.team(team.key, "all")}>
+              <TabLink
+                group="view-tabs"
+                active={route.view === "all"}
+                to={paths.team(team.key, "all")}
+              >
                 All issues
-              </Tab>
-              <Tab active={route.view === "active"} to={paths.team(team.key, "active")}>
+              </TabLink>
+              <TabLink
+                group="view-tabs"
+                active={route.view === "active"}
+                to={paths.team(team.key, "active")}
+              >
                 Active
-              </Tab>
-              <Tab active={route.view === "backlog"} to={paths.team(team.key, "backlog")}>
+              </TabLink>
+              <TabLink
+                group="view-tabs"
+                active={route.view === "backlog"}
+                to={paths.team(team.key, "backlog")}
+              >
                 Backlog
-              </Tab>
+              </TabLink>
               {team.triageEnabled && (
-                <Tab active={route.view === "triage"} to={paths.team(team.key, "triage")}>
+                <TabLink
+                  group="view-tabs"
+                  active={route.view === "triage"}
+                  to={paths.team(team.key, "triage")}
+                >
                   Triage
-                </Tab>
+                </TabLink>
               )}
               {team.cyclesEnabled && (
-                <Tab active={false} to={paths.cycles(team.key)}>
+                <TabLink group="view-tabs" active={false} to={paths.cycles(team.key)}>
                   Cycles
-                </Tab>
+                </TabLink>
               )}
             </>
           }
@@ -234,23 +259,13 @@ function pageKey(route: Route): string {
 }
 
 function NotFound({ what }: { what: string }) {
-  return <p className="px-6 py-10 text-center text-muted">{what} not found.</p>;
-}
-
-function Tab({ active, to, children }: { active: boolean; to: string; children: ReactNode }) {
   return (
-    <a
-      href={to}
-      onClick={(e) => {
-        e.preventDefault();
-        navigate(to);
-      }}
-      className={`shrink-0 rounded-md border px-2 py-0.5 ${
-        active ? "border-line bg-raised text-ink" : "border-transparent text-muted hover:text-ink"
-      }`}
-    >
-      {children}
-    </a>
+    <EmptyState
+      icon="compass"
+      title={`${what} not found`}
+      description="It may have been moved or deleted, or the link is mistyped."
+      action={{ label: "Go to Inbox", onClick: () => navigate(paths.inbox()) }}
+    />
   );
 }
 
@@ -445,10 +460,12 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
         e.preventDefault();
         navigate(to);
       }}
-      className={`flex items-center rounded-md px-2 py-1.5 ${
-        active ? "bg-raised text-ink" : "text-muted hover:bg-raised hover:text-ink"
+      aria-current={active ? "page" : undefined}
+      className={`relative flex items-center rounded-md px-2 py-1.5 ${
+        active ? "text-ink" : "text-muted hover:bg-raised/60 hover:text-ink"
       }`}
     >
+      {active && <SelectedPill group="sidebar" />}
       {children}
     </a>
   );

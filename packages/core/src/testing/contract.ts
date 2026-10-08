@@ -1509,5 +1509,173 @@ export function hubContract(
       });
       expect((await runner("/me", machine.token)).status).toBe(401);
     });
+    it("plans with projects, milestones, updates, initiatives and documents", async () => {
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+        token?: string,
+      ) => {
+        const result = await client.graphql<T>(query, variables, token);
+        if (result.errors) throw new Error(result.errors[0]?.message);
+        return result.data as T;
+      };
+      const mcp = async (name: string, args: Record<string, unknown>) => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+          token: ceoToken,
+        });
+        const body = (await response.json()) as {
+          result: { content: { text: string }[]; isError?: boolean };
+        };
+        const text = body.result.content[0]?.text ?? "";
+        if (body.result.isError) throw new Error(text);
+        return JSON.parse(text);
+      };
+
+      const { initiativeCreate } = await gql<{ initiativeCreate: { initiative: { id: string } } }>(
+        'mutation { initiativeCreate(input: { name: "Get fit", status: active }) { initiative { id } } }',
+      );
+      const created = await gql<{
+        projectCreate: { project: { id: string; state: string; color: string; url: string } };
+      }>(
+        "mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { project { id state color url } } }",
+        {
+          input: {
+            name: "Marathon",
+            summary: "Run a marathon in under four hours",
+            teamIds: [teamId],
+            targetDate: "2027-04-12",
+            initiativeId: initiativeCreate.initiative.id,
+          },
+        },
+      );
+      const project = created.projectCreate.project;
+      expect(project).toMatchObject({ state: "planned", url: `/project/${project.id}` });
+      expect(project.color).toMatch(/^#[0-9a-f]{6}$/);
+      const bad = await client.graphql(
+        'mutation($id: String!) { projectUpdate(id: $id, input: { targetDate: "soon" }) { success } }',
+        { id: project.id },
+      );
+      expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+
+      const { projectMilestoneCreate } = await gql<{
+        projectMilestoneCreate: { projectMilestone: { id: string } };
+      }>(
+        'mutation($p: String!) { projectMilestoneCreate(input: { projectId: $p, name: "Half marathon", targetDate: "2027-01-10" }) { projectMilestone { id } } }',
+        { p: project.id },
+      );
+      const milestoneId = projectMilestoneCreate.projectMilestone.id;
+
+      // Issues join a project directly or through one of its milestones.
+      const issue = await gql<{
+        issueCreate: { issue: { id: string; project: { name: string } | null } };
+      }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id project { name } } } }",
+        { input: { teamId, title: "Run 21 km", projectMilestoneId: milestoneId } },
+      );
+      expect(issue.issueCreate.issue.project?.name).toBe("Marathon");
+      const second = await gql<{ issueCreate: { issue: { id: string } } }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
+        { input: { teamId, title: "Buy running shoes", projectId: project.id } },
+      );
+      const done = await gql<{ team: { states: { nodes: { id: string; type: string }[] } } }>(
+        "query($id: String!) { team(id: $id) { states { nodes { id type } } } }",
+        { id: teamId },
+      );
+      const completedState = done.team.states.nodes.find((s) => s.type === "completed")?.id;
+      await gql(
+        "mutation($id: String!, $s: String!) { issueUpdate(id: $id, input: { stateId: $s }) { success } }",
+        { id: second.issueCreate.issue.id, s: completedState },
+      );
+      const filtered = await gql<{ issues: { nodes: { title: string }[] } }>(
+        "query($p: ID!) { issues(filter: { project: { id: { eq: $p } } }) { nodes { title } } }",
+        { p: project.id },
+      );
+      expect(filtered.issues.nodes.map((i) => i.title).sort()).toEqual([
+        "Buy running shoes",
+        "Run 21 km",
+      ]);
+
+      // The CEO posts an update over MCP; the owner hears about it.
+      const listed = await mcp("list_projects", {});
+      expect(listed.projects).toEqual([
+        expect.objectContaining({
+          name: "Marathon",
+          progress: { completed: 1, scope: 2 },
+          health: null,
+        }),
+      ]);
+      await mcp("create_project_update", {
+        project: "marathon",
+        body: "Base mileage is up; long runs start next week.",
+        health: "atRisk",
+      });
+      await mcp("update_issue", { id: issue.issueCreate.issue.id, milestone: null });
+      const doc = await mcp("create_document", {
+        title: "Training plan",
+        content: "# Weeks 1-4\nEasy runs.",
+        project: "Marathon",
+      });
+      await mcp("update_document", {
+        id: doc.id,
+        content: "# Weeks 1-4\nEasy runs, one long run.",
+      });
+      expect((await mcp("get_document", { id: doc.id })).content).toContain("one long run");
+      const detail = await mcp("get_project", { query: "Marathon" });
+      expect(detail).toMatchObject({
+        health: "atRisk",
+        milestones: [{ name: "Half marathon" }],
+        documents: [{ title: "Training plan" }],
+      });
+      expect(detail.issues.find((i: { title: string }) => i.title === "Run 21 km").milestone).toBe(
+        null,
+      );
+
+      const view = await gql<{
+        project: {
+          health: string;
+          progress: { scope: number; completed: number; progress: number };
+          initiative: { name: string };
+          teams: { nodes: { id: string }[] };
+          projectUpdates: { nodes: { body: string; user: { name: string } }[] };
+          projectMilestones: { nodes: { name: string; progress: { scope: number } }[] };
+          documents: { nodes: { title: string; updatedBy: { name: string } }[] };
+        };
+        notifications: { nodes: { type: string; project: { name: string } | null }[] };
+      }>(
+        `query($id: String!) {
+          project(id: $id) {
+            health progress { scope completed progress } initiative { name } teams { nodes { id } }
+            projectUpdates { nodes { body user { name } } }
+            projectMilestones { nodes { name progress { scope } } }
+            documents { nodes { title updatedBy { name } } }
+          }
+          notifications(first: 1) { nodes { type project { name } } }
+        }`,
+        { id: project.id },
+      );
+      expect(view.project).toMatchObject({
+        health: "atRisk",
+        progress: { scope: 2, completed: 1, progress: 0.5 },
+        initiative: { name: "Get fit" },
+        teams: { nodes: [{ id: teamId }] },
+        projectUpdates: { nodes: [{ user: { name: "CEO" } }] },
+        projectMilestones: { nodes: [{ name: "Half marathon", progress: { scope: 0 } }] },
+        documents: { nodes: [{ title: "Training plan", updatedBy: { name: "CEO" } }] },
+      });
+      expect(view.notifications.nodes[0]).toEqual({
+        type: "projectUpdateCreated",
+        project: { name: "Marathon" },
+      });
+
+      await gql("mutation($id: String!) { projectArchive(id: $id) { success } }", {
+        id: project.id,
+      });
+      expect(
+        (await gql<{ projects: { nodes: unknown[] } }>("{ projects { nodes { id } } }")).projects
+          .nodes,
+      ).toEqual([]);
+    });
   });
 }

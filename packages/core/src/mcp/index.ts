@@ -7,8 +7,11 @@ import { background, deliverPush, waitUntilOf } from "../push.js";
 import { CLIENT_ID_HEADER } from "../realtime.js";
 import { dispatch } from "../runs/service.js";
 import type { Ctx } from "../services/common.js";
+import { planningTools } from "./planning.js";
 import { handleMessage } from "./protocol.js";
-import { type McpContext, tools } from "./tools.js";
+import { tools as coreTools, type McpContext } from "./tools.js";
+
+const tools = [...coreTools, ...planningTools];
 
 const INSTRUCTIONS = `This is the company's issue tracker, shaped like Linear. You are one of its members.
 Work happens in issues: read them with get_issue and list_my_issues, report progress with create_comment,

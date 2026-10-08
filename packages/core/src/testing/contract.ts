@@ -140,18 +140,12 @@ export function hubContract(platform: string, makeFetch: () => Promise<FetchLike
       expect(status).toBe(409);
     });
 
-    it("seeds the company: leadership, teams, workflow states and labels", async () => {
+    it("starts blank: just the owner and the CEO, no teams or labels", async () => {
       const result = await client.graphql<{
         organization: { name: string; urlKey: string };
         viewer: { kind: string; isMe: boolean; directReports: { nodes: { name: string }[] } };
-        teams: {
-          nodes: {
-            key: string;
-            lead: { name: string };
-            states: { nodes: { name: string; type: string }[] };
-            labels: { nodes: { name: string }[] };
-          }[];
-        };
+        teams: { nodes: unknown[] };
+        issueLabels: { nodes: unknown[] };
         users: {
           nodes: {
             name: string;
@@ -163,7 +157,8 @@ export function hubContract(platform: string, makeFetch: () => Promise<FetchLike
       }>(`{
         organization { name urlKey }
         viewer { kind isMe directReports { nodes { name } } }
-        teams { nodes { key lead { name } states { nodes { name type } } labels { nodes { name } } } }
+        teams { nodes { id } }
+        issueLabels { nodes { id } }
         users { nodes { name kind manager { name } charter } }
       }`);
       expect(result.errors).toBeUndefined();
@@ -175,31 +170,12 @@ export function hubContract(platform: string, makeFetch: () => Promise<FetchLike
         isMe: true,
         directReports: { nodes: [{ name: "CEO" }] },
       });
-      expect(data.teams.nodes.map((t) => t.key).sort()).toEqual([
-        "CAR",
-        "FIN",
-        "HLT",
-        "HOM",
-        "LRN",
-        "OPS",
-        "REL",
-      ]);
-      const ops = data.teams.nodes.find((t) => t.key === "OPS");
-      expect(ops?.lead.name).toBe("Chief of Staff");
-      expect(ops?.states.nodes.map((s) => s.name)).toEqual([
-        "Triage",
-        "Backlog",
-        "Todo",
-        "In Progress",
-        "In Review",
-        "Done",
-        "Canceled",
-        "Duplicate",
-      ]);
-      expect(ops?.labels.nodes).toHaveLength(5);
+      expect(data.teams.nodes).toEqual([]);
+      expect(data.issueLabels.nodes).toEqual([]);
+      expect(data.users.nodes.map((u) => u.name).sort()).toEqual(["CEO", "Youssef"]);
       const ceo = data.users.nodes.find((u) => u.name === "CEO");
       expect(ceo).toMatchObject({ kind: "agent", manager: { name: "Youssef" } });
-      expect(ceo?.charter).toContain("morning brief");
+      expect(ceo?.charter).toContain("starts empty");
     });
 
     it("records every founding change in the audit log", async () => {
@@ -207,8 +183,7 @@ export function hubContract(platform: string, makeFetch: () => Promise<FetchLike
         auditEntries: { nodes: { action: string; actor: { name: string } }[] };
       }>("{ auditEntries(first: 100) { nodes { action actor { name } } } }");
       const actions = result.data?.auditEntries.nodes.map((n) => n.action) ?? [];
-      expect(actions.filter((a) => a === "team.create")).toHaveLength(7);
-      expect(actions.filter((a) => a === "user.create")).toHaveLength(3);
+      expect(actions.filter((a) => a === "user.create")).toHaveLength(2);
       expect(actions).toContain("workspace.create");
       expect(result.data?.auditEntries.nodes.every((n) => n.actor.name === "Youssef")).toBe(true);
     });

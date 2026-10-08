@@ -2,7 +2,7 @@ import { createClient } from "@libsql/client";
 import * as schema from "@life-os/schema";
 import { drizzle } from "drizzle-orm/libsql";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_STATES, DEFAULT_TEAMS, seedCompany } from "../src/seed.js";
+import { seedCompany } from "../src/seed.js";
 import { insertRows } from "../src/write.js";
 
 const db = drizzle(createClient({ url: ":memory:" }), { schema });
@@ -39,8 +39,7 @@ describe("seedCompany", () => {
       now: 0,
     });
     // D1 on the free plan allows 50 queries per invocation; the whole setup must fit comfortably.
-    expect(ops.length).toBeLessThan(25);
+    expect(ops.length).toBeLessThan(10);
     for (const op of ops) expect(params(op)).toBeLessThanOrEqual(100);
-    expect(DEFAULT_TEAMS.length * DEFAULT_STATES.length).toBe(56);
   });
 });

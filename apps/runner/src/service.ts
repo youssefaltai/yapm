@@ -102,7 +102,12 @@ export async function installService(
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, launchdPlist(spec));
     run("launchctl", ["bootout", `${domain}/${LAUNCHD_LABEL}`]);
-    const loaded = run("launchctl", ["bootstrap", domain, path]);
+    // Right after a bootout, launchd can still be tearing the old one down (error 5); retry.
+    let loaded = run("launchctl", ["bootstrap", domain, path]);
+    for (let tries = 0; loaded.status !== 0 && tries < 5; tries++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      loaded = run("launchctl", ["bootstrap", domain, path]);
+    }
     if (loaded.status !== 0)
       throw new Error(`launchctl couldn't start the runner: ${loaded.stderr}`);
     log(`Running in the background and at login. Logs: ${spec.logFile}`);

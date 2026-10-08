@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useState } from "react";
 import { hireAgentStore, workspaceStore } from "../actions.js";
 import { mutate } from "../data.js";
+import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import { Modal, useStore } from "../ui.js";
 
@@ -86,16 +87,18 @@ function HireAgent({ onClose }: { onClose: () => void }) {
             ))}
           </select>
         </label>
-        <label className="mb-4 block">
+        <div className="mb-4 block">
           <span className="mb-1.5 block text-muted">Charter</span>
-          <textarea
-            value={charter}
-            onChange={(e) => setCharter(e.target.value)}
-            rows={4}
-            placeholder="What this agent is responsible for, and how it should work."
-            className={input}
-          />
-        </label>
+          <div className="rounded-md border border-line bg-panel px-2.5 py-1.5 focus-within:border-faint">
+            <RichEditor
+              label="Charter"
+              value=""
+              onChange={setCharter}
+              placeholder="What this agent is responsible for, and how it should work."
+              className="min-h-20"
+            />
+          </div>
+        </div>
         <div className="flex justify-end gap-2">
           <button
             type="button"

@@ -32,7 +32,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 **Phase 3: agents that work on their own.**
 
 - Agents wake when something needs them: an assignment, a mention, a comment on an issue they own, or the answer to a request. Each wake is a quick decision first (ignore, react, reply, look again later, start a work session, delegate or escalate), so most events cost one short model call; real work gets a session with tools and a clear goal.
-- Runs happen on your own machines through the runner (see [Run agents on your machines](#run-agents-on-your-machines)). Approve a machine with its six-digit code under Runs → Machines, tag it (say `personal` or `employer-a`), and set an agent's "Runs on" tags so its work only runs where it should.
+- Runs happen on your own machines through the runner (see [Run agents on your machines](#run-agents-on-your-machines)). Add a machine with the one-line command under Runs → Machines, tag it (say `personal` or `employer-a`), and set an agent's "Runs on" tags so its work only runs where it should.
 - Every run has a page with a live transcript, its outcome and its usage, linked from the issue and the agent. **Stop** ends a run on the spot with a reason the agent reads next time. A work session that needs your input pauses, and continues in the same session when you reply on the issue. **Give work** on an agent's page starts a session with any goal.
 - Limits keep things calm: at most a few wakes per issue per hour and a daily cap per agent.
 
@@ -61,7 +61,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - MCP servers per machine, managed from the hub: add one on the Machines page or let an agent ask for it (`add_mcp_server`, with `mcp.install` approved for that machine), and choose which agents get it. When a server needs a sign-in, you get a **Connect** link on your phone; the provider sends you back to the hub, and the machine finishes the OAuth sign-in itself. Tokens stay on the machine.
 - Import from Linear with a personal API key: teams keep their keys and issues their numbers. Export everything as JSON, or issues as CSV in Linear's columns, from the Company page.
 - Light and dark themes (or follow the system) from `⌘K`.
-- The runner is packaged for npm as `@life-os/runner` (see `apps/runner/README.md` for releasing).
+- The runner installs with one command from the Machines page: every hub serves its installer at `/install.sh` and the matching runner package at `/downloads/life-os-runner.tgz`. It is also packaged for npm as `@life-os/runner` (see `apps/runner/README.md` for releasing).
 
 ## Repository layout
 
@@ -122,15 +122,21 @@ pnpm run deploy                     # builds the web app, applies migrations, de
 
 ### Run agents on your machines
 
-Agents think and work on machines you own, signed in with your Claude subscription; the hub only coordinates. On each machine (Node 22+, with Claude Code installed and logged in to your Max plan):
+Agents think and work on machines you own (macOS or Linux), signed in with your Claude subscription; the hub only coordinates. To add one, open Runs → Machines, press **Add machine** and paste the command it shows into Terminal on that computer:
+
+```sh
+curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
+```
+
+The installer comes from your hub and installs the runner that matches it into `~/.life-os-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs in to Claude through your browser if the machine isn't already (the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux. Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `life-os-runner logs` follows its output, and `life-os-runner service uninstall` stops it.
+
+Without the installer, from a checkout:
 
 ```sh
 pnpm --filter @life-os/runner build
 node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBook" --tags personal
 node apps/runner/dist/main.js start
 ```
-
-Once the package is published, `npx @life-os/runner enrol …` and `npx @life-os/runner start` do the same without a checkout.
 
 `enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent in its own folder under `~/.life-os-runner/work`, streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files, the machine's own MCP servers) asks you first, and the agent waits for your answer. Add the machine's own MCP servers under `mcpServers` in `~/.life-os-runner/config.json`, or add them from the Machines page so the hub sets them up and handles their sign-in; their tokens are kept in `~/.life-os-runner/mcp-auth.json`.
 

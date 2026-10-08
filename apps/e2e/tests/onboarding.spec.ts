@@ -545,6 +545,33 @@ test.describe
       expect(json.organization[0].handbook).toBe("Money moves only with a receipt on the issue.");
     });
 
+    test("adds a machine by pasting one command", async () => {
+      await page.goto("/machines");
+      await page.getByRole("button", { name: "Add machine" }).click();
+      const command = page.getByText(/^curl -fsSL .*\/install\.sh \| sh -s -- --token lms_/);
+      await expect(command).toBeVisible();
+      const text = (await command.textContent()) ?? "";
+      const origin = new URL(page.url()).origin;
+      expect(text.startsWith(`curl -fsSL ${origin}/install.sh`)).toBe(true);
+
+      // The hub serves the installer and the runner package the command fetches.
+      const script = await page.request.get("/install.sh");
+      expect(await script.text()).toContain(`${origin}/downloads/life-os-runner.tgz`);
+      const tarball = await page.request.get("/downloads/life-os-runner.tgz");
+      expect(tarball.ok()).toBe(true);
+      expect((await tarball.body()).subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
+
+      // What the installer does on the machine: enrol with the token, approved at once.
+      const token = text.split("--token ")[1]?.trim();
+      const enrolled = await page.request.post("/api/runner/enrol", {
+        data: { name: "Studio Mac", tags: [], capacity: 1, setupToken: token },
+      });
+      expect((await enrolled.json()).status).toBe("active");
+      await expect(page.getByText("Studio Mac is connected.")).toBeVisible();
+      await page.getByRole("button", { name: "Done" }).click();
+      await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
+    });
+
     test("switches between light and dark themes from the command menu", async () => {
       await page.goto("/my-issues");
       await page.getByRole("button", { name: "Search and commands" }).click();

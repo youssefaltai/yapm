@@ -189,6 +189,17 @@ async function message(db: HubDb, n: NotificationRow): Promise<PushMessage> {
           tag: n.requestId,
         };
   }
+  if (n.type === "projectUpdateCreated" && n.projectId) {
+    const health = { onTrack: "on track", atRisk: "at risk", offTrack: "off track" }[
+      String(n.data?.health)
+    ];
+    return {
+      title: String(n.data?.project ?? "Project update"),
+      body: `${who} posted an update${health ? `: ${health}` : ""}`,
+      url: `/project/${n.projectId}`,
+      tag: n.projectUpdateId ?? n.id,
+    };
+  }
   const issue = n.issueId ? await findIssue(db, n.issueId) : null;
   const identifier = issue ? await identifierOf(db, issue.teamId, issue.number) : "";
   const title = issue ? `${identifier} ${issue.title}` : "Life OS";
@@ -202,6 +213,7 @@ async function message(db: HubDb, n: NotificationRow): Promise<PushMessage> {
     issueStatusChanged: `${who} moved it to ${String(n.data?.to ?? "a new status")}`,
     requestCreated: `${who} asks for approval`,
     requestAnswered: `${who} answered your request`,
+    projectUpdateCreated: `${who} posted a project update`,
   };
   return { title, body: body[n.type], url, tag: n.issueId ?? n.id };
 }

@@ -23,6 +23,7 @@ import {
   subscribe,
   subscribersOf,
 } from "./notifications.js";
+import { issueProjectFields } from "./projects.js";
 
 export type IssueRow = typeof issues.$inferSelect;
 
@@ -38,6 +39,8 @@ export interface IssueCreateInput {
   dueDate?: string | null;
   labelIds?: string[] | null;
   sortOrder?: number | null;
+  projectId?: string | null;
+  projectMilestoneId?: string | null;
 }
 
 export interface IssueUpdateInput {
@@ -54,6 +57,8 @@ export interface IssueUpdateInput {
   labelIds?: string[] | null;
   addedLabelIds?: string[] | null;
   removedLabelIds?: string[] | null;
+  projectId?: string | null;
+  projectMilestoneId?: string | null;
 }
 
 const IDENTIFIER = /^([A-Za-z][A-Za-z0-9]{0,6})-(\d+)$/;
@@ -186,6 +191,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
   if (input.parentId) await checkParent(db, null, input.parentId);
   const labelIds = [...new Set(input.labelIds ?? [])];
   await checkLabels(db, team.id, labelIds);
+  const project = await issueProjectFields(db, input);
 
   const id = newId();
   const ops: WriteOp[] = [
@@ -208,6 +214,8 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
       parentId: input.parentId ?? null,
       dueDate: input.dueDate ?? null,
       sortOrder: input.sortOrder ?? -now,
+      projectId: project.projectId ?? null,
+      projectMilestoneId: project.projectMilestoneId ?? null,
       ...stateTimestamps(state.type, now),
       createdAt: now,
       updatedAt: now,
@@ -228,6 +236,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
           assigneeId: input.assigneeId ?? null,
           parentId: input.parentId ?? null,
           labelIds,
+          ...(project.projectId ? { projectId: project.projectId } : {}),
         }),
       ],
       now,
@@ -307,6 +316,18 @@ export async function updateIssues(
     next.parentId = input.parentId;
   }
   if (input.sortOrder != null) next.sortOrder = input.sortOrder;
+  if (input.projectId !== undefined || input.projectMilestoneId !== undefined) {
+    // Re-setting the project the issues already have keeps their milestones.
+    const same = rows.every((r) => r.projectId === input.projectId);
+    Object.assign(
+      next,
+      await issueProjectFields(
+        db,
+        input,
+        same ? { projectId: input.projectId ?? null, projectMilestoneId: null } : undefined,
+      ),
+    );
+  }
   let state: typeof workflowStates.$inferSelect | undefined;
   if (input.stateId != null) {
     const [teamId] = teamIds;

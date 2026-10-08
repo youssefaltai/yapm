@@ -75,6 +75,8 @@ export interface Issue {
   assignee: { id: string; name: string; kind: "owner" | "agent" } | null;
   labels: { nodes: Label[] };
   parent: { id: string; identifier: string; title: string } | null;
+  project: { id: string; name: string; color: string } | null;
+  projectMilestone: { id: string; name: string } | null;
 }
 
 export const ISSUE_FIELDS = `
@@ -85,6 +87,8 @@ export const ISSUE_FIELDS = `
     assignee { id name kind }
     labels { nodes { id name color } }
     parent { id identifier title }
+    project { id name color }
+    projectMilestone { id name }
   }
 `;
 

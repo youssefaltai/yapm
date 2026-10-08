@@ -1,3 +1,5 @@
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Label, StateType } from "./data.js";
 
@@ -47,7 +49,8 @@ export function useHotkeys(
       const mod = event.metaKey || event.ctrlKey;
       if (!mod && (isTyping(event.target) || menuStore.get() || modalOpen())) return;
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      const combo = `${mod ? "mod+" : ""}${event.altKey ? "alt+" : ""}${key}`;
+      const shift = event.shiftKey && /^[a-z]$/i.test(event.key) ? "shift+" : "";
+      const combo = `${mod ? "mod+" : ""}${event.altKey ? "alt+" : ""}${shift}${key}`;
       const handler = ref.current[combo];
       if (handler) {
         event.preventDefault();
@@ -268,7 +271,7 @@ export interface MenuItem {
   /** Extra words to match when filtering. */
   keywords?: string;
   /** Return another menu to drill into it; return nothing to close. */
-  onSelect: () => MenuSpec | undefined | void | Promise<void>;
+  onSelect: () => MenuSpec | undefined | void | Promise<void> | Promise<MenuSpec | undefined>;
 }
 
 export interface MenuSpec {
@@ -481,4 +484,14 @@ export function dueLabel(date: string) {
           ? "Yesterday"
           : shortDate(due.getTime());
   return { text, overdue: days < 0 };
+}
+
+/** Markdown from members and agents, rendered and sanitized. */
+export function Markdown({ source, className = "" }: { source: string; className?: string }) {
+  const html = useMemo(
+    () => DOMPurify.sanitize(marked.parse(source, { async: false, gfm: true, breaks: true })),
+    [source],
+  );
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by DOMPurify above
+  return <div className={`markdown ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }

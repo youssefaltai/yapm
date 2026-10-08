@@ -13,6 +13,8 @@ export interface NotificationInput {
   issueId?: string | null;
   commentId?: string | null;
   requestId?: string | null;
+  projectId?: string | null;
+  projectUpdateId?: string | null;
   data?: Record<string, unknown>;
 }
 
@@ -90,7 +92,7 @@ export function notify(ctx: Ctx, inputs: NotificationInput[]): WriteOp[] {
   const rows: (typeof notifications.$inferInsert)[] = [];
   for (const input of inputs) {
     if (input.userId === ctx.actorId) continue;
-    const key = `${input.userId}:${input.requestId ?? input.issueId ?? ""}`;
+    const key = `${input.userId}:${input.requestId ?? input.projectUpdateId ?? input.issueId ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     rows.push({
@@ -101,6 +103,8 @@ export function notify(ctx: Ctx, inputs: NotificationInput[]): WriteOp[] {
       issueId: input.issueId ?? null,
       commentId: input.commentId ?? null,
       requestId: input.requestId ?? null,
+      projectId: input.projectId ?? null,
+      projectUpdateId: input.projectUpdateId ?? null,
       data: input.data ?? null,
       createdAt: ctx.now,
       updatedAt: ctx.now,

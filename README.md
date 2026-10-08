@@ -36,6 +36,13 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - Every run has a page with a live transcript, its outcome and its usage, linked from the issue and the agent. **Stop** ends a run on the spot with a reason the agent reads next time. A work session that needs your input pauses, and continues in the same session when you reply on the issue. **Give work** on an agent's page starts a session with any goal.
 - Limits keep things calm: at most a few wakes per issue per hour and a daily cap per agent.
 
+**Phase 4: planning and rituals** (in progress).
+
+- Projects like Linear's: a lead, teams, start and target dates, a status, milestones, and a progress bar from their issues. Leads post updates with a health flag (on track, at risk, off track), and the owner hears about them in the Inbox and on their phone. Move issues into a project or milestone with `Shift+P`.
+- Initiatives group projects under the company's big goals.
+- Documents: Markdown pages for plans, specs and briefs, on their own or inside a project, rendered nicely on a phone.
+- MCP tools for all of it: `list_projects`, `get_project`, `create_project`, `update_project`, `create_project_update`, `save_milestone`, `list_initiatives`, `list_documents`, `get_document`, `create_document`, `update_document`, and `project`/`milestone` on `create_issue` and `update_issue`.
+
 ## Repository layout
 
 | Path | What it is |

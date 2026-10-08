@@ -94,6 +94,7 @@ function CreateIssue({
           assigneeId,
           labelIds,
           parentId: defaults.parentId ?? null,
+          projectId: defaults.projectId ?? null,
         },
       },
     );

@@ -1,12 +1,15 @@
 import { type ReactNode, useEffect, useState } from "react";
 import {
   commandPalette,
+  copyText,
   createIssueStore,
   createTeamStore,
+  linkEntries,
   shortcutsStore,
   workspaceStore,
 } from "./actions.js";
 import type { Viewer } from "./api.js";
+import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
@@ -30,7 +33,7 @@ import { CreateProjectHost, ProjectPage, ProjectsView } from "./views/Projects.j
 import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
 import { RoadmapView } from "./views/Roadmap.js";
 import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
-import { ViewPage } from "./views/SavedView.js";
+import { deleteView, renameView, ViewPage } from "./views/SavedView.js";
 import { ShortcutsHost } from "./views/Shortcuts.js";
 import { TeamSettings } from "./views/TeamSettings.js";
 
@@ -119,6 +122,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       <ShortcutsHost />
       <CreateProjectHost />
       <MenuHost />
+      <ContextMenuHost />
       <ToastHost />
     </div>
   );
@@ -389,7 +393,11 @@ function Sidebar({
           const view = route.name === "team" ? route.view : null;
           return (
             <div key={team.id}>
-              <NavLink to={paths.team(team.key)} active={active && view === "all"}>
+              <NavLink
+                to={paths.team(team.key)}
+                active={active && view === "all"}
+                menu={() => teamMenu(team)}
+              >
                 <span className="flex w-full items-center justify-between">
                   <span className="truncate">{team.name}</span>
                   <span className="text-[11px] text-faint">{team.key}</span>
@@ -431,6 +439,10 @@ function Sidebar({
                 key={v.id}
                 to={paths.view(v.id)}
                 active={route.name === "view" && route.id === v.id}
+                menu={() => [
+                  { id: "rename", label: "Rename…", onSelect: () => renameView(v) },
+                  { id: "delete", label: "Delete…", danger: true, onSelect: () => deleteView(v) },
+                ]}
               >
                 <span className="truncate">{v.name}</span>
               </NavLink>
@@ -452,7 +464,50 @@ function teamFor(workspace: Workspace | null, route: Route): Team | undefined {
   return "key" in route ? workspace?.teams.nodes.find((t) => t.key === route.key) : undefined;
 }
 
-function NavLink({ to, active, children }: { to: string; active: boolean; children: ReactNode }) {
+/** A team's shortcuts: its views, a new issue in it, its settings. */
+function teamMenu(team: Team): ContextEntry[] {
+  return [
+    {
+      id: "new-issue",
+      label: "New issue",
+      hint: "C",
+      onSelect: () => createIssueStore.set({ teamId: team.id }),
+    },
+    "divider",
+    team.triageEnabled && {
+      id: "triage",
+      label: "Triage",
+      onSelect: () => navigate(paths.team(team.key, "triage")),
+    },
+    { id: "active", label: "Active", onSelect: () => navigate(paths.team(team.key, "active")) },
+    { id: "backlog", label: "Backlog", onSelect: () => navigate(paths.team(team.key, "backlog")) },
+    team.cyclesEnabled && {
+      id: "cycles",
+      label: "Cycles",
+      onSelect: () => navigate(paths.cycles(team.key)),
+    },
+    {
+      id: "settings",
+      label: "Team settings",
+      onSelect: () => navigate(paths.teamSettings(team.key)),
+    },
+    "divider",
+    { id: "copy-key", label: "Copy identifier", onSelect: () => copyText(team.key, team.key) },
+  ];
+}
+
+function NavLink({
+  to,
+  active,
+  menu,
+  children,
+}: {
+  to: string;
+  active: boolean;
+  /** Entries for its right-click menu, after opening it in a new tab and copying its link. */
+  menu?: () => ContextEntry[];
+  children: ReactNode;
+}) {
   return (
     <a
       href={to}
@@ -460,6 +515,7 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
         e.preventDefault();
         navigate(to);
       }}
+      onContextMenu={contextMenu(() => [...(menu?.() ?? []), "divider", ...linkEntries(to)])}
       aria-current={active ? "page" : undefined}
       className={`relative flex items-center rounded-md px-2 py-1.5 ${
         active ? "text-ink" : "text-muted hover:bg-raised/60 hover:text-ink"

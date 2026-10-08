@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { createDocument } from "../actions.js";
+import { createDocument, documentContextMenu } from "../actions.js";
+import { contextMenu } from "../contextMenu.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
@@ -67,6 +68,7 @@ export function DocumentsView() {
               <button
                 type="button"
                 onClick={() => navigate(paths.document(d.id))}
+                onContextMenu={contextMenu(() => documentContextMenu(d))}
                 className="flex w-full animate-fade-in items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>

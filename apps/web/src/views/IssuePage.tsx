@@ -2,11 +2,14 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   archiveIssues,
   assigneeMenu,
+  copyText,
   createIssueStore,
   cycleMenu,
   cycleName,
   estimateMenu,
+  issueContextMenu,
   labelsMenu,
+  linkEntries,
   parentMenu,
   priorityMenu,
   projectMenu,
@@ -15,6 +18,7 @@ import {
   targetStore,
   workspaceStore,
 } from "../actions.js";
+import { contextMenu } from "../contextMenu.js";
 import { confirmDialog, DatePicker } from "../controls.js";
 import {
   ISSUE_FIELDS,
@@ -498,6 +502,7 @@ function SubIssues({ issue }: { issue: IssueDetail }) {
               key={child.id}
               type="button"
               onClick={() => navigate(paths.issue(child.identifier))}
+              onContextMenu={contextMenu(() => issueContextMenu([child]))}
               className="flex w-full items-center gap-2.5 border-b border-line/60 px-3 py-2 text-left last:border-b-0 hover:bg-raised"
             >
               <PriorityIcon priority={child.priority} />
@@ -549,8 +554,32 @@ function Relations({ issue }: { issue: IssueDetail }) {
         </button>
       </div>
       {rows.map((row) => (
+        // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats its buttons
         <div
           key={row.id}
+          onContextMenu={contextMenu(() => [
+            {
+              id: "open",
+              label: "Open",
+              onSelect: () => navigate(paths.issue(row.other.identifier)),
+            },
+            ...linkEntries(paths.issue(row.other.identifier)),
+            {
+              id: "copy-id",
+              label: "Copy ID",
+              onSelect: () => copyText(row.other.identifier, row.other.identifier),
+            },
+            "divider",
+            {
+              id: "remove",
+              label: "Remove relation",
+              danger: true,
+              onSelect: () =>
+                mutate("mutation($id: String!) { issueRelationDelete(id: $id) { success } }", {
+                  id: row.id,
+                }),
+            },
+          ])}
           className="group flex items-center gap-2.5 rounded-md px-1 py-1.5 hover:bg-raised"
         >
           <span className="w-24 shrink-0 text-faint">{row.label}</span>
@@ -777,10 +806,20 @@ function CommentThread({
   const [replying, setReplying] = useState(false);
   return (
     <div className="rounded-lg border border-line bg-panel">
-      <CommentBody comment={comment} issueId={issue.id} workspace={workspace} />
+      <CommentBody
+        comment={comment}
+        issueId={issue.id}
+        workspace={workspace}
+        onReply={() => setReplying(true)}
+      />
       {replies.map((reply) => (
         <div key={reply.id} className="border-t border-line/60">
-          <CommentBody comment={reply} issueId={issue.id} workspace={workspace} />
+          <CommentBody
+            comment={reply}
+            issueId={issue.id}
+            workspace={workspace}
+            onReply={() => setReplying(true)}
+          />
         </div>
       ))}
       <div className="border-t border-line/60 px-4 py-2">
@@ -809,10 +848,12 @@ function CommentBody({
   comment,
   issueId,
   workspace,
+  onReply,
 }: {
   comment: Comment;
   issueId: string;
   workspace: Workspace;
+  onReply: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [coaching, setCoaching] = useState(false);
@@ -825,8 +866,47 @@ function CommentBody({
     );
     setEditing(false);
   }
+  const startEditing = () => {
+    setText(comment.body);
+    setEditing(true);
+  };
+  const remove = async () => {
+    if (
+      await confirmDialog({
+        title: "Delete this comment?",
+        body: "Its replies are deleted too.",
+        confirmLabel: "Delete",
+        destructive: true,
+      })
+    ) {
+      void mutate("mutation($id: String!) { commentDelete(id: $id) { success } }", {
+        id: comment.id,
+      });
+    }
+  };
   return (
-    <div className="group px-4 py-3">
+    // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats its buttons
+    <div
+      className="group px-4 py-3"
+      onContextMenu={contextMenu(() => [
+        { id: "reply", label: "Reply", onSelect: onReply },
+        {
+          id: "react",
+          label: "Add reaction",
+          submenu: () => reactionMenu(comment.reactions, { commentId: comment.id }),
+        },
+        comment.user.isMe && { id: "edit", label: "Edit", onSelect: startEditing },
+        canCoach(workspace, comment.user.id) && {
+          id: "feedback",
+          label: "Give feedback",
+          onSelect: () => setCoaching(true),
+        },
+        "divider",
+        { id: "copy", label: "Copy text", onSelect: () => copyText(comment.body, "comment") },
+        "divider",
+        { id: "delete", label: "Delete…", danger: true, onSelect: remove },
+      ])}
+    >
       <div className="flex items-center gap-2">
         <Avatar name={comment.user.name} kind={comment.user.kind} size={18} />
         <span className="font-medium">{comment.user.name}</span>
@@ -845,35 +925,11 @@ function CommentBody({
             </button>
           )}
           {comment.user.isMe && (
-            <button
-              type="button"
-              onClick={() => {
-                setText(comment.body);
-                setEditing(true);
-              }}
-              className="text-faint hover:text-ink"
-            >
+            <button type="button" onClick={startEditing} className="text-faint hover:text-ink">
               Edit
             </button>
           )}
-          <button
-            type="button"
-            onClick={async () => {
-              if (
-                await confirmDialog({
-                  title: "Delete this comment?",
-                  body: "Its replies are deleted too.",
-                  confirmLabel: "Delete",
-                  destructive: true,
-                })
-              ) {
-                void mutate("mutation($id: String!) { commentDelete(id: $id) { success } }", {
-                  id: comment.id,
-                });
-              }
-            }}
-            className="text-faint hover:text-ink"
-          >
+          <button type="button" onClick={() => void remove()} className="text-faint hover:text-ink">
             Delete
           </button>
         </span>
@@ -928,29 +984,36 @@ function CommentBody({
 
 const QUICK_EMOJI = ["👍", "👎", "❤️", "🎉", "😄", "👀", "🚀", "🙏"];
 
-function Reactions({
-  reactions,
-  target,
-}: {
-  reactions: Reaction[];
-  target: { issueId?: string; commentId?: string };
-}) {
+type ReactionTarget = { issueId?: string; commentId?: string };
+
+function toggleReaction(reactions: Reaction[], emoji: string, target: ReactionTarget) {
+  const mine = reactions.find((r) => r.emoji === emoji && r.user.isMe);
+  if (mine)
+    return mutate("mutation($id: String!) { reactionDelete(id: $id) { success } }", {
+      id: mine.id,
+    });
+  return mutate(
+    "mutation($input: ReactionCreateInput!) { reactionCreate(input: $input) { success } }",
+    { input: { emoji, ...target } },
+  );
+}
+
+function reactionMenu(reactions: Reaction[], target: ReactionTarget): MenuSpec {
+  return {
+    placeholder: "React with…",
+    items: QUICK_EMOJI.map((emoji) => ({
+      id: emoji,
+      label: emoji,
+      checked: reactions.some((r) => r.emoji === emoji && r.user.isMe),
+      onSelect: () => void toggleReaction(reactions, emoji, target),
+    })),
+  };
+}
+
+function Reactions({ reactions, target }: { reactions: Reaction[]; target: ReactionTarget }) {
   const groups = new Map<string, Reaction[]>();
   for (const r of reactions) groups.set(r.emoji, [...(groups.get(r.emoji) ?? []), r]);
-  const toggle = (emoji: string) => {
-    const mine = groups.get(emoji)?.find((r) => r.user.isMe);
-    if (mine)
-      void mutate("mutation($id: String!) { reactionDelete(id: $id) { success } }", {
-        id: mine.id,
-      });
-    else
-      void mutate(
-        "mutation($input: ReactionCreateInput!) { reactionCreate(input: $input) { success } }",
-        {
-          input: { emoji, ...target },
-        },
-      );
-  };
+  const toggle = (emoji: string) => void toggleReaction(reactions, emoji, target);
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1">
       {[...groups].map(([emoji, list]) => (
@@ -969,16 +1032,7 @@ function Reactions({
       <button
         type="button"
         aria-label="Add reaction"
-        onClick={() =>
-          openMenu({
-            placeholder: "React with…",
-            items: QUICK_EMOJI.map((emoji) => ({
-              id: emoji,
-              label: emoji,
-              onSelect: () => toggle(emoji),
-            })),
-          })
-        }
+        onClick={() => openMenu(reactionMenu(reactions, target))}
         className="rounded-full px-1.5 py-0.5 text-[12px] text-faint hover:bg-raised hover:text-ink"
       >
         ☺︎+

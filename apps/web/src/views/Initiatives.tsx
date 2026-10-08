@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { workspaceStore } from "../actions.js";
+import { dateMenu, linkEntries, workspaceStore } from "../actions.js";
+import { contextMenu } from "../contextMenu.js";
+import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
-import { Avatar, openMenu, shortDate, useStore } from "../ui.js";
+import { Avatar, type MenuSpec, openMenu, shortDate } from "../ui.js";
 import { type Health, HealthBadge, ProjectDot } from "./Projects.js";
 
 type Status = "planned" | "active" | "completed";
@@ -31,18 +33,43 @@ interface Initiative {
   };
 }
 
+const update = (id: string, input: Record<string, unknown>) =>
+  mutate(
+    "mutation($id: String!, $input: InitiativeUpdateInput!) { initiativeUpdate(id: $id, input: $input) { success } }",
+    { id, input },
+  );
+
+function statusMenu(i: Initiative): MenuSpec {
+  return {
+    placeholder: "Status…",
+    items: (Object.keys(STATUS) as Status[]).map((s) => ({
+      id: s,
+      label: STATUS[s].label,
+      checked: s === i.status,
+      onSelect: () => void update(i.id, { status: s }),
+    })),
+  };
+}
+
+function ownerMenu(i: Initiative): MenuSpec {
+  return {
+    placeholder: "Who owns it?",
+    items: (workspaceStore.get()?.users.nodes ?? []).map((u) => ({
+      id: u.id,
+      label: u.name,
+      checked: u.id === i.owner?.id,
+      icon: <Avatar name={u.name} kind={u.kind} size={16} />,
+      onSelect: () => void update(i.id, { ownerId: u.id }),
+    })),
+  };
+}
+
 /** Company-level goals, each with the projects that move it. */
 export function InitiativesView() {
   const { data, error } = useQuery<{ initiatives: { nodes: Initiative[] } }>(
     "{ initiatives { nodes { id name description status targetDate owner { id name kind } projects { nodes { id name color health progress { progress } } } } } }",
   );
-  const workspace = useStore(workspaceStore);
   const [name, setName] = useState("");
-  const update = (id: string, input: Record<string, unknown>) =>
-    mutate(
-      "mutation($id: String!, $input: InitiativeUpdateInput!) { initiativeUpdate(id: $id, input: $input) { success } }",
-      { id, input },
-    );
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
@@ -103,21 +130,46 @@ export function InitiativesView() {
           <div className="space-y-4">
             {data?.initiatives.nodes.map((i) => (
               <section key={i.id} className="rounded-lg border border-line">
-                <header className="flex items-center gap-3 border-b border-line px-4 py-3">
+                {/* biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats its buttons */}
+                <header
+                  className="flex items-center gap-3 border-b border-line px-4 py-3"
+                  onContextMenu={contextMenu(() => [
+                    { id: "status", label: "Status", submenu: () => statusMenu(i) },
+                    { id: "owner", label: "Owner", submenu: () => ownerMenu(i) },
+                    {
+                      id: "target",
+                      label: "Target date",
+                      submenu: () =>
+                        dateMenu({
+                          placeholder: "Target date… try “dec 31”",
+                          value: i.targetDate,
+                          onPick: (targetDate) => update(i.id, { targetDate }),
+                        }),
+                    },
+                    "divider",
+                    {
+                      id: "archive",
+                      label: "Archive…",
+                      onSelect: async () => {
+                        if (
+                          await confirmDialog({
+                            title: `Archive ${i.name}?`,
+                            body: "Its projects stay as they are.",
+                            confirmLabel: "Archive",
+                          })
+                        )
+                          await mutate(
+                            "mutation($id: String!) { initiativeArchive(id: $id) { success } }",
+                            { id: i.id },
+                          );
+                      },
+                    },
+                  ])}
+                >
                   <span className="min-w-0 flex-1 truncate font-medium">{i.name}</span>
                   <button
                     type="button"
-                    onClick={() =>
-                      openMenu({
-                        placeholder: "Status…",
-                        items: (Object.keys(STATUS) as Status[]).map((s) => ({
-                          id: s,
-                          label: STATUS[s].label,
-                          checked: s === i.status,
-                          onSelect: () => void update(i.id, { status: s }),
-                        })),
-                      })
-                    }
+                    onClick={() => openMenu(statusMenu(i))}
                     className={`rounded-md px-1.5 text-[12px] hover:bg-raised ${STATUS[i.status].className}`}
                   >
                     {STATUS[i.status].label}
@@ -125,18 +177,7 @@ export function InitiativesView() {
                   <button
                     type="button"
                     aria-label="Owner"
-                    onClick={() =>
-                      openMenu({
-                        placeholder: "Who owns it?",
-                        items: (workspace?.users.nodes ?? []).map((u) => ({
-                          id: u.id,
-                          label: u.name,
-                          checked: u.id === i.owner?.id,
-                          icon: <Avatar name={u.name} kind={u.kind} size={16} />,
-                          onSelect: () => void update(i.id, { ownerId: u.id }),
-                        })),
-                      })
-                    }
+                    onClick={() => openMenu(ownerMenu(i))}
                     className="rounded-md px-1 hover:bg-raised"
                   >
                     {i.owner ? (
@@ -155,6 +196,19 @@ export function InitiativesView() {
                       <button
                         type="button"
                         onClick={() => navigate(paths.project(p.id))}
+                        onContextMenu={contextMenu(() => [
+                          ...linkEntries(paths.project(p.id)),
+                          "divider",
+                          {
+                            id: "unlink",
+                            label: "Remove from initiative",
+                            onSelect: () =>
+                              mutate(
+                                "mutation($id: String!) { projectUpdate(id: $id, input: { initiativeId: null }) { success } }",
+                                { id: p.id },
+                              ),
+                          },
+                        ])}
                         className="flex w-full animate-fade-in items-center gap-3 px-4 py-2 text-left hover:bg-raised"
                       >
                         <ProjectDot color={p.color} />

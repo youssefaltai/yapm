@@ -3,6 +3,7 @@ import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths, type RequestsTab } from "../router.js";
+import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
 import { Avatar, timeAgo, useStore } from "../ui.js";
 
 type Status = "pending" | "approved" | "rejected" | "canceled";
@@ -62,15 +63,15 @@ const STATUS_STYLE: Record<Status, string> = {
 export function RequestsView({ tab }: { tab: RequestsTab }) {
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
+      <header className="isolate flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
         <span className="mr-2 font-medium">Approvals</span>
-        <TabLink active={tab === "pending"} to={paths.requests("pending")}>
+        <TabLink group="requests-tabs" active={tab === "pending"} to={paths.requests("pending")}>
           Pending
         </TabLink>
-        <TabLink active={tab === "answered"} to={paths.requests("answered")}>
+        <TabLink group="requests-tabs" active={tab === "answered"} to={paths.requests("answered")}>
           Answered
         </TabLink>
-        <TabLink active={tab === "grants"} to={paths.requests("grants")}>
+        <TabLink group="requests-tabs" active={tab === "grants"} to={paths.requests("grants")}>
           Always allowed
         </TabLink>
       </header>
@@ -81,38 +82,27 @@ export function RequestsView({ tab }: { tab: RequestsTab }) {
   );
 }
 
-function TabLink({ active, to, children }: { active: boolean; to: string; children: ReactNode }) {
-  return (
-    <a
-      href={to}
-      onClick={(e) => {
-        e.preventDefault();
-        navigate(to);
-      }}
-      className={`shrink-0 rounded-md border px-2 py-0.5 ${
-        active ? "border-line bg-raised text-ink" : "border-transparent text-muted hover:text-ink"
-      }`}
-    >
-      {children}
-    </a>
-  );
-}
-
 function RequestList({ answered }: { answered: boolean }) {
   const status = answered ? "[approved, rejected, canceled]" : "[pending]";
   const { data, error } = useQuery<{ requests: { nodes: RequestSummary[] } }>(
     `{ requests(first: 100, filter: { status: ${status} }) { nodes { ${SUMMARY} } } }`,
   );
   if (error) return <p className="p-6 text-red-400">{error}</p>;
-  if (!data) return null;
+  if (!data) return <ListSkeleton rows={5} />;
   const rows = data.requests.nodes;
   if (rows.length === 0)
-    return (
-      <p className="px-6 py-16 text-center text-muted">
-        {answered
-          ? "Nothing answered yet."
-          : "Nothing waiting for you. Agents ask here when they need your approval."}
-      </p>
+    return answered ? (
+      <EmptyState
+        icon="approval"
+        title="Nothing answered yet"
+        description="Requests you approve or reject are kept here, so you can see what agents were allowed to do."
+      />
+    ) : (
+      <EmptyState
+        icon="approval"
+        title="Nothing waiting for you"
+        description="Agents ask here before they spend money, send messages or do anything else that needs your yes."
+      />
     );
   return (
     <ul className="divide-y divide-line">
@@ -151,14 +141,15 @@ function GrantList() {
     "{ grants(first: 200) { nodes { id action resource scope useCount lastUsedAt createdAt user { id name kind } team { id name } } } }",
   );
   if (error) return <p className="p-6 text-red-400">{error}</p>;
-  if (!data) return null;
+  if (!data) return <ListSkeleton rows={4} />;
   const isOwner = workspace?.viewer.kind === "owner";
   if (data.grants.nodes.length === 0)
     return (
-      <p className="px-6 py-16 text-center text-muted">
-        Nothing is always allowed yet. Choose "Always allow" on a request to let an agent do it
-        without asking.
-      </p>
+      <EmptyState
+        icon="key"
+        title="Nothing is always allowed yet"
+        description="Choose “Always allow” on a request to let an agent do that again without asking."
+      />
     );
   return (
     <ul className="divide-y divide-line">
@@ -224,7 +215,7 @@ export function RequestPage({ id }: { id: string }) {
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   const r = data?.request;
-  if (!r || !workspace) return null;
+  if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
@@ -258,7 +249,7 @@ export function RequestPage({ id }: { id: string }) {
     );
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full animate-fade-in overflow-y-auto">
       <header className="flex h-11 items-center gap-2 border-b border-line px-4 md:px-6">
         <button
           type="button"

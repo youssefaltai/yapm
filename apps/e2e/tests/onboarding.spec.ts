@@ -545,6 +545,29 @@ test.describe
       expect(json.organization[0].handbook).toBe("Money moves only with a receipt on the issue.");
     });
 
+    test("switches between light and dark themes from the command menu", async () => {
+      await page.goto("/my-issues");
+      await page.getByRole("button", { name: "Search and commands" }).click();
+      await page.getByPlaceholder("Type a command or search…").fill("theme light");
+      await page.getByRole("option", { name: "Change theme: light" }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/light.png` });
+      await page.reload();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+      await page.getByRole("button", { name: "Search and commands" }).click();
+      await page.getByPlaceholder("Type a command or search…").fill("theme dark");
+      await page.getByRole("option", { name: "Change theme: dark" }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+      await page.locator("main").click();
+      await page.keyboard.press("?");
+      const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+      await expect(help.getByText("Move to cycle")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(help).toBeHidden();
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

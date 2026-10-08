@@ -12,6 +12,7 @@ import {
   type Workspace,
 } from "./data.js";
 import { navigate, paths } from "./router.js";
+import { setTheme, themeChoice } from "./theme.js";
 import {
   Avatar,
   createStore,
@@ -41,6 +42,7 @@ export const createIssueStore = createStore<CreateIssueDefaults | null>(null);
 export const createTeamStore = createStore(false);
 export const hireAgentStore = createStore(false);
 export const createProjectStore = createStore(false);
+export const shortcutsStore = createStore(false);
 
 /** The issues the next shortcut or command applies to: the open issue, or the list's selection. */
 export const targetStore = createStore<Issue[]>([]);
@@ -552,6 +554,20 @@ export function commandPalette(): MenuSpec {
       section: "Create",
       onSelect: () => void createDocument(),
     },
+    {
+      id: "shortcuts",
+      label: "Keyboard shortcuts",
+      section: "Preferences",
+      hint: "?",
+      onSelect: () => shortcutsStore.set(true),
+    },
+    ...(["light", "dark", "system"] as const).map((choice) => ({
+      id: `theme-${choice}`,
+      label: choice === "system" ? "Change theme: match the system" : `Change theme: ${choice}`,
+      section: "Preferences",
+      ...(themeChoice() === choice ? { hint: "Current" } : {}),
+      onSelect: () => setTheme(choice),
+    })),
     {
       id: "projects",
       label: "Go to Projects",

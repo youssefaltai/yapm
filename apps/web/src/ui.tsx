@@ -112,14 +112,23 @@ export function StatusIcon({
       return (
         <svg {...common} aria-hidden>
           <circle cx="7" cy="7" r="7" fill={color} />
-          <path d="M4.2 7.2l1.9 1.9 3.7-3.9" fill="none" stroke="#0f0f11" strokeWidth="1.5" />
+          <path
+            d="M4.2 7.2l1.9 1.9 3.7-3.9"
+            fill="none"
+            stroke="var(--color-canvas)"
+            strokeWidth="1.5"
+          />
         </svg>
       );
     case "canceled":
       return (
         <svg {...common} aria-hidden>
           <circle cx="7" cy="7" r="7" fill={color} />
-          <path d="M4.8 4.8l4.4 4.4M9.2 4.8l-4.4 4.4" stroke="#0f0f11" strokeWidth="1.5" />
+          <path
+            d="M4.8 4.8l4.4 4.4M9.2 4.8l-4.4 4.4"
+            stroke="var(--color-canvas)"
+            strokeWidth="1.5"
+          />
         </svg>
       );
   }
@@ -131,7 +140,12 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
     return (
       <svg {...common} aria-hidden>
         <rect x="1" y="1" width="12" height="12" rx="3" fill="#f2994a" />
-        <path d="M7 3.5v4.2M7 9.6v.9" stroke="#0f0f11" strokeWidth="1.6" strokeLinecap="round" />
+        <path
+          d="M7 3.5v4.2M7 9.6v.9"
+          stroke="var(--color-canvas)"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }

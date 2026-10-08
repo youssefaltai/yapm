@@ -1,9 +1,23 @@
 {
   "name": "@life-os/runner",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Runs your company's agents on this machine with the Claude Agent SDK.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/youssefaltai/ai-life-os",
+    "directory": "apps/runner"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "life-os-runner": "dist/main.js"
   },
@@ -12,7 +26,8 @@
     "build": "tsup",
     "start": "node dist/main.js",
     "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "tsup"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.293",

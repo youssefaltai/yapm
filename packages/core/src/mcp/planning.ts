@@ -1,4 +1,5 @@
 import {
+  cycles,
   documents,
   initiatives,
   issues,
@@ -460,6 +461,69 @@ export const planningTools: Tool<McpContext>[] = [
         }),
       );
       return documentSummary(c, await requireDocument(c.db, id), false);
+    },
+  },
+  {
+    name: "list_cycles",
+    title: "List cycles",
+    description:
+      "List a team's cycles (time-boxed sprints), newest first, with dates and progress. Put issues in one with the cycle argument of create_issue or update_issue.",
+    readOnly: true,
+    inputSchema: {
+      type: "object",
+      properties: {
+        team: { type: "string", description: "Team name, key or id" },
+        limit: limitArg,
+      },
+      required: ["team"],
+    },
+    async run(args, c) {
+      const team = await resolveTeam(c, String(args.team));
+      const rows = await c.db
+        .select()
+        .from(cycles)
+        .where(eq(cycles.teamId, team.id))
+        .orderBy(desc(cycles.number))
+        .limit(limit(args.limit))
+        .all();
+      const at = Date.now();
+      const counts = rows.length
+        ? await c.db
+            .select({
+              cycleId: issues.cycleId,
+              total: count(),
+              completed: count(issues.completedAt),
+              canceled: count(issues.canceledAt),
+            })
+            .from(issues)
+            .where(
+              and(
+                inArray(
+                  issues.cycleId,
+                  rows.map((r) => r.id),
+                ),
+                isNull(issues.archivedAt),
+              ),
+            )
+            .groupBy(issues.cycleId)
+            .all()
+        : [];
+      return {
+        cyclesEnabled: team.cyclesEnabled,
+        cycles: rows.map((r) => {
+          const n = counts.find((x) => x.cycleId === r.id);
+          return {
+            id: r.id,
+            number: r.number,
+            name: r.name,
+            startsAt: iso(r.startsAt),
+            endsAt: iso(r.endsAt),
+            status:
+              r.completedAt || r.endsAt <= at ? "past" : r.startsAt <= at ? "current" : "upcoming",
+            progress: { completed: n?.completed ?? 0, scope: (n?.total ?? 0) - (n?.canceled ?? 0) },
+          };
+        }),
+      };
     },
   },
 ];

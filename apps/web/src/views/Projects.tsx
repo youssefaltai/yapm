@@ -55,7 +55,7 @@ export function HealthBadge({ health }: { health: Health | null }) {
   return <span className={`text-[12px] ${h.className}`}>{h.label}</span>;
 }
 
-function Progress({ value }: { value: number }) {
+export function Progress({ value }: { value: number }) {
   return (
     <span className="flex items-center gap-2">
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-raised">

@@ -26,6 +26,8 @@
   },
   // SQLite-backed classes are what the free plan supports.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveHub"] }],
+  // The scheduler: cycles, rituals and other time-based work.
+  "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     "LIFE_OS_VERSION": "dev"
   },

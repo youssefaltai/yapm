@@ -107,6 +107,15 @@ const TeamUpdateInput = builder.inputType("TeamUpdateInput", {
     icon: t.string({ required: false }),
     color: t.string({ required: false }),
     leadId: t.string({ required: false }),
+    triageEnabled: t.boolean({
+      required: false,
+      description: "New issues from agents wait in Triage for the owner.",
+    }),
+    cyclesEnabled: t.boolean({ required: false }),
+    cycleDuration: t.int({ required: false, description: "Weeks per cycle, 1–8." }),
+    cycleStartDay: t.int({ required: false, description: "0 Sunday … 6 Saturday." }),
+    cycleCooldown: t.int({ required: false, description: "Weeks between cycles, 0–4." }),
+    upcomingCycleCount: t.int({ required: false, description: "Future cycles to keep, 1–10." }),
   }),
 });
 
@@ -125,6 +134,7 @@ const IssueCreateInput = builder.inputType("IssueCreateInput", {
     sortOrder: t.float({ required: false }),
     projectId: t.string({ required: false }),
     projectMilestoneId: t.string({ required: false }),
+    cycleId: t.string({ required: false }),
   }),
 });
 
@@ -147,6 +157,7 @@ const IssueUpdateInput = builder.inputType("IssueUpdateInput", {
       description: "Null removes the issue from its project.",
     }),
     projectMilestoneId: t.string({ required: false, description: "Also sets the project." }),
+    cycleId: t.string({ required: false }),
   }),
 });
 

@@ -7,6 +7,7 @@ import "./inbox.js";
 import "./push.js";
 import "./runs.js";
 import "./projects.js";
+import "./cycles.js";
 
 export type { GraphQLContext } from "./builder.js";
 

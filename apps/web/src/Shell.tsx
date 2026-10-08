@@ -1,13 +1,14 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { commandPalette, createIssueStore, createTeamStore, workspaceStore } from "./actions.js";
 import type { Viewer } from "./api.js";
-import { type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
+import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
 import { Kbd, MenuHost, openMenu, useHotkeys } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
+import { CyclePage, CyclesView } from "./views/Cycles.js";
 import { DocumentPage, DocumentsView } from "./views/Documents.js";
 import { HireAgentHost } from "./views/HireAgent.js";
 import { InboxView, useUnreadCount } from "./views/Inbox.js";
@@ -19,6 +20,8 @@ import { MemberPage } from "./views/MemberPage.js";
 import { CreateProjectHost, ProjectPage, ProjectsView } from "./views/Projects.js";
 import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
 import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
+import { ViewPage } from "./views/SavedView.js";
+import { TeamSettings } from "./views/TeamSettings.js";
 
 export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => void }) {
   const { data: workspace, error } = useQuery<Workspace>(WORKSPACE_QUERY);
@@ -30,12 +33,22 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
   useEffect(() => {
     if (workspace) workspaceStore.set(workspace);
   }, [workspace]);
+  // Cycles and rituals follow the owner's clock: adopt the browser's time zone the first time.
+  const timezone = workspace?.organization.timezone;
+  useEffect(() => {
+    const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (timezone === "UTC" && viewer.kind === "owner" && local && local !== "UTC") {
+      void mutate(
+        "mutation($tz: String!) { organizationUpdate(input: { timezone: $tz }) { success } }",
+        { tz: local },
+      );
+    }
+  }, [timezone, viewer.kind]);
   // Close the mobile drawer on navigation.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs on path change
   useEffect(() => setDrawer(false), [path]);
 
-  const currentTeam =
-    route.name === "team" ? workspace?.teams.nodes.find((t) => t.key === route.key) : undefined;
+  const currentTeam = teamFor(workspace ?? null, route);
   useHotkeys({
     "mod+k": () => openMenu(commandPalette()),
     c: () => createIssueStore.set(currentTeam ? { teamId: currentTeam.id } : {}),
@@ -134,11 +147,31 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
               <Tab active={route.view === "backlog"} to={paths.team(team.key, "backlog")}>
                 Backlog
               </Tab>
+              {team.triageEnabled && (
+                <Tab active={route.view === "triage"} to={paths.team(team.key, "triage")}>
+                  Triage
+                </Tab>
+              )}
+              {team.cyclesEnabled && (
+                <Tab active={false} to={paths.cycles(team.key)}>
+                  Cycles
+                </Tab>
+              )}
             </>
           }
         />
       );
     }
+    case "cycles":
+    case "teamSettings": {
+      const team = workspace.teams.nodes.find((t) => t.key === route.key);
+      if (!team) return <NotFound what="Team" />;
+      return route.name === "cycles" ? <CyclesView team={team} /> : <TeamSettings team={team} />;
+    }
+    case "cycle":
+      return <CyclePage key={route.id} id={route.id} />;
+    case "view":
+      return <ViewPage key={route.id} id={route.id} />;
     case "issue":
       return <IssuePage key={route.identifier} identifier={route.identifier} />;
     case "company":
@@ -216,7 +249,7 @@ function Sidebar({
           type="button"
           onClick={() =>
             createIssueStore.set(
-              route.name === "team" ? { teamId: teamFor(workspace, route)?.id } : {},
+              teamFor(workspace, route) ? { teamId: teamFor(workspace, route)?.id } : {},
             )
           }
           className="flex flex-1 items-center justify-between rounded-md border border-line bg-raised px-2 py-1.5 text-muted hover:text-ink"
@@ -296,10 +329,11 @@ function Sidebar({
       <nav className="mt-1 min-h-0 space-y-0.5 overflow-y-auto">
         {workspace?.teams.nodes.length === 0 && <p className="px-2 py-1.5 text-faint">None yet</p>}
         {workspace?.teams.nodes.map((team) => {
-          const active = route.name === "team" && route.key === team.key;
+          const active = "key" in route && route.key === team.key;
+          const view = route.name === "team" ? route.view : null;
           return (
             <div key={team.id}>
-              <NavLink to={paths.team(team.key)} active={active && route.view === "all"}>
+              <NavLink to={paths.team(team.key)} active={active && view === "all"}>
                 <span className="flex w-full items-center justify-between">
                   <span className="truncate">{team.name}</span>
                   <span className="text-[11px] text-faint">{team.key}</span>
@@ -307,11 +341,24 @@ function Sidebar({
               </NavLink>
               {active && (
                 <div className="ml-3 space-y-0.5 border-l border-line pl-2">
-                  <NavLink to={paths.team(team.key, "active")} active={route.view === "active"}>
+                  {team.triageEnabled && (
+                    <NavLink to={paths.team(team.key, "triage")} active={view === "triage"}>
+                      Triage
+                    </NavLink>
+                  )}
+                  <NavLink to={paths.team(team.key, "active")} active={view === "active"}>
                     Active
                   </NavLink>
-                  <NavLink to={paths.team(team.key, "backlog")} active={route.view === "backlog"}>
+                  <NavLink to={paths.team(team.key, "backlog")} active={view === "backlog"}>
                     Backlog
+                  </NavLink>
+                  {team.cyclesEnabled && (
+                    <NavLink to={paths.cycles(team.key)} active={route.name === "cycles"}>
+                      Cycles
+                    </NavLink>
+                  )}
+                  <NavLink to={paths.teamSettings(team.key)} active={route.name === "teamSettings"}>
+                    Settings
                   </NavLink>
                 </div>
               )}
@@ -319,6 +366,22 @@ function Sidebar({
           );
         })}
       </nav>
+      {!!workspace?.customViews.nodes.length && (
+        <>
+          <p className="mt-6 px-2 text-[11px] font-medium text-faint uppercase">Views</p>
+          <nav className="mt-1 space-y-0.5">
+            {workspace.customViews.nodes.map((v) => (
+              <NavLink
+                key={v.id}
+                to={paths.view(v.id)}
+                active={route.name === "view" && route.id === v.id}
+              >
+                <span className="truncate">{v.name}</span>
+              </NavLink>
+            ))}
+          </nav>
+        </>
+      )}
       <div className="mt-auto flex items-center justify-between px-2 pt-3">
         <span className="truncate text-muted">{viewer.displayName}</span>
         <button type="button" onClick={onSignOut} className="text-faint hover:text-ink">
@@ -330,9 +393,7 @@ function Sidebar({
 }
 
 function teamFor(workspace: Workspace | null, route: Route): Team | undefined {
-  return route.name === "team"
-    ? workspace?.teams.nodes.find((t) => t.key === route.key)
-    : undefined;
+  return "key" in route ? workspace?.teams.nodes.find((t) => t.key === route.key) : undefined;
 }
 
 function NavLink({ to, active, children }: { to: string; active: boolean; children: ReactNode }) {

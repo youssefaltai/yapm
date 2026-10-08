@@ -4,6 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { authRoutes, resolveViewer } from "./auth.js";
 import type { HubDeps, HubEnv } from "./context.js";
 import { type GraphQLContext, schema } from "./graphql/schema.js";
+import { createLoaders } from "./loaders.js";
 
 /**
  * The hub's HTTP surface, independent of where it runs. Platform adapters
@@ -33,7 +34,9 @@ export function createHub(deps: HubDeps) {
 
   app.route("/api", authRoutes);
 
-  app.on(["GET", "POST"], "/graphql", (c) => yoga.fetch(c.req.raw, { deps, viewer: c.var.viewer }));
+  app.on(["GET", "POST"], "/graphql", (c) =>
+    yoga.fetch(c.req.raw, { deps, viewer: c.var.viewer, loaders: createLoaders(deps.db) }),
+  );
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
 

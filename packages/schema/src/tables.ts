@@ -3,6 +3,7 @@ import {
   index,
   integer,
   primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -198,5 +199,108 @@ export const apiTokens = sqliteTable(
   (t) => [
     uniqueIndex("api_tokens_hash_idx").on(t.tokenHash),
     index("api_tokens_user_idx").on(t.userId),
+  ],
+);
+
+/** Linear's priorities: 0 none, 1 urgent, 2 high, 3 medium, 4 low. */
+export const PRIORITY_LABELS = ["No priority", "Urgent", "High", "Medium", "Low"] as const;
+
+/** The unit of work. Identifiers like `FIN-42` are the team key plus `number`. */
+export const issues = sqliteTable(
+  "issues",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id").notNull(),
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    /** Markdown. */
+    description: text("description"),
+    stateId: text("state_id").notNull(),
+    priority: integer("priority").notNull().default(0),
+    estimate: integer("estimate"),
+    assigneeId: text("assignee_id"),
+    creatorId: text("creator_id"),
+    parentId: text("parent_id"),
+    /** ISO date, e.g. `2026-10-31`. */
+    dueDate: text("due_date"),
+    /** Manual order within a list or board column; lower comes first. */
+    sortOrder: real("sort_order").notNull(),
+    startedAt: integer("started_at", { mode: "number" }),
+    completedAt: integer("completed_at", { mode: "number" }),
+    canceledAt: integer("canceled_at", { mode: "number" }),
+    archivedAt: integer("archived_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("issues_team_number_idx").on(t.teamId, t.number),
+    index("issues_state_idx").on(t.stateId),
+    index("issues_assignee_idx").on(t.assigneeId),
+    index("issues_parent_idx").on(t.parentId),
+    index("issues_updated_idx").on(t.updatedAt),
+  ],
+);
+
+export const issueLabels = sqliteTable(
+  "issue_labels",
+  {
+    issueId: text("issue_id").notNull(),
+    labelId: text("label_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.issueId, t.labelId] }),
+    index("issue_labels_label_idx").on(t.labelId),
+  ],
+);
+
+export const ISSUE_RELATION_TYPES = ["blocks", "duplicate", "related"] as const;
+export type IssueRelationType = (typeof ISSUE_RELATION_TYPES)[number];
+
+/** `issueId` blocks / duplicates / relates to `relatedIssueId`. */
+export const issueRelations = sqliteTable(
+  "issue_relations",
+  {
+    id: text("id").primaryKey(),
+    type: text("type", { enum: ISSUE_RELATION_TYPES }).notNull(),
+    issueId: text("issue_id").notNull(),
+    relatedIssueId: text("related_issue_id").notNull(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("issue_relations_pair_idx").on(t.issueId, t.relatedIssueId, t.type),
+    index("issue_relations_related_idx").on(t.relatedIssueId),
+  ],
+);
+
+/** Comments on issues, threaded one level deep like Linear. */
+export const comments = sqliteTable(
+  "comments",
+  {
+    id: text("id").primaryKey(),
+    issueId: text("issue_id").notNull(),
+    userId: text("user_id").notNull(),
+    parentId: text("parent_id"),
+    /** Markdown. */
+    body: text("body").notNull(),
+    editedAt: integer("edited_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [index("comments_issue_idx").on(t.issueId, t.createdAt)],
+);
+
+/** Emoji reactions on comments or issues. */
+export const reactions = sqliteTable(
+  "reactions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    emoji: text("emoji").notNull(),
+    commentId: text("comment_id"),
+    issueId: text("issue_id"),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    index("reactions_comment_idx").on(t.commentId),
+    index("reactions_issue_idx").on(t.issueId),
+    index("reactions_user_idx").on(t.userId),
   ],
 );

@@ -1,5 +1,6 @@
 import type { RunInput, Usage } from "./hub.js";
 import type { ToolDecision } from "./permissions.js";
+import type { PlanUpdate } from "./plan.js";
 
 /** One agent session, as the daemon asks for it. */
 export interface EngineRun {
@@ -20,6 +21,10 @@ export interface EngineRun {
   /** Transcript events, compact and JSON-safe, in order. */
   onEvent: (event: Record<string, unknown>) => void;
   onSession: (sessionId: string) => void;
+  /** What the session learns about the plan: the login, rate-limit events, a /usage reading. */
+  onPlan?: (update: PlanUpdate) => void;
+  /** Take a full /usage reading when the session ends; the daemon spaces these out. */
+  readUsage?: boolean;
 }
 
 export interface EngineResult {
@@ -31,6 +36,9 @@ export interface EngineResult {
 }
 
 export type Engine = (run: EngineRun) => Promise<EngineResult>;
+
+/** Reads the plan without running a session, for machines that sit idle. */
+export type PlanProbe = () => Promise<PlanUpdate[]>;
 
 /** Aliases for hubs that don't choose a model yet. */
 export const MODELS = { small: "haiku", standard: "sonnet", top: "opus" } as const;

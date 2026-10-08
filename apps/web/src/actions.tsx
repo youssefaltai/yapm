@@ -587,6 +587,12 @@ export function commandPalette(): MenuSpec {
       onSelect: () => navigate(paths.insights()),
     },
     {
+      id: "usage",
+      label: "Go to Usage",
+      section: "Navigation",
+      onSelect: () => navigate(paths.usage()),
+    },
+    {
       id: "handbook",
       label: "Go to Handbook",
       section: "Navigation",

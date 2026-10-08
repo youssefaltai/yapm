@@ -96,7 +96,12 @@ export function invalidate() {
 }
 
 /** Runs a GraphQL query and keeps it fresh: it refetches whenever any mutation goes through. */
-export function useQuery<T>(query: string | null, variables?: Record<string, unknown>) {
+export function useQuery<T>(
+  query: string | null,
+  variables?: Record<string, unknown>,
+  /** Also refetch on this interval, for things that change without a live event. */
+  pollMs?: number,
+) {
   const key = query ? `${query}\n${JSON.stringify(variables ?? {})}` : null;
   const [state, setState] = useState<{ key: string | null; data: T | null; error: string | null }>({
     key: null,
@@ -114,11 +119,13 @@ export function useQuery<T>(query: string | null, variables?: Record<string, unk
         .catch((error: Error) => alive && setState((s) => ({ ...s, key, error: error.message })));
     run();
     reloaders.add(run);
+    const timer = pollMs ? setInterval(run, pollMs) : undefined;
     return () => {
       alive = false;
+      clearInterval(timer);
       reloaders.delete(run);
     };
-  }, [key]);
+  }, [key, pollMs]);
 
   const current = state.key === key;
   return { data: current ? state.data : null, error: current ? state.error : null };

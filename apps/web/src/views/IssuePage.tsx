@@ -37,6 +37,7 @@ import {
   useHotkeys,
   useStore,
 } from "../ui.js";
+import { RunsSection } from "./Runs.js";
 
 interface MiniIssue {
   id: string;
@@ -181,6 +182,7 @@ export function IssuePage({ identifier }: { identifier: string }) {
             <Properties issue={issue} workspace={workspace} className="mt-6 lg:hidden" />
             <SubIssues issue={issue} />
             <Relations issue={issue} />
+            <RunsSection issueId={issue.id} />
             <Activity issue={issue} workspace={workspace} />
           </div>
           <aside className="hidden w-72 shrink-0 border-l border-line px-5 py-6 lg:block">

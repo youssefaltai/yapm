@@ -13,6 +13,31 @@ import { runnerRoutes } from "./runs/routes.js";
 import { exportCompany, exportIssuesCsv } from "./services/export.js";
 import { receiveOAuthCode } from "./services/mcpServers.js";
 
+/** Error messages along an error's cause chain (Drizzle wraps the driver's error). */
+function messagesOf(error: unknown) {
+  const messages: string[] = [];
+  for (let e = error, depth = 0; e && depth < 5; depth++) {
+    messages.push(e instanceof Error ? e.message : String(e));
+    e = e instanceof Error ? e.cause : undefined;
+  }
+  return messages.join("\n");
+}
+
+/**
+ * Says plainly when the database is the problem, so the owner knows what to fix: it was
+ * never migrated, or it is gone (e.g. a D1 database deleted while the Worker still points at it).
+ */
+export function databaseProblem(error: unknown): string | null {
+  const text = messagesOf(error);
+  if (/no such table/i.test(text))
+    return "The database isn't set up: its migrations haven't been applied. Run the deploy again, or apply the migrations.";
+  if (
+    /D1_ERROR|D1 database|database.*(not found|does not exist|deleted)|SQLITE_CANTOPEN/i.test(text)
+  )
+    return "The hub can't open its database. If it was deleted, run the deploy again to create a new one.";
+  return null;
+}
+
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 /**
@@ -132,6 +157,8 @@ export function createHub(deps: HubDeps) {
       return c.json({ error: error.message }, error.status);
     }
     console.error(error);
+    const problem = databaseProblem(error);
+    if (problem) return c.json({ error: problem }, 503);
     return c.json({ error: "Internal error" }, 500);
   });
 

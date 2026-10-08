@@ -9,6 +9,13 @@ import { seedCompany } from "../src/seed.js";
 import { syncCycles } from "../src/services/cycles.js";
 import { createIssue, updateIssue } from "../src/services/issues.js";
 import { autoArchive, checkSlas } from "../src/services/maintenance.js";
+import {
+  countAll,
+  deriveMetrics,
+  emptyCounts,
+  metricHistory,
+  snapshotMetrics,
+} from "../src/services/metrics.js";
 import { createTeam, updateTeam } from "../src/services/teams.js";
 import { createRecurringIssues, createTemplate } from "../src/services/templates.js";
 import { addDays, localDate, nextOccurrence, weekday, zonedTime } from "../src/time.js";
@@ -247,5 +254,75 @@ describe("SLAs and auto-archive", () => {
     const archived = await db.select().from(schema.issues).all();
     expect(archived.find((i) => i.id === done)?.archivedAt).not.toBeNull();
     expect(archived.find((i) => i.id === urgent)?.archivedAt).toBeNull();
+  });
+});
+
+describe("metrics", () => {
+  it("counts the day's work and snapshots it once after the day ends", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ctx = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(ctx, { name: "Home", key: "HOM" });
+    const states = await db
+      .select()
+      .from(schema.workflowStates)
+      .where(eq(schema.workflowStates.teamId, teamId))
+      .all();
+    const ofType = (type: string) =>
+      nth(
+        states.filter((s) => s.type === type),
+        0,
+      ).id;
+    const done = await createIssue(ctx, { teamId, title: "Fix the tap" });
+    await createIssue(ctx, { teamId, title: "Paint the door" });
+    await updateIssue({ ...ctx, now: start + 3_600_000 }, done, { stateId: ofType("started") });
+    await updateIssue({ ...ctx, now: start + 5 * 3_600_000 }, done, {
+      stateId: ofType("completed"),
+    });
+    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
+    const run = (id: string, extra: Partial<typeof schema.runs.$inferInsert>) => ({
+      id,
+      agentId: ceo?.id ?? "",
+      kind: "work" as const,
+      inputTokens: 600,
+      outputTokens: 400,
+      endedAt: start + 2 * 3_600_000,
+      createdAt: start,
+      updatedAt: start,
+      ...extra,
+    });
+    await db
+      .insert(schema.runs)
+      .values([
+        run("r1", { status: "completed" }),
+        run("r2", { status: "stopped", stoppedById: "owner" }),
+      ]);
+
+    const day = await countAll(
+      db,
+      Date.parse("2026-10-08T00:00:00Z"),
+      Date.parse("2026-10-09T00:00:00Z"),
+    );
+    expect(deriveMetrics(day.get("company:") ?? emptyCounts())).toMatchObject({
+      created: 2,
+      completed: 1,
+      cycleTimeHours: 4,
+      runs: 2,
+      runSuccessRate: 0.5,
+      stopRate: 0.5,
+      tokens: 2000,
+      tokensPerCompletedIssue: 2000,
+    });
+    expect(day.get(`team:${teamId}`)?.completed).toBe(1);
+    expect(day.get(`team:${teamId}`)?.runs).toBe(0);
+    expect(day.get(`user:${ceo?.id}`)?.runsStopped).toBe(1);
+
+    const nextMorning = Date.parse("2026-10-09T00:30:00Z");
+    expect(await snapshotMetrics(db, nextMorning)).toBe(true);
+    expect(await snapshotMetrics(db, nextMorning + 60_000)).toBe(false);
+    const history = await metricHistory(db, "company", "", 7, nextMorning);
+    expect(history.map((h) => [h.date, h.counts.completed, h.counts.tokens])).toEqual([
+      ["2026-10-08", 1, 2000],
+    ]);
   });
 });

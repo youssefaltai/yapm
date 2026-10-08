@@ -61,7 +61,7 @@ export function Progress({ value }: { value: number }) {
     <span className="flex items-center gap-2">
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-raised">
         <span
-          className="block h-full rounded-full bg-accent"
+          className="block h-full animate-grow-x rounded-full bg-accent transition-[width] duration-500 ease-snappy"
           style={{ width: `${Math.round(value * 100)}%` }}
         />
       </span>
@@ -125,7 +125,7 @@ export function ProjectsView() {
                   <button
                     type="button"
                     onClick={() => navigate(paths.project(p.id))}
-                    className="flex w-full items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
+                    className="flex w-full animate-fade-in items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
                   >
                     <ProjectDot color={p.color} />
                     <span className="min-w-0 flex-1">
@@ -470,7 +470,7 @@ function Overview({ project: p }: { project: ProjectDetail }) {
                 <button
                   type="button"
                   onClick={() => navigate(paths.document(d.id))}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-raised"
+                  className="flex w-full animate-fade-in items-center gap-3 px-4 py-2.5 text-left hover:bg-raised"
                 >
                   <span className="min-w-0 flex-1 truncate">{d.title}</span>
                   <span className="text-[12px] text-faint">{timeAgo(d.updatedAt)}</span>

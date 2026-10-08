@@ -225,6 +225,25 @@ export function Kbd({ children }: { children: ReactNode }) {
   );
 }
 
+// Motion --------------------------------------------------------------------
+
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * Keeps the last value around for `ms` after it goes away, so it can play an exit animation.
+ * A new value replaces a leaving one at once.
+ */
+export function usePresence<T>(value: T | null, ms = 140): { shown: T | null; leaving: boolean } {
+  const [shown, setShown] = useState(value);
+  if (value !== null && value !== shown) setShown(value);
+  useEffect(() => {
+    if (value !== null || shown === null) return;
+    const timer = setTimeout(() => setShown(null), reducedMotion() ? 0 : ms);
+    return () => clearTimeout(timer);
+  }, [value, shown, ms]);
+  return { shown, leaving: value === null && shown !== null };
+}
+
 // Modals --------------------------------------------------------------------
 
 let openModals = 0;
@@ -253,18 +272,18 @@ export function Modal({
     };
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 px-3 pt-[12vh]">
+    <div className="fixed inset-0 z-40 flex items-start justify-center px-3 pt-[12vh]">
       <button
         type="button"
         aria-label="Close"
-        className="absolute inset-0 cursor-default"
+        className="absolute inset-0 animate-fade-in cursor-default bg-black/50"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        className={`relative w-full ${wide ? "max-w-2xl" : "max-w-lg"} rounded-xl border border-line bg-panel shadow-2xl`}
+        className={`relative w-full ${wide ? "max-w-2xl" : "max-w-lg"} animate-dialog-in rounded-xl border border-line bg-panel shadow-2xl`}
       >
         {children}
       </div>
@@ -313,7 +332,25 @@ export function MenuHost() {
   if (!stack?.length) return null;
   const spec = stack[stack.length - 1];
   if (!spec) return null;
-  return <CommandMenu key={stack.length} spec={spec} depth={stack.length} />;
+  // The frame stays put while drilling into a submenu, so only the contents change.
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center px-3 pt-[14vh]">
+      <button
+        type="button"
+        aria-label="Close menu"
+        className="absolute inset-0 animate-fade-in cursor-default bg-black/40"
+        onClick={closeMenu}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={spec.placeholder}
+        className="relative w-full max-w-xl animate-dialog-in overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
+      >
+        <CommandMenu key={stack.length} spec={spec} depth={stack.length} />
+      </div>
+    </div>
+  );
 }
 
 function matches(item: MenuItem, query: string) {
@@ -390,69 +427,56 @@ function CommandMenu({ spec, depth }: { spec: MenuSpec; depth: number }) {
 
   let lastSection: string | undefined;
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-3 pt-[14vh]">
-      <button
-        type="button"
-        aria-label="Close menu"
-        className="absolute inset-0 cursor-default"
-        onClick={closeMenu}
+    <div className="animate-fade-in">
+      <input
+        // biome-ignore lint/a11y/noAutofocus: a command menu opens to be typed into
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={spec.placeholder}
+        className="w-full border-b border-line bg-transparent px-4 py-3.5 text-[15px] outline-none placeholder:text-faint"
       />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={spec.placeholder}
-        className="relative w-full max-w-xl overflow-hidden rounded-xl border border-line bg-panel shadow-2xl"
-      >
-        <input
-          // biome-ignore lint/a11y/noAutofocus: a command menu opens to be typed into
-          autoFocus
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={spec.placeholder}
-          className="w-full border-b border-line bg-transparent px-4 py-3.5 text-[15px] outline-none placeholder:text-faint"
-        />
-        <div ref={listRef} role="listbox" className="max-h-[50vh] overflow-y-auto p-1.5">
-          {visible.length === 0 && <p className="px-3 py-6 text-center text-faint">No results</p>}
-          {visible.map((item, index) => {
-            const header = item.section && item.section !== lastSection ? item.section : null;
-            lastSection = item.section;
-            return (
-              <div key={`${item.section ?? ""}:${item.id}`}>
-                {header && (
-                  <p className="px-3 pt-2.5 pb-1 text-[11px] font-medium text-faint">{header}</p>
+      <div ref={listRef} role="listbox" className="max-h-[50vh] overflow-y-auto p-1.5">
+        {visible.length === 0 && <p className="px-3 py-6 text-center text-faint">No results</p>}
+        {visible.map((item, index) => {
+          const header = item.section && item.section !== lastSection ? item.section : null;
+          lastSection = item.section;
+          return (
+            <div key={`${item.section ?? ""}:${item.id}`}>
+              {header && (
+                <p className="px-3 pt-2.5 pb-1 text-[11px] font-medium text-faint">{header}</p>
+              )}
+              <button
+                type="button"
+                role="option"
+                aria-selected={index === active}
+                data-index={index}
+                onMouseMove={() => setActive(index)}
+                // Keep focus in the search box, so Escape and arrows keep working after a click.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void choose(item)}
+                className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left ${
+                  index === active ? "bg-raised text-ink" : "text-muted"
+                }`}
+              >
+                {spec.multi && (
+                  <span
+                    className={`flex size-3.5 items-center justify-center rounded-sm border text-[10px] transition-colors ${
+                      item.checked ? "border-accent bg-accent text-white" : "border-faint"
+                    }`}
+                  >
+                    {item.checked ? "✓" : ""}
+                  </span>
                 )}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={index === active}
-                  data-index={index}
-                  onMouseMove={() => setActive(index)}
-                  // Keep focus in the search box, so Escape and arrows keep working after a click.
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => void choose(item)}
-                  className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left ${
-                    index === active ? "bg-raised text-ink" : "text-muted"
-                  }`}
-                >
-                  {spec.multi && (
-                    <span
-                      className={`flex size-3.5 items-center justify-center rounded-sm border text-[10px] ${
-                        item.checked ? "border-accent bg-accent text-white" : "border-faint"
-                      }`}
-                    >
-                      {item.checked ? "✓" : ""}
-                    </span>
-                  )}
-                  {item.icon}
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {!spec.multi && item.checked && <span className="text-accent">✓</span>}
-                  {item.hint && <span className="shrink-0 text-faint">{item.hint}</span>}
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                {item.icon}
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {!spec.multi && item.checked && <span className="text-accent">✓</span>}
+                {item.hint && <span className="shrink-0 text-faint">{item.hint}</span>}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

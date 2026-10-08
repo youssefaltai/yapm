@@ -22,7 +22,10 @@ function apply(choice: ThemeChoice) {
 export function setTheme(choice: ThemeChoice) {
   if (choice === "system") localStorage.removeItem(KEY);
   else localStorage.setItem(KEY, choice);
-  apply(choice);
+  // Cross-fade the palette swap where the browser can; motion.css sets its pace.
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (document.startViewTransition && !calm) document.startViewTransition(() => apply(choice));
+  else apply(choice);
 }
 
 /** Keeps "system" in step when the OS switches between light and dark. */

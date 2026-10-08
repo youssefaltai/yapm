@@ -121,7 +121,7 @@ function RequestList({ answered }: { answered: boolean }) {
           <button
             type="button"
             onClick={() => navigate(paths.request(r.id))}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-raised md:px-6"
+            className="flex w-full animate-fade-in items-center gap-3 px-4 py-3 text-left hover:bg-raised md:px-6"
           >
             <Avatar name={r.requester.name} kind={r.requester.kind} size={24} />
             <div className="min-w-0 flex-1">

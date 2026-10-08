@@ -103,7 +103,7 @@ export function Toolbar({ editor }: { editor: Editor }) {
       <div
         role="toolbar"
         aria-label="Formatting"
-        className="flex items-center gap-0.5 rounded-lg border border-line bg-panel p-1 text-[13px] shadow-2xl"
+        className="flex origin-bottom animate-pop-in items-center gap-0.5 rounded-lg border border-line bg-panel p-1 text-[13px] shadow-2xl"
       >
         {linking ? (
           <form

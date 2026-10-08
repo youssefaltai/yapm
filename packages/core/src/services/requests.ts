@@ -13,6 +13,7 @@ import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
 import { type Ctx, cleanText, event } from "./common.js";
+import { notify, ownerId } from "./notifications.js";
 
 /**
  * Permissions are plain strings. Org changes use their audit action names (`team.create`,
@@ -171,6 +172,7 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
     issueId = issue.id;
   }
   const id = newId();
+  const owner = await ownerId(db);
   await commit(db, [
     db.insert(requests).values({
       id,
@@ -185,6 +187,9 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
       createdAt: now,
       updatedAt: now,
     }),
+    ...notify(ctx, [
+      { userId: owner ?? "", type: "requestCreated", requestId: id, issueId, data: { title } },
+    ]),
     ...audit(
       db,
       [event(ctx, "request.create", "request", id, { title, action, resource, issueId })],
@@ -316,6 +321,17 @@ export async function approveRequest(
       always: !!grantId,
     }),
   );
+  ops.push(
+    ...notify(ctx, [
+      {
+        userId: request.requesterId,
+        type: "requestAnswered",
+        requestId: id,
+        issueId: request.issueId,
+        data: { title: request.title, status: "approved", always: !!grantId },
+      },
+    ]),
+  );
   await commit(db, [...ops, ...audit(db, events, now)]);
   return id;
 }
@@ -336,6 +352,15 @@ export async function rejectRequest(ctx: Ctx, id: string, reason: string): Promi
         updatedAt: now,
       })
       .where(eq(requests.id, id)),
+    ...notify(ctx, [
+      {
+        userId: request.requesterId,
+        type: "requestAnswered",
+        requestId: id,
+        issueId: request.issueId,
+        data: { title: request.title, status: "rejected", reason: answer },
+      },
+    ]),
     ...audit(
       db,
       [

@@ -16,6 +16,13 @@ import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import {
+  mentionedUserIds,
+  type NotificationInput,
+  notify,
+  subscribe,
+  subscribersOf,
+} from "./notifications.js";
 
 export type IssueRow = typeof issues.$inferSelect;
 
@@ -226,6 +233,21 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
       now,
     ),
   ];
+  // The creator, the assignee and anyone mentioned follow the issue.
+  const mentioned = await mentionedUserIds(db, input.description);
+  ops.push(
+    ...subscribe(
+      db,
+      [actorId, input.assigneeId, ...mentioned].map((userId) => ({ issueId: id, userId })),
+      now,
+    ),
+    ...notify(ctx, [
+      ...(input.assigneeId
+        ? [{ userId: input.assigneeId, type: "issueAssignedToYou" as const, issueId: id }]
+        : []),
+      ...mentioned.map((userId) => ({ userId, type: "issueMention" as const, issueId: id })),
+    ]),
+  );
   await commit(db, ops);
   return id;
 }
@@ -376,6 +398,7 @@ export async function updateIssues(
     );
   }
   ops.push(...insertRows(db, issueLabels, labelAdds));
+  ops.push(...(await notifyUpdate(ctx, rows, next, state, stateChangedIds)));
   ops.push(...audit(db, events, now));
   await commit(db, ops);
   return uniqueIds;
@@ -471,4 +494,50 @@ export async function deleteRelation(ctx: Ctx, id: string): Promise<void> {
       now,
     ),
   ]);
+}
+
+/** Inbox entries and new followers for an issue update. */
+async function notifyUpdate(
+  ctx: Ctx,
+  rows: IssueRow[],
+  next: Partial<IssueRow>,
+  state: typeof workflowStates.$inferSelect | undefined,
+  stateChangedIds: string[],
+): Promise<WriteOp[]> {
+  const { db, now } = ctx;
+  const inputs: NotificationInput[] = [];
+  const follows: { issueId: string; userId: string | null }[] = [];
+  const newlyMentioned =
+    next.description !== undefined ? await mentionedUserIds(db, next.description) : [];
+  for (const row of rows) {
+    if (next.assigneeId !== undefined && next.assigneeId !== row.assigneeId) {
+      if (next.assigneeId) {
+        inputs.push({ userId: next.assigneeId, type: "issueAssignedToYou", issueId: row.id });
+        follows.push({ issueId: row.id, userId: next.assigneeId });
+      }
+      if (row.assigneeId)
+        inputs.push({ userId: row.assigneeId, type: "issueUnassignedFromYou", issueId: row.id });
+    }
+    if (newlyMentioned.length && next.description !== row.description) {
+      const before = new Set(await mentionedUserIds(db, row.description));
+      for (const userId of newlyMentioned.filter((u) => !before.has(u))) {
+        inputs.push({ userId, type: "issueMention", issueId: row.id });
+        follows.push({ issueId: row.id, userId });
+      }
+    }
+  }
+  if (state && stateChangedIds.length) {
+    const followers = await subscribersOf(db, stateChangedIds);
+    for (const issueId of stateChangedIds) {
+      for (const userId of followers.get(issueId) ?? []) {
+        inputs.push({
+          userId,
+          type: "issueStatusChanged",
+          issueId,
+          data: { to: state.name, type: state.type },
+        });
+      }
+    }
+  }
+  return [...subscribe(db, follows, now), ...notify(ctx, inputs)];
 }

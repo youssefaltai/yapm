@@ -9,6 +9,7 @@ import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
 import { HireAgentHost } from "./views/HireAgent.js";
+import { InboxView, useUnreadCount } from "./views/Inbox.js";
 import { IssuePage } from "./views/IssuePage.js";
 import { IssuesView } from "./views/IssuesView.js";
 import { MemberPage } from "./views/MemberPage.js";
@@ -88,6 +89,8 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
 
 function RouteView({ route, workspace }: { route: Route; workspace: Workspace }) {
   switch (route.name) {
+    case "inbox":
+      return <InboxView />;
     case "myIssues":
       return (
         <IssuesView
@@ -178,6 +181,7 @@ function Sidebar({
   onSignOut: () => void;
 }) {
   const pending = usePendingCount();
+  const unread = useUnreadCount();
   return (
     <>
       <div className="flex items-center gap-2 px-2 py-1.5">
@@ -206,6 +210,12 @@ function Sidebar({
         </button>
       </div>
       <nav className="mt-4 space-y-0.5">
+        <NavLink to={paths.inbox()} active={route.name === "inbox"}>
+          <span className="flex w-full items-center justify-between">
+            Inbox
+            {unread > 0 && <span className="text-[11px] text-muted">{unread}</span>}
+          </span>
+        </NavLink>
         <NavLink to={paths.myIssues()} active={route.name === "myIssues"}>
           My issues
         </NavLink>

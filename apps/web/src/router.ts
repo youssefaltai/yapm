@@ -27,6 +27,7 @@ export function usePath(): string {
 export type RequestsTab = "pending" | "answered" | "grants";
 
 export type Route =
+  | { name: "inbox" }
   | { name: "myIssues"; tab: "assigned" | "created" }
   | { name: "team"; key: string; view: "all" | "active" | "backlog" }
   | { name: "issue"; identifier: string }
@@ -39,7 +40,7 @@ export type Route =
 export function parseRoute(path: string): Route {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const [first, second, third] = parts;
-  if (!first) return { name: "myIssues", tab: "assigned" };
+  if (!first || first === "inbox") return { name: "inbox" };
   if (first === "my-issues")
     return { name: "myIssues", tab: second === "created" ? "created" : "assigned" };
   if (first === "company") return { name: "company" };
@@ -59,6 +60,7 @@ export function parseRoute(path: string): Route {
 }
 
 export const paths = {
+  inbox: () => "/inbox",
   myIssues: (tab: "assigned" | "created" = "assigned") =>
     tab === "assigned" ? "/my-issues" : "/my-issues/created",
   team: (key: string, view: "all" | "active" | "backlog" = "all") =>

@@ -943,5 +943,158 @@ export function hubContract(
       );
       expect(mine.data?.viewer.createdIssues.nodes).toHaveLength(1);
     });
+
+    it("fills each member's Inbox from assignments, mentions, comments and requests", async () => {
+      type Note = {
+        id: string;
+        type: string;
+        actor: { name: string } | null;
+        issue: { identifier: string } | null;
+        data: Record<string, unknown> | null;
+      };
+      const people = await client.graphql<{ users: { nodes: { id: string; name: string }[] } }>(
+        "{ users { nodes { id name } } }",
+      );
+      const idOf = (name: string) =>
+        people.data?.users.nodes.find((u) => u.name === name)?.id ?? "";
+      const tokenFor = async (name: string) =>
+        (
+          await client.graphql<{ apiTokenCreate: { token: string } }>(
+            'mutation($u: String) { apiTokenCreate(name: "inbox", userId: $u) { token } }',
+            { u: idOf(name) },
+          )
+        ).data?.apiTokenCreate.token ?? "";
+      const coach = await tokenFor("Coach");
+      const chef = await tokenFor("Chef");
+      const inbox = async (token?: string) => {
+        const result = await client.graphql<{
+          notifications: { nodes: Note[] };
+          notificationsUnreadCount: number;
+        }>(
+          "{ notifications { nodes { id type actor { name } issue { identifier } data } } notificationsUnreadCount }",
+          undefined,
+          token,
+        );
+        expect(result.errors).toBeUndefined();
+        return {
+          notes: result.data?.notifications.nodes ?? [],
+          unread: result.data?.notificationsUnreadCount ?? 0,
+        };
+      };
+
+      expect((await inbox()).notes.map((n) => n.type)).toContain("requestCreated");
+      expect((await inbox(ceoToken)).notes[0]).toMatchObject({
+        type: "requestAnswered",
+        actor: { name: "Youssef" },
+      });
+
+      const created = await client.graphql<{
+        issueCreate: {
+          issue: { id: string; identifier: string; subscribers: { nodes: { name: string }[] } };
+        };
+      }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier subscribers { nodes { name } } } } }",
+        {
+          input: {
+            teamId,
+            title: "Plan the spring half marathon",
+            description: "@Chef can you plan meals around it?",
+            assigneeId: idOf("Coach"),
+          },
+        },
+      );
+      const issue = created.data?.issueCreate.issue;
+      expect(issue?.subscribers.nodes.map((u) => u.name).sort()).toEqual([
+        "Chef",
+        "Coach",
+        "Youssef",
+      ]);
+      expect((await inbox(coach)).notes[0]).toMatchObject({
+        type: "issueAssignedToYou",
+        actor: { name: "Youssef" },
+        issue: { identifier: issue?.identifier },
+      });
+      expect((await inbox(chef)).notes[0]?.type).toBe("issueMention");
+
+      // A comment: the mentioned hear about the mention, other followers about the comment.
+      await client.graphql(
+        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "On it. @CEO, a grocery budget?" }) { success } }',
+        { id: issue?.id },
+        chef,
+      );
+      expect((await inbox(ceoToken)).notes[0]?.type).toBe("issueCommentMention");
+      expect((await inbox()).notes[0]).toMatchObject({
+        type: "issueNewComment",
+        actor: { name: "Chef" },
+      });
+      expect((await inbox(coach)).notes[0]?.type).toBe("issueNewComment");
+      expect((await inbox(chef)).notes[0]?.type).toBe("issueMention");
+
+      const states = await client.graphql<{
+        team: { states: { nodes: { id: string; name: string }[] } };
+      }>('{ team(id: "PF") { states { nodes { id name } } } }');
+      const stateId = (name: string) =>
+        states.data?.team.states.nodes.find((st) => st.name === name)?.id;
+      await client.graphql(
+        "mutation($id: String!) { issueUnsubscribe(id: $id) { success } }",
+        { id: issue?.id },
+        ceoToken,
+      );
+      await client.graphql(
+        "mutation($id: String!, $s: String) { issueUpdate(id: $id, input: { stateId: $s }) { success } }",
+        { id: issue?.id, s: stateId("In Progress") },
+        coach,
+      );
+      expect((await inbox()).notes[0]).toMatchObject({
+        type: "issueStatusChanged",
+        actor: { name: "Coach" },
+        data: { to: "In Progress" },
+      });
+      expect((await inbox(ceoToken)).notes[0]?.type).toBe("issueCommentMention");
+
+      // Filing: read, snooze, archive, only your own.
+      const before = await inbox();
+      expect(before.unread).toBeGreaterThan(0);
+      await client.graphql("mutation { notificationMarkReadAll { success } }");
+      expect((await inbox()).unread).toBe(0);
+      const first = before.notes[0]?.id;
+      const someoneElses = await client.graphql(
+        "mutation($id: String!) { notificationArchive(id: $id) { success } }",
+        { id: first },
+        coach,
+      );
+      expect(someoneElses.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      await client.graphql("mutation($id: String!) { notificationArchive(id: $id) { success } }", {
+        id: first,
+      });
+      expect((await inbox()).notes.map((n) => n.id)).not.toContain(first);
+      const coachFirst = (await inbox(coach)).notes[0]?.id;
+      await client.graphql(
+        "mutation($id: String!, $until: DateTime) { notificationUpdate(id: $id, input: { snoozedUntilAt: $until }) { success } }",
+        { id: coachFirst, until: new Date(Date.now() + 86_400_000).toISOString() },
+        coach,
+      );
+      expect((await inbox(coach)).notes.map((n) => n.id)).not.toContain(coachFirst);
+
+      const viaMcp = await client.request("/mcp", {
+        method: "POST",
+        json: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "list_notifications", arguments: {} },
+        },
+        token: chef,
+      });
+      const listed = JSON.parse(
+        ((await viaMcp.json()) as { result: { content: { text: string }[] } }).result.content[0]
+          ?.text ?? "{}",
+      );
+      expect(listed.notifications.map((n: { type: string }) => n.type)).toEqual([
+        "issueStatusChanged",
+        "issueMention",
+      ]);
+      expect(listed.notifications[1]).toMatchObject({ actor: "Youssef", issue: issue?.identifier });
+    });
   });
 }

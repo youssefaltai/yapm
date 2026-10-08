@@ -3,6 +3,7 @@ import "./types.js";
 import "./queries.js";
 import "./mutations.js";
 import "./requests.js";
+import "./inbox.js";
 
 export type { GraphQLContext } from "./builder.js";
 

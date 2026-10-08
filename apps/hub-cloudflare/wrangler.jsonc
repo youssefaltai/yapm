@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "life-os",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // The web app is served as static assets; the Worker handles the API and GraphQL.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/graphql"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "life-os",
+      // Replace with the id printed by `wrangler d1 create life-os`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../packages/schema/migrations"
+    }
+  ],
+  "vars": {
+    "LIFE_OS_VERSION": "dev"
+  },
+  "observability": { "enabled": true }
+}

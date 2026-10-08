@@ -1,0 +1,26 @@
+{
+  "name": "@life-os/hub-cloudflare",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs the hub on Cloudflare Workers with D1, serving the web app as static assets.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "pnpm --filter @life-os/web build && wrangler d1 migrations apply life-os --remote && wrangler deploy",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@life-os/core": "workspace:*",
+    "@life-os/schema": "workspace:*",
+    "drizzle-orm": "0.45.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.3.7",
+    "@cloudflare/workers-types": "5.20261007.1",
+    "@life-os/web": "workspace:*",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11",
+    "wrangler": "4.148.0"
+  }
+}

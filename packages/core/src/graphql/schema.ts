@@ -12,6 +12,7 @@ import "./templates.js";
 import "./feedback.js";
 import "./metrics.js";
 import "./mcpServers.js";
+import "./linear.js";
 
 export type { GraphQLContext } from "./builder.js";
 

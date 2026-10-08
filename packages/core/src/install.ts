@@ -14,6 +14,7 @@ export function installScript(hub: string): string {
 }
 
 const SCRIPT = `#!/bin/sh
+# Keep this file ASCII: macOS sh (bash 3.2) reads bytes after "$VAR" as part of its name.
 # Life OS runner installer. Usage:
 #   curl -fsSL __HUB__/install.sh | sh -s -- --token <setup token> [--name "My laptop"] [--tags a,b]
 # Run it again without a token to update a machine that is already connected.
@@ -67,7 +68,7 @@ fi
 if [ -z "$NODE" ]; then
   NODE_DIR="$HOME_DIR/node"
   if [ ! -x "$NODE_DIR/bin/node" ]; then
-    say "Downloading Node.js $NODE_MAJOR for the runner…"
+    say "Downloading Node.js \${NODE_MAJOR} for the runner..."
     base="https://nodejs.org/dist/latest-v$NODE_MAJOR.x"
     file=$(curl -fsSL "$base/SHASUMS256.txt" | awk '{print $2}' | grep -E "^node-v[0-9.]+-$OS-$ARCH\\.tar\\.gz$" | head -n 1)
     [ -n "$file" ] || fail "No Node.js $NODE_MAJOR build for $OS-$ARCH."
@@ -87,7 +88,7 @@ if [ -z "$NODE" ]; then
   export PATH
 fi
 
-say "Installing the runner from $HUB…"
+say "Installing the runner from \${HUB}..."
 tmp=$(mktemp -d)
 curl -fsSL "$PACKAGE" -o "$tmp/life-os-runner.tgz" || fail "Couldn't download the runner from $HUB."
 mkdir -p "$HOME_DIR/app"

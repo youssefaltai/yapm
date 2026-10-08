@@ -468,6 +468,22 @@ test.describe
       });
     });
 
+    test("shows how the company is working in Insights", async () => {
+      await page.getByRole("link", { name: "Insights" }).click();
+      await expect(page.getByRole("region", { name: "Runs stopped" })).not.toContainText("–");
+      const ada = page.getByRole("row", { name: /Ada/ });
+      await expect(ada).toBeVisible();
+      await page.getByRole("tab", { name: "30 days" }).click();
+      await expect(page.getByRole("tab", { name: "30 days" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await expect(page.getByRole("row", { name: /Personal Finance/ })).toBeVisible();
+      await ada.click();
+      await expect(page.getByLabel("Lessons")).toBeVisible();
+      expect((await mcp("get_metrics", { member: "me" })).current.runs).toBeGreaterThan(0);
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

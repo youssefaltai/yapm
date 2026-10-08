@@ -7,8 +7,17 @@ import {
   listRevisions,
   updateHandbook,
 } from "../services/feedback.js";
+import {
+  addCounts,
+  countAll,
+  deriveMetrics,
+  emptyCounts,
+  type Metrics,
+  metricHistory,
+  scopeKey,
+} from "../services/metrics.js";
 import { type Tool, ToolError } from "./protocol.js";
-import { type McpContext, requireIssue, resolveUser, str } from "./tools.js";
+import { type McpContext, requireIssue, resolveTeam, resolveUser, str } from "./tools.js";
 
 // How the company learns: feedback to act on, the handbook, versions and the history of changes.
 
@@ -20,7 +29,81 @@ async function nameOf(c: McpContext, id: string | null) {
   return (await c.loaders.user.load(id))?.name ?? "someone";
 }
 
+const DAY = 86_400_000;
+
+/** Rates as percentages and averages to one decimal, so they read well in a retro. */
+function readable(m: Metrics) {
+  const pct = (v: number | null) => (v === null ? null : Math.round(v * 1000) / 10);
+  const one = (v: number | null) => (v === null ? null : Math.round(v * 10) / 10);
+  return {
+    created: m.created,
+    completed: m.completed,
+    cycleTimeHours: one(m.cycleTimeHours),
+    slaBreaches: m.slaBreaches,
+    runs: m.runs,
+    runSuccessPercent: pct(m.runSuccessRate),
+    stopPercent: pct(m.stopRate),
+    requestsAnswered: m.requestsAnswered,
+    rejectionPercent: pct(m.rejectionRate),
+    tokens: m.tokens,
+    tokensPerCompletedIssue:
+      m.tokensPerCompletedIssue === null ? null : Math.round(m.tokensPerCompletedIssue),
+  };
+}
+
 export const learningTools: Tool<McpContext>[] = [
+  {
+    name: "get_metrics",
+    title: "Get metrics",
+    description:
+      "How work went: issues created and completed, cycle time, SLA breaches, runs, how often the owner stopped runs or rejected requests, and tokens used. For the company, a team or a member, over the last N days compared with the N days before. Use it in retros to see whether a change helped.",
+    readOnly: true,
+    inputSchema: {
+      type: "object",
+      properties: {
+        team: { type: "string" },
+        member: { type: "string", description: 'Name, id or "me"' },
+        days: { type: "number", description: "Default 7" },
+        daily: { type: "boolean", description: "Also return one row per day from snapshots" },
+      },
+    },
+    async run(args, c) {
+      const team = str(args.team) ? await resolveTeam(c, String(args.team)) : null;
+      const member = str(args.member) ? await resolveUser(c, String(args.member)) : null;
+      if (team && member) throw new ToolError("Pass a team or a member, not both");
+      const days = Math.min(Math.max(Number(args.days) || 7, 1), 180);
+      const at = Date.now();
+      const key = team
+        ? scopeKey("team", team.id)
+        : member
+          ? scopeKey("user", member.id)
+          : scopeKey("company");
+      const [current, previous] = await Promise.all([
+        countAll(c.db, at - days * DAY, at),
+        countAll(c.db, at - 2 * days * DAY, at - days * DAY),
+      ]);
+      const result: Record<string, unknown> = {
+        scope: team ? `team ${team.name}` : member ? member.name : "company",
+        days,
+        current: readable(deriveMetrics(current.get(key) ?? emptyCounts())),
+        previous: readable(deriveMetrics(previous.get(key) ?? emptyCounts())),
+      };
+      if (args.daily === true) {
+        const rows = await metricHistory(
+          c.db,
+          team ? "team" : member ? "user" : "company",
+          team?.id ?? member?.id ?? "",
+          days,
+          at,
+        );
+        result.daily = rows.map((r) => ({
+          date: r.date,
+          ...readable(deriveMetrics(addCounts(emptyCounts(), r.counts))),
+        }));
+      }
+      return result;
+    },
+  },
   {
     name: "list_feedback",
     title: "List feedback",

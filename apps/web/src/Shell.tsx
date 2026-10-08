@@ -14,6 +14,7 @@ import { Handbook } from "./views/Handbook.js";
 import { HireAgentHost } from "./views/HireAgent.js";
 import { InboxView, useUnreadCount } from "./views/Inbox.js";
 import { InitiativesView } from "./views/Initiatives.js";
+import { Insights } from "./views/Insights.js";
 import { IssuePage } from "./views/IssuePage.js";
 import { IssuesView } from "./views/IssuesView.js";
 import { MachinesView } from "./views/Machines.js";
@@ -200,6 +201,8 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <RoadmapView />;
     case "handbook":
       return <Handbook />;
+    case "insights":
+      return <Insights />;
     case "documents":
       return <DocumentsView />;
     case "document":
@@ -319,6 +322,9 @@ function Sidebar({
             Runs
             {running > 0 && <span className="text-[11px] text-accent">{running}</span>}
           </span>
+        </NavLink>
+        <NavLink to={paths.insights()} active={route.name === "insights"}>
+          Insights
         </NavLink>
         <NavLink
           to={paths.company()}

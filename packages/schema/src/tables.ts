@@ -836,3 +836,25 @@ export const revisions = sqliteTable(
   },
   (t) => [index("revisions_entity_idx").on(t.subject, t.entityId, t.createdAt)],
 );
+
+export const METRIC_SCOPES = ["company", "team", "user"] as const;
+export type MetricScope = (typeof METRIC_SCOPES)[number];
+
+/**
+ * One local day's raw counts for the company, a team or a member, taken by the scheduler
+ * after the day ends. Raw counts add up over any range, so trends and rates come from sums.
+ */
+export const metricSnapshots = sqliteTable(
+  "metric_snapshots",
+  {
+    id: text("id").primaryKey(),
+    /** The company's local date, YYYY-MM-DD. */
+    date: text("date").notNull(),
+    scope: text("scope", { enum: METRIC_SCOPES }).notNull(),
+    /** The team or member; empty for the company. */
+    scopeId: text("scope_id").notNull().default(""),
+    counts: text("counts", { mode: "json" }).$type<Record<string, number>>().notNull(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [uniqueIndex("metric_snapshots_day_idx").on(t.scope, t.scopeId, t.date)],
+);

@@ -1,0 +1,153 @@
+import type { MetricScope, metricSnapshots } from "@life-os/schema";
+import { createGraphQLError } from "graphql-yoga";
+import {
+  addCounts,
+  countAll,
+  deriveMetrics,
+  emptyCounts,
+  type Metrics,
+  metricHistory,
+  scopeKey,
+} from "../services/metrics.js";
+import { builder, db, now, requireViewer } from "./builder.js";
+import { Team, User } from "./types.js";
+
+const DAY = 86_400_000;
+
+const MetricsRef = builder.objectRef<Metrics>("Metrics").implement({
+  description:
+    "How work went over a period. Rates are 0–1; null when there was nothing to measure.",
+  fields: (t) => ({
+    created: t.exposeInt("created", { description: "Issues created." }),
+    completed: t.exposeInt("completed", { description: "Issues completed." }),
+    cycleTimeHours: t.exposeFloat("cycleTimeHours", {
+      nullable: true,
+      description: "Average hours from start (or creation) to completion.",
+    }),
+    slaBreaches: t.exposeInt("slaBreaches"),
+    runs: t.exposeInt("runs", { description: "Agent runs that ended." }),
+    runSuccessRate: t.exposeFloat("runSuccessRate", { nullable: true }),
+    stopRate: t.exposeFloat("stopRate", {
+      nullable: true,
+      description: "Share of runs the owner stopped.",
+    }),
+    requestsAnswered: t.exposeInt("requestsAnswered"),
+    rejectionRate: t.exposeFloat("rejectionRate", {
+      nullable: true,
+      description: "Share of answered approval requests that were rejected.",
+    }),
+    tokens: t.exposeFloat("tokens", { description: "Model tokens used by runs." }),
+    tokensPerCompletedIssue: t.exposeFloat("tokensPerCompletedIssue", { nullable: true }),
+  }),
+});
+
+const TeamMetrics = builder
+  .objectRef<{ teamId: string; metrics: Metrics }>("TeamMetrics")
+  .implement({
+    fields: (t) => ({
+      team: t.field({
+        type: Team,
+        nullable: true,
+        resolve: (r, _a, ctx) => ctx.loaders.team.load(r.teamId),
+      }),
+      metrics: t.field({ type: MetricsRef, resolve: (r) => r.metrics }),
+    }),
+  });
+
+const UserMetrics = builder
+  .objectRef<{ userId: string; metrics: Metrics }>("UserMetrics")
+  .implement({
+    fields: (t) => ({
+      user: t.field({
+        type: User,
+        nullable: true,
+        resolve: (r, _a, ctx) => ctx.loaders.user.load(r.userId),
+      }),
+      metrics: t.field({ type: MetricsRef, resolve: (r) => r.metrics }),
+    }),
+  });
+
+const Insights = builder
+  .objectRef<{
+    from: number;
+    to: number;
+    company: Metrics;
+    teams: { teamId: string; metrics: Metrics }[];
+    users: { userId: string; metrics: Metrics }[];
+  }>("Insights")
+  .implement({
+    description: "The company's metrics over a period, overall and per team and member.",
+    fields: (t) => ({
+      from: t.field({ type: "DateTime", resolve: (i) => i.from }),
+      to: t.field({ type: "DateTime", resolve: (i) => i.to }),
+      company: t.field({ type: MetricsRef, resolve: (i) => i.company }),
+      teams: t.field({ type: [TeamMetrics], resolve: (i) => i.teams }),
+      users: t.field({ type: [UserMetrics], resolve: (i) => i.users }),
+    }),
+  });
+
+type SnapshotRow = typeof metricSnapshots.$inferSelect;
+
+const MetricSnapshot = builder.objectRef<SnapshotRow>("MetricSnapshot").implement({
+  description: "One local day's metrics, kept by the hub after the day ends.",
+  fields: (t) => ({
+    date: t.exposeString("date", { description: "YYYY-MM-DD in the company's time zone." }),
+    metrics: t.field({
+      type: MetricsRef,
+      resolve: (s) => deriveMetrics(addCounts(emptyCounts(), s.counts)),
+    }),
+  }),
+});
+
+function scopeOf(args: { teamId?: string | null; userId?: string | null }): [MetricScope, string] {
+  if (args.teamId && args.userId)
+    throw createGraphQLError("Pass a team or a member, not both", {
+      extensions: { code: "BAD_REQUEST" },
+    });
+  if (args.teamId) return ["team", args.teamId];
+  if (args.userId) return ["user", args.userId];
+  return ["company", ""];
+}
+
+builder.queryFields((t) => ({
+  insights: t.field({
+    type: Insights,
+    description: "Metrics for the last `days` days (default 7), overall and per team and member.",
+    args: { days: t.arg.int({ required: false }) },
+    resolve: async (_root, args, ctx) => {
+      requireViewer(ctx);
+      const to = now(ctx);
+      const days = Math.min(Math.max(args.days ?? 7, 1), 365);
+      const from = to - days * DAY;
+      const all = await countAll(db(ctx), from, to);
+      const teams: { teamId: string; metrics: Metrics }[] = [];
+      const users: { userId: string; metrics: Metrics }[] = [];
+      for (const [key, counts] of all) {
+        const [scope, id = ""] = key.split(":");
+        if (scope === "team") teams.push({ teamId: id, metrics: deriveMetrics(counts) });
+        if (scope === "user") users.push({ userId: id, metrics: deriveMetrics(counts) });
+      }
+      return {
+        from,
+        to,
+        company: deriveMetrics(all.get(scopeKey("company")) ?? emptyCounts()),
+        teams,
+        users,
+      };
+    },
+  }),
+  metricHistory: t.field({
+    type: [MetricSnapshot],
+    description: "Daily metrics, oldest first, for the company or one team or member.",
+    args: {
+      teamId: t.arg.string({ required: false }),
+      userId: t.arg.string({ required: false }),
+      days: t.arg.int({ required: false, description: "Default 30." }),
+    },
+    resolve: (_root, args, ctx) => {
+      requireViewer(ctx);
+      const [scope, id] = scopeOf(args);
+      return metricHistory(db(ctx), scope, id, args.days ?? 30, now(ctx));
+    },
+  }),
+}));

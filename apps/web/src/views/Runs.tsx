@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
+import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths, type RunsTab } from "../router.js";
 import { Avatar, timeAgo, useStore } from "../ui.js";
 
@@ -307,20 +308,22 @@ export function RunPage({ id }: { id: string }) {
 
         {stopping && (
           <div className="mt-4 rounded-lg border border-line p-4">
-            <label className="block">
+            <div className="block">
               <span className="mb-1.5 block text-muted">
                 Why stop? {run.agent.name} reads this next time.
               </span>
-              <textarea
-                // biome-ignore lint/a11y/noAutofocus: the reason is the only thing to type
-                autoFocus
-                aria-label="Reason"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-line bg-panel px-3 py-2 outline-none focus:border-faint"
-              />
-            </label>
+              <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
+                <RichEditor
+                  label="Reason"
+                  autoFocus
+                  value=""
+                  onChange={setReason}
+                  onSubmit={() => reason.trim() && void stop()}
+                  onEscape={() => setStopping(false)}
+                  className="min-h-10"
+                />
+              </div>
+            </div>
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
@@ -431,11 +434,11 @@ function Outcome({ run }: { run: RunDetail }) {
             {text("emoji") && ` ${text("emoji")}`}
           </p>
           {text("reason") && <p className="mt-1 text-muted">{text("reason")}</p>}
-          {text("body") && <p className="mt-2 whitespace-pre-wrap">{text("body")}</p>}
+          {text("body") && <RichText source={text("body")} className="mt-2" />}
         </>
       ) : (
         <>
-          <p className="whitespace-pre-wrap">{text("summary")}</p>
+          <RichText source={text("summary")} />
           {text("question") && <p className="mt-2 text-amber-400">Asked: {text("question")}</p>}
         </>
       )}
@@ -446,7 +449,11 @@ function Outcome({ run }: { run: RunDetail }) {
 function TranscriptLine({ event }: { event: TranscriptEvent }) {
   switch (event.type) {
     case "text":
-      return <li className="whitespace-pre-wrap leading-relaxed">{event.text}</li>;
+      return (
+        <li>
+          <RichText source={event.text ?? ""} />
+        </li>
+      );
     case "tool":
       return (
         <li className="rounded-md bg-panel px-3 py-1.5 text-[13px]">

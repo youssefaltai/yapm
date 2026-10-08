@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
+import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths, type RequestsTab } from "../router.js";
 import { Avatar, timeAgo, useStore } from "../ui.js";
 
@@ -284,7 +285,7 @@ export function RequestPage({ id }: { id: string }) {
           </span>
         </div>
         <h1 className="mt-3 text-xl font-medium">{r.title}</h1>
-        <p className="mt-3 whitespace-pre-wrap leading-relaxed">{r.reason}</p>
+        <RichText source={r.reason} className="mt-3" />
 
         <dl className="mt-5 grid grid-cols-[6rem_1fr] gap-y-2 rounded-lg border border-line bg-panel px-4 py-3">
           <dt className="text-faint">Permission</dt>
@@ -397,19 +398,21 @@ export function RequestPage({ id }: { id: string }) {
 
         {canAnswer && mode === "reject" && (
           <div className="mt-6">
-            <label className="block">
+            <div className="block">
               <span className="mb-1.5 block text-muted">
                 Why not? {r.requester.name} learns from this.
               </span>
-              <textarea
-                // biome-ignore lint/a11y/noAutofocus: the reason is the only thing to type
-                autoFocus
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-line bg-panel px-3 py-2 outline-none focus:border-faint"
-              />
-            </label>
+              <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
+                <RichEditor
+                  label="Why not?"
+                  autoFocus
+                  value=""
+                  onChange={setReason}
+                  onEscape={() => setMode("idle")}
+                  className="min-h-14"
+                />
+              </div>
+            </div>
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
@@ -449,7 +452,7 @@ export function RequestPage({ id }: { id: string }) {
                 </span>
               )}
             </p>
-            {r.answer && <p className="mt-1 whitespace-pre-wrap text-muted">{r.answer}</p>}
+            {r.answer && <RichText source={r.answer} className="mt-1 text-muted" />}
           </div>
         )}
       </div>

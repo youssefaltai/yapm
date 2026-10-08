@@ -1,4 +1,5 @@
 import { workspaceStore } from "../actions.js";
+import { confirmDialog, promptDialog } from "../controls.js";
 import { mutate, toast } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { useStore } from "../ui.js";
@@ -12,7 +13,12 @@ export function ViewPage({ id }: { id: string }) {
   if (!view) return <p className="px-6 py-10 text-center text-muted">View not found.</p>;
 
   const rename = async () => {
-    const name = window.prompt("Rename view", view.name)?.trim();
+    const name = await promptDialog({
+      title: "Rename view",
+      label: "View name",
+      initial: view.name,
+      confirmLabel: "Rename",
+    });
     if (name && name !== view.name)
       await mutate(
         "mutation($id: String!, $name: String!) { customViewUpdate(id: $id, input: { name: $name }) { success } }",
@@ -20,7 +26,15 @@ export function ViewPage({ id }: { id: string }) {
       );
   };
   const remove = async () => {
-    if (!window.confirm(`Delete the view “${view.name}”? Its issues stay as they are.`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Delete the view “${view.name}”?`,
+        body: "Its issues stay as they are.",
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     if (await mutate("mutation($id: String!) { customViewDelete(id: $id) { success } }", { id })) {
       toast(`Deleted “${view.name}”`);
       navigate(paths.inbox());

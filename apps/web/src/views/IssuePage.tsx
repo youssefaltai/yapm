@@ -15,6 +15,7 @@ import {
   targetStore,
   workspaceStore,
 } from "../actions.js";
+import { confirmDialog, DatePicker } from "../controls.js";
 import {
   ISSUE_FIELDS,
   type Issue,
@@ -25,6 +26,7 @@ import {
   useQuery,
   type Workspace,
 } from "../data.js";
+import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import {
   Avatar,
@@ -283,23 +285,31 @@ function EditableTitle({ issue }: { issue: IssueDetail }) {
 }
 
 function EditableDescription({ issue }: { issue: IssueDetail }) {
-  const [text, setText] = useState(issue.description ?? "");
-  useEffect(() => setText(issue.description ?? ""), [issue.description]);
+  const saved = useRef(issue.description ?? "");
+  saved.current = issue.description ?? "";
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const save = (text: string) => {
+    clearTimeout(timer.current);
+    if (text.trim() !== saved.current.trim()) {
+      saved.current = text;
+      void updateIssues([issue.id], { description: text });
+    }
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
-    <AutoTextarea
-      aria-label="Issue description"
-      value={text}
-      placeholder="Add description…"
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => {
-        if (text.trim() !== (issue.description ?? ""))
-          void updateIssues([issue.id], { description: text });
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") e.currentTarget.blur();
-      }}
-      className="mt-3 min-h-16 w-full bg-transparent leading-relaxed text-ink/90 outline-none placeholder:text-faint"
-    />
+    <div className="mt-3 min-h-16 text-[15px]">
+      <RichEditor
+        label="Issue description"
+        value={issue.description ?? ""}
+        placeholder="Add description…"
+        onChange={(text) => {
+          // Saves as you pause, like Linear, and again when you leave the editor.
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => save(text), 1000);
+        }}
+        onBlur={save}
+      />
+    </div>
   );
 }
 
@@ -362,15 +372,13 @@ function Properties({
         )}
       </PropertyButton>
       <PropertyLabel>Due date</PropertyLabel>
-      <label className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-raised">
-        <input
-          type="date"
-          aria-label="Due date"
-          value={issue.dueDate ?? ""}
-          onChange={(e) => void updateIssues([issue.id], { dueDate: e.target.value || null })}
-          className={`w-full bg-transparent outline-none [color-scheme:dark] ${due?.overdue ? "text-red-400" : issue.dueDate ? "" : "text-faint"}`}
-        />
-      </label>
+      <DatePicker
+        aria-label="Due date"
+        value={issue.dueDate}
+        onChange={(dueDate) => void updateIssues([issue.id], { dueDate })}
+        placeholder="Set due date"
+        className={`w-full rounded-md px-2 py-1 outline-none hover:bg-raised ${due?.overdue ? "text-red-400" : ""}`}
+      />
       <PropertyLabel>Project</PropertyLabel>
       <PropertyButton onClick={() => void projectMenu([issue]).then(openMenu)} hint="Shift+P">
         {issue.project ? (
@@ -601,7 +609,7 @@ function Activity({
       <ol className="space-y-3">
         {items.map((item) =>
           item.kind === "event" ? (
-            <li key={item.entry.id} className="flex items-start gap-2 text-muted">
+            <li key={item.entry.id} className="flex animate-fade-in items-start gap-2 text-muted">
               <span className="mt-0.5">
                 {item.entry.actor ? (
                   <Avatar name={item.entry.actor.name} kind={item.entry.actor.kind} size={16} />
@@ -621,7 +629,7 @@ function Activity({
               <FeedbackEntry feedback={item.feedback} />
             </li>
           ) : (
-            <li key={item.comment.id}>
+            <li key={item.comment.id} className="animate-fade-in">
               <CommentThread
                 comment={item.comment}
                 replies={comments.filter((c) => c.parent?.id === item.comment.id)}
@@ -658,7 +666,7 @@ function FeedbackEntry({ feedback: f }: { feedback: IssueFeedback }) {
           <span className="text-faint"> · {timeAgo(f.createdAt)}</span>
         </span>
       </div>
-      <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{f.body}</p>
+      <RichText source={f.body} className="mt-1.5" />
       {f.addressedAt ? (
         <p className="mt-1 text-[12px] text-muted">✓ {f.addressedNote}</p>
       ) : (
@@ -803,6 +811,14 @@ function CommentBody({
   const [editing, setEditing] = useState(false);
   const [coaching, setCoaching] = useState(false);
   const [text, setText] = useState(comment.body);
+  async function saveEdit() {
+    if (!text.trim()) return;
+    await mutate(
+      "mutation($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success } }",
+      { id: comment.id, body: text },
+    );
+    setEditing(false);
+  }
   return (
     <div className="group px-4 py-3">
       <div className="flex items-center gap-2">
@@ -825,7 +841,10 @@ function CommentBody({
           {comment.user.isMe && (
             <button
               type="button"
-              onClick={() => setEditing(true)}
+              onClick={() => {
+                setText(comment.body);
+                setEditing(true);
+              }}
               className="text-faint hover:text-ink"
             >
               Edit
@@ -833,8 +852,15 @@ function CommentBody({
           )}
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm("Delete this comment and its replies?")) {
+            onClick={async () => {
+              if (
+                await confirmDialog({
+                  title: "Delete this comment?",
+                  body: "Its replies are deleted too.",
+                  confirmLabel: "Delete",
+                  destructive: true,
+                })
+              ) {
                 void mutate("mutation($id: String!) { commentDelete(id: $id) { success } }", {
                   id: comment.id,
                 });
@@ -848,12 +874,16 @@ function CommentBody({
       </div>
       {editing ? (
         <div className="mt-2">
-          <AutoTextarea
-            aria-label="Edit comment"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="w-full rounded-md border border-line bg-canvas px-3 py-2 outline-none focus:border-accent"
-          />
+          <div className="rounded-md border border-line bg-canvas px-3 py-2 focus-within:border-accent">
+            <RichEditor
+              label="Edit comment"
+              value={comment.body}
+              autoFocus
+              onChange={setText}
+              onSubmit={() => void saveEdit()}
+              onEscape={() => setEditing(false)}
+            />
+          </div>
           <div className="mt-2 flex justify-end gap-2">
             <button
               type="button"
@@ -864,16 +894,7 @@ function CommentBody({
             </button>
             <button
               type="button"
-              onClick={async () => {
-                await mutate(
-                  "mutation($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success } }",
-                  {
-                    id: comment.id,
-                    body: text,
-                  },
-                );
-                setEditing(false);
-              }}
+              onClick={() => void saveEdit()}
               className="rounded-md bg-accent px-3 py-1 text-white"
             >
               Save
@@ -881,7 +902,7 @@ function CommentBody({
           </div>
         </div>
       ) : (
-        <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{comment.body}</p>
+        <RichText source={comment.body} className="mt-1.5" />
       )}
       <Reactions reactions={comment.reactions} target={{ commentId: comment.id }} />
       {coaching && (
@@ -932,7 +953,7 @@ function Reactions({
           type="button"
           title={list.map((r) => r.user.name).join(", ")}
           onClick={() => toggle(emoji)}
-          className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] ${
+          className={`flex animate-pop-in items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] ${
             list.some((r) => r.user.isMe) ? "border-accent/60 bg-accent/10" : "border-line"
           }`}
         >
@@ -973,6 +994,8 @@ function CommentComposer({
 }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
+  // Each sent comment starts a fresh editor.
+  const [sent, setSent] = useState(0);
   async function submit() {
     if (!body.trim() || busy) return;
     setBusy(true);
@@ -985,6 +1008,7 @@ function CommentComposer({
     setBusy(false);
     if (ok) {
       setBody("");
+      setSent((n) => n + 1);
       onDone?.();
     }
   }
@@ -996,23 +1020,16 @@ function CommentComposer({
           : "mt-5 rounded-lg border border-line bg-panel px-4 py-3 focus-within:border-faint"
       }
     >
-      <AutoTextarea
-        aria-label={parentId ? "Reply" : "Leave a comment"}
-        autoFocus={autoFocus}
-        value={body}
+      <RichEditor
+        key={sent}
+        label={parentId ? "Reply" : "Leave a comment"}
+        autoFocus={autoFocus || sent > 0}
+        value=""
         placeholder={parentId ? "Leave a reply…" : "Leave a comment…"}
-        onChange={(e) => setBody(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            void submit();
-          }
-          if (e.key === "Escape") {
-            e.currentTarget.blur();
-            onDone?.();
-          }
-        }}
-        className="min-h-6 w-full bg-transparent outline-none placeholder:text-faint"
+        onChange={setBody}
+        onSubmit={() => void submit()}
+        onEscape={onDone}
+        className="min-h-6"
       />
       <div className="mt-2 flex items-center justify-end gap-2">
         <span className="text-[12px] text-faint max-sm:hidden">

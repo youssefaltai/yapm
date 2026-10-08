@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createDocument } from "../actions.js";
+import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
+import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
-import { Markdown, timeAgo } from "../ui.js";
+import { timeAgo } from "../ui.js";
 import { ProjectDot } from "./Projects.js";
 
 interface DocumentRow {
@@ -51,7 +53,7 @@ export function DocumentsView() {
               <button
                 type="button"
                 onClick={() => navigate(paths.document(d.id))}
-                className="flex w-full items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
+                className="flex w-full animate-fade-in items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
                 {d.project && (
@@ -79,14 +81,13 @@ interface DocumentDetail extends DocumentRow {
   creator: { name: string } | null;
 }
 
-/** A Markdown document: read it rendered, or edit the source; it saves as you pause. */
+/** A Markdown document, written in place like Linear's; it saves as you pause. */
 export function DocumentPage({ id }: { id: string }) {
   const { data, error } = useQuery<{ document: DocumentDetail }>(
     "query($id: String!) { document(id: $id) { id title content createdAt updatedAt creator { name } updatedBy { name } project { id name color } } }",
     { id },
   );
   const doc = data?.document;
-  const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const saved = useRef({ title: "", content: "" });
@@ -100,7 +101,6 @@ export function DocumentPage({ id }: { id: string }) {
       setTitle(doc.title);
       setContent(doc.content);
       saved.current = { title: doc.title, content: doc.content };
-      if (!loaded.current && doc.content === "" && doc.title === "Untitled") setEditing(true);
       loaded.current = true;
     }
   }, [doc]);
@@ -124,6 +124,8 @@ export function DocumentPage({ id }: { id: string }) {
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   if (!doc) return null;
+  // A brand new document opens ready to write in.
+  const fresh = doc.content === "" && doc.title === "Untitled";
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
@@ -149,21 +151,22 @@ export function DocumentPage({ id }: { id: string }) {
         <span className="min-w-0 truncate font-medium">{title || "Untitled"}</span>
         <button
           type="button"
-          onClick={() => setEditing(!editing)}
-          className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
-        >
-          {editing ? "Done" : "Edit"}
-        </button>
-        <button
-          type="button"
           onClick={async () => {
-            if (!window.confirm(`Delete "${doc.title}"?`)) return;
+            if (
+              !(await confirmDialog({
+                title: `Delete “${doc.title || "Untitled"}”?`,
+                body: "The document is deleted for everyone.",
+                confirmLabel: "Delete",
+                destructive: true,
+              }))
+            )
+              return;
             if (
               await mutate("mutation($id: String!) { documentDelete(id: $id) { success } }", { id })
             )
               navigate(doc.project ? paths.project(doc.project.id) : paths.documents());
           }}
-          className="rounded-md px-2 py-0.5 text-faint hover:text-red-400"
+          className="ml-auto rounded-md px-2 py-0.5 text-faint hover:text-red-400"
         >
           Delete
         </button>
@@ -172,6 +175,9 @@ export function DocumentPage({ id }: { id: string }) {
         <article className="mx-auto max-w-3xl px-4 py-8 md:px-6">
           <input
             aria-label="Document title"
+            // biome-ignore lint/a11y/noAutofocus: a new document opens to be named
+            autoFocus={fresh}
+            onFocus={(e) => fresh && e.currentTarget.select()}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="w-full bg-transparent text-2xl font-semibold outline-none"
@@ -179,22 +185,13 @@ export function DocumentPage({ id }: { id: string }) {
           <p className="mt-1 mb-6 text-[12px] text-faint">
             {doc.updatedBy?.name ?? doc.creator?.name ?? "Someone"} edited {timeAgo(doc.updatedAt)}
           </p>
-          {editing ? (
-            <textarea
-              aria-label="Content"
-              // biome-ignore lint/a11y/noAutofocus: editing was just asked for
-              autoFocus
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={Math.max(16, content.split("\n").length + 2)}
-              placeholder="Write in Markdown…"
-              className="w-full resize-y rounded-lg border border-line bg-panel px-4 py-3 font-mono text-[13px] leading-relaxed outline-none focus:border-faint"
-            />
-          ) : content ? (
-            <Markdown source={content} className="text-[14px]" />
-          ) : (
-            <p className="text-faint">Empty. Press Edit to write.</p>
-          )}
+          <RichEditor
+            label="Content"
+            value={content}
+            onChange={setContent}
+            placeholder="Write something, or press / for blocks…"
+            className="min-h-[50vh] text-[15px]"
+          />
         </article>
       </div>
     </div>

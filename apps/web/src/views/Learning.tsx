@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { mutate, useQuery, type Workspace } from "../data.js";
+import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import { timeAgo } from "../ui.js";
 
@@ -19,19 +20,21 @@ export function Prose(props: {
   disabled: boolean;
   onSave: (value: string) => void;
 }) {
-  const [text, setText] = useState(props.value);
-  useEffect(() => setText(props.value), [props.value]);
   return (
-    <textarea
-      aria-label={props.label}
-      value={text}
-      disabled={props.disabled}
-      rows={Math.max(6, text.split("\n").length + 1)}
-      placeholder={props.placeholder}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => text !== props.value && props.onSave(text)}
-      className="w-full resize-y rounded-lg border border-line bg-panel px-4 py-3 leading-relaxed outline-none placeholder:text-faint focus:border-faint disabled:opacity-80"
-    />
+    <div
+      className={`rounded-lg border border-line bg-panel px-4 py-3 focus-within:border-faint ${
+        props.disabled ? "opacity-80" : ""
+      }`}
+    >
+      <RichEditor
+        label={props.label}
+        value={props.value}
+        placeholder={props.placeholder}
+        editable={!props.disabled}
+        onBlur={(text) => text !== props.value && props.onSave(text)}
+        className="min-h-32"
+      />
+    </div>
   );
 }
 
@@ -72,9 +75,7 @@ export function RevisionList({ subject, entityId }: { subject: string; entityId?
               <span className="shrink-0 text-faint">{timeAgo(r.createdAt)}</span>
             </button>
             {open === r.id && (
-              <pre className="mt-2 whitespace-pre-wrap font-sans text-muted">
-                {r.content || "(empty)"}
-              </pre>
+              <RichText source={r.content || "(empty)"} className="mt-2 text-muted" />
             )}
           </div>
         ))}
@@ -218,7 +219,7 @@ export function FeedbackSection({
                 )}
                 <span className="ml-auto">{timeAgo(f.createdAt)}</span>
               </div>
-              <p className="mt-0.5">{f.body}</p>
+              <RichText source={f.body} className="mt-0.5" />
               {f.addressedAt ? (
                 <p className="mt-1 text-[12px] text-muted">✓ {f.addressedNote}</p>
               ) : (

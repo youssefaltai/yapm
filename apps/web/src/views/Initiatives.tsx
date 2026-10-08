@@ -145,7 +145,7 @@ export function InitiativesView() {
                       <button
                         type="button"
                         onClick={() => navigate(paths.project(p.id))}
-                        className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-raised"
+                        className="flex w-full animate-fade-in items-center gap-3 px-4 py-2 text-left hover:bg-raised"
                       >
                         <ProjectDot color={p.color} />
                         <span className="min-w-0 flex-1 truncate">{p.name}</span>

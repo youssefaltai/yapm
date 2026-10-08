@@ -5,16 +5,25 @@ The hub decides who runs what; the runner claims runs, works through the Claude 
 streams the transcript back, and obeys Stop. Secrets (your Claude sign-in, MCP tokens,
 files) never leave the machine.
 
+On the Machines page in Life OS, press **Add machine** and paste the command into Terminal on
+the computer you're adding:
+
 ```sh
-# Once: sign in to Claude Code with your plan
-claude
-
-# Ask your hub to add this machine, then type the code it shows on the Machines page
-npx @life-os/runner enrol --hub https://your-hub.example --name "My laptop" --tags personal
-
-# Take work until stopped (Ctrl-C finishes cleanly)
-npx @life-os/runner start
+curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
+
+It installs the runner into `~/.life-os-runner` (with a private Node.js when the machine has no
+Node 22+), connects it with the one-time token, signs in to Claude if needed and keeps it running
+in the background (launchd on macOS, systemd on Linux). Run it again without `--token` to update.
+
+```sh
+life-os-runner logs                # follow what it's doing
+life-os-runner login               # sign in to Claude again
+life-os-runner service uninstall   # stop running in the background
+```
+
+By hand, or with the npm package: `life-os-runner enrol --hub https://your-hub.example` prints a
+six-digit code to approve in the app (or pass `--token`), then `life-os-runner start`.
 
 Settings live in `~/.life-os-runner/config.json`. Add MCP servers only this machine should
 offer under `"mcpServers"`, in Claude Code's shape. Servers added from the hub (Machines page,

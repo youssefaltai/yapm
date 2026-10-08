@@ -2289,5 +2289,68 @@ export function hubContract(
       );
       expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
     });
+
+    it("adds a machine with a one-time setup command, approved without a pairing code", async () => {
+      const enrol = (json: Record<string, unknown>) =>
+        client.json<{ id: string; token: string; status: string; error?: string }>(
+          "/api/runner/enrol",
+          { method: "POST", json },
+        );
+      const create = "mutation { machineSetupTokenCreate { token expiresAt } }";
+
+      // Only the owner makes setup tokens.
+      const byAgent = await client.graphql(create, undefined, ceoToken);
+      expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+
+      const made = await client.graphql<{
+        machineSetupTokenCreate: { token: string; expiresAt: string };
+      }>(create);
+      const setup = made.data?.machineSetupTokenCreate;
+      expect(setup?.token).toMatch(/^lms_/);
+      expect(Date.parse(setup?.expiresAt ?? "")).toBeGreaterThan(Date.now());
+
+      const joined = await enrol({
+        name: "Studio Mac",
+        tags: ["personal"],
+        setupToken: setup?.token,
+      });
+      expect(joined.status).toBe(201);
+      expect(joined.body.status).toBe("active");
+      const me = await client.json<{ status: string; name: string }>("/api/runner/me", {
+        token: joined.body.token,
+      });
+      expect(me.body).toMatchObject({ status: "active", name: "Studio Mac" });
+
+      // A token adds one machine; made-up and reused tokens are refused.
+      const again = await enrol({ name: "Another", setupToken: setup?.token });
+      expect(again.status).toBe(400);
+      expect(again.body.error).toMatch(/expired or was already used/);
+      expect((await enrol({ name: "Another", setupToken: "lms_nope" })).status).toBe(400);
+      expect((await enrol({ name: "Another", setupToken: "nope" })).status).toBe(400);
+
+      // The audit log says who added it: the owner who made the command.
+      const log = await client.graphql<{
+        auditEntries: { nodes: { action: string; actor: { kind: string } | null }[] };
+      }>("query($id: String) { auditEntries(entityId: $id) { nodes { action actor { kind } } } }", {
+        id: joined.body.id,
+      });
+      expect(log.data?.auditEntries.nodes).toEqual([
+        { action: "machine.enrol", actor: { kind: "owner" } },
+      ]);
+
+      // The installer is served by the hub, pointed at itself.
+      const script = await client.request("/install.sh");
+      expect(script.status).toBe(200);
+      expect(script.headers.get("content-type")).toContain("shellscript");
+      const text = await script.text();
+      expect(text.startsWith("#!/bin/sh")).toBe(true);
+      expect(text).toContain(`HUB="${client.origin}"`);
+      expect(text).toContain(`${client.origin}/downloads/life-os-runner.tgz`);
+      expect(text).not.toContain("__HUB__");
+
+      await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+        id: joined.body.id,
+      });
+    });
   });
 }

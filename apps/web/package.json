@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/bundle-runner.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p ."
   },
@@ -32,6 +32,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@life-os/runner": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

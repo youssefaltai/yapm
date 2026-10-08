@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { mutate, useQuery } from "../data.js";
+import { linkEntries } from "../actions.js";
+import { type ContextEntry, contextMenu } from "../contextMenu.js";
+import { mutate, toast, useQuery } from "../data.js";
 import { plainText } from "../editor/plain.js";
 import { usePushState } from "../push.js";
 import { navigate, paths } from "../router.js";
@@ -95,6 +97,51 @@ function heading(n: Notification) {
   return "Notification";
 }
 
+/** Where a notification leads, if anywhere. */
+function pathOf(n: Notification): string | null {
+  if (n.request) return paths.request(n.request.id);
+  if (n.issue) return paths.issue(n.issue.identifier);
+  if (n.project) return paths.project(n.project.id);
+  if (n.type === "mcpServerNeedsAuth") return paths.machines();
+  return null;
+}
+
+const markRead = (n: Notification, read: boolean) =>
+  mutate(
+    "mutation($id: String!, $at: DateTime) { notificationUpdate(id: $id, input: { readAt: $at }) { success } }",
+    { id: n.id, at: read ? new Date().toISOString() : null },
+  );
+
+async function archive(n: Notification) {
+  if (
+    !(await mutate("mutation($id: String!) { notificationArchive(id: $id) { success } }", {
+      id: n.id,
+    }))
+  )
+    return;
+  toast("Archived notification", {
+    label: "Undo",
+    run: () =>
+      void mutate("mutation($id: String!) { notificationUnarchive(id: $id) { success } }", {
+        id: n.id,
+      }),
+  });
+}
+
+function notificationMenu(n: Notification, open: () => void): ContextEntry[] {
+  const path = pathOf(n);
+  return [
+    { id: "open", label: "Open", onSelect: open },
+    n.readAt
+      ? { id: "unread", label: "Mark as unread", onSelect: () => markRead(n, false) }
+      : { id: "read", label: "Mark as read", onSelect: () => markRead(n, true) },
+    "divider",
+    ...(path ? linkEntries(path) : []),
+    "divider",
+    { id: "archive", label: "Archive", onSelect: () => archive(n) },
+  ];
+}
+
 export function InboxView() {
   const { data, error } = useQuery<{ notifications: { nodes: Notification[] } }>(INBOX_QUERY);
   const [selected, setSelected] = useState<string | null>(null);
@@ -102,19 +149,13 @@ export function InboxView() {
   const current = items.find((n) => n.id === selected) ?? null;
 
   function open(n: Notification) {
-    if (!n.readAt)
-      void mutate(
-        "mutation($id: String!, $at: DateTime) { notificationUpdate(id: $id, input: { readAt: $at }) { success } }",
-        { id: n.id, at: new Date().toISOString() },
-      );
+    if (!n.readAt) void markRead(n, true);
     if (window.matchMedia("(min-width: 768px)").matches && (n.request || n.issue)) {
       setSelected(n.id);
       return;
     }
-    if (n.request) navigate(paths.request(n.request.id));
-    else if (n.issue) navigate(paths.issue(n.issue.identifier));
-    else if (n.project) navigate(paths.project(n.project.id));
-    else if (n.type === "mcpServerNeedsAuth") navigate(paths.machines());
+    const path = pathOf(n);
+    if (path) navigate(path);
   }
 
   return (
@@ -150,6 +191,7 @@ export function InboxView() {
                 <button
                   type="button"
                   onClick={() => open(n)}
+                  onContextMenu={contextMenu(() => notificationMenu(n, () => open(n)))}
                   className={`flex w-full gap-3 border-b border-line px-4 py-3 text-left hover:bg-raised ${
                     n.id === selected ? "bg-raised" : ""
                   }`}
@@ -183,14 +225,7 @@ export function InboxView() {
                   type="button"
                   aria-label="Archive"
                   title="Archive"
-                  onClick={() =>
-                    void mutate(
-                      "mutation($id: String!) { notificationArchive(id: $id) { success } }",
-                      {
-                        id: n.id,
-                      },
-                    )
-                  }
+                  onClick={() => void archive(n)}
                   className="absolute right-3 bottom-2 hidden animate-fade-in rounded px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
                 >
                   Archive

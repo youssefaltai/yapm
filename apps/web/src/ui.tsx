@@ -369,7 +369,7 @@ export function MenuHost() {
   );
 }
 
-function matches(item: MenuItem, query: string) {
+export function matches(item: MenuItem, query: string) {
   const text = `${item.label} ${item.keywords ?? ""} ${item.section ?? ""}`.toLowerCase();
   return query
     .toLowerCase()

@@ -16,6 +16,7 @@ import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import { checkIssueCycle } from "./cycles.js";
 import {
   mentionedUserIds,
   type NotificationInput,
@@ -41,6 +42,7 @@ export interface IssueCreateInput {
   sortOrder?: number | null;
   projectId?: string | null;
   projectMilestoneId?: string | null;
+  cycleId?: string | null;
 }
 
 export interface IssueUpdateInput {
@@ -59,6 +61,7 @@ export interface IssueUpdateInput {
   removedLabelIds?: string[] | null;
   projectId?: string | null;
   projectMilestoneId?: string | null;
+  cycleId?: string | null;
 }
 
 const IDENTIFIER = /^([A-Za-z][A-Za-z0-9]{0,6})-(\d+)$/;
@@ -113,8 +116,11 @@ async function stateFor(db: HubDb, teamId: string, stateId: string) {
   return state;
 }
 
-/** New issues land in Backlog, or the team's first unstarted state. */
-async function defaultState(db: HubDb, teamId: string) {
+/**
+ * New issues land in Backlog, or the team's first unstarted state. With triage on,
+ * issues from anyone but the owner wait in Triage for the owner to accept.
+ */
+async function defaultState(db: HubDb, teamId: string, triage = false) {
   const states = await db
     .select()
     .from(workflowStates)
@@ -122,11 +128,17 @@ async function defaultState(db: HubDb, teamId: string) {
     .orderBy(asc(workflowStates.position))
     .all();
   const state =
+    (triage ? states.find((s) => s.type === "triage") : undefined) ??
     states.find((s) => s.type === "backlog") ??
     states.find((s) => s.type === "unstarted") ??
     states[0];
   if (!state) throw badRequest("The team has no workflow states");
   return state;
+}
+
+async function isAgent(db: HubDb, userId: string) {
+  const user = await db.select({ kind: users.kind }).from(users).where(eq(users.id, userId)).get();
+  return user?.kind === "agent";
 }
 
 async function checkAssignee(db: HubDb, assigneeId: string) {
@@ -182,7 +194,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
   const title = cleanText(input.title, "Title", 500);
   const state = input.stateId
     ? await stateFor(db, team.id, input.stateId)
-    : await defaultState(db, team.id);
+    : await defaultState(db, team.id, team.triageEnabled && (await isAgent(db, actorId)));
   const priority = input.priority ?? 0;
   checkPriority(priority);
   if (input.estimate != null) checkEstimate(input.estimate);
@@ -192,6 +204,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
   const labelIds = [...new Set(input.labelIds ?? [])];
   await checkLabels(db, team.id, labelIds);
   const project = await issueProjectFields(db, input);
+  if (input.cycleId) await checkIssueCycle(db, [team.id], input.cycleId);
 
   const id = newId();
   const ops: WriteOp[] = [
@@ -216,6 +229,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
       sortOrder: input.sortOrder ?? -now,
       projectId: project.projectId ?? null,
       projectMilestoneId: project.projectMilestoneId ?? null,
+      cycleId: input.cycleId ?? null,
       ...stateTimestamps(state.type, now),
       createdAt: now,
       updatedAt: now,
@@ -237,6 +251,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
           parentId: input.parentId ?? null,
           labelIds,
           ...(project.projectId ? { projectId: project.projectId } : {}),
+          ...(input.cycleId ? { cycleId: input.cycleId } : {}),
         }),
       ],
       now,
@@ -327,6 +342,10 @@ export async function updateIssues(
         same ? { projectId: input.projectId ?? null, projectMilestoneId: null } : undefined,
       ),
     );
+  }
+  if (input.cycleId !== undefined) {
+    if (input.cycleId) await checkIssueCycle(db, teamIds, input.cycleId);
+    next.cycleId = input.cycleId || null;
   }
   let state: typeof workflowStates.$inferSelect | undefined;
   if (input.stateId != null) {

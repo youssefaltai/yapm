@@ -6,6 +6,7 @@ import {
   mutate,
   PRIORITIES,
   type Team,
+  toast,
   updateIssues,
   type Workspace,
 } from "./data.js";
@@ -17,6 +18,7 @@ import {
   type MenuSpec,
   PriorityIcon,
   StatusIcon,
+  shortDate,
   UnassignedIcon,
 } from "./ui.js";
 
@@ -29,6 +31,7 @@ export interface CreateIssueDefaults {
   parentId?: string;
   assigneeId?: string;
   projectId?: string;
+  cycleId?: string;
 }
 
 export const createIssueStore = createStore<CreateIssueDefaults | null>(null);
@@ -126,6 +129,62 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
           onSelect: () => void updateIssues(ids, { projectMilestoneId: m.id }),
         })),
       ]),
+    ],
+  };
+}
+
+export interface CycleOption {
+  id: string;
+  number: number;
+  name: string | null;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+  isPast: boolean;
+}
+
+export const cycleName = (c: { number: number; name: string | null }) =>
+  c.name ? `${c.name} (Cycle ${c.number})` : `Cycle ${c.number}`;
+
+/** Moves issues into one of their team's current or upcoming cycles. */
+export async function cycleMenu(issues: Issue[]): Promise<MenuSpec | undefined> {
+  const teamIds = [...new Set(issues.map((i) => i.team.id))];
+  const [teamId] = teamIds;
+  if (teamIds.length !== 1 || !teamId) {
+    toast("Pick issues from one team to set their cycle.");
+    return undefined;
+  }
+  const data = await graphql<{
+    team: { cyclesEnabled: boolean; key: string; cycles: { nodes: CycleOption[] } };
+  }>(
+    "query($id: String!) { team(id: $id) { key cyclesEnabled cycles(first: 20) { nodes { id number name startsAt endsAt isActive isPast } } } }",
+    { id: teamId },
+  );
+  if (!data.team.cyclesEnabled) {
+    toast("This team doesn't use cycles yet.", {
+      label: "Turn on",
+      run: () => navigate(paths.teamSettings(data.team.key)),
+    });
+    return undefined;
+  }
+  const ids = issues.map((i) => i.id);
+  const open = data.team.cycles.nodes.filter((c) => !c.isPast).reverse();
+  return {
+    placeholder: `Move ${plural(issues)} to cycle…`,
+    items: [
+      {
+        id: "none",
+        label: "No cycle",
+        checked: issues.every((i) => !i.cycle),
+        onSelect: () => void updateIssues(ids, { cycleId: null }),
+      },
+      ...open.map((c) => ({
+        id: c.id,
+        label: `${cycleName(c)}${c.isActive ? " · current" : ""}`,
+        hint: `${shortDate(c.startsAt)} – ${shortDate(c.endsAt)}`,
+        checked: issues.every((i) => i.cycle?.id === c.id),
+        onSelect: () => void updateIssues(ids, { cycleId: c.id }),
+      })),
     ],
   };
 }
@@ -428,6 +487,13 @@ export function commandPalette(): MenuSpec {
         section,
         hint: "⇧P",
         onSelect: () => projectMenu(targets),
+      },
+      {
+        id: "cycle",
+        label: "Move to cycle…",
+        section,
+        hint: "⇧C",
+        onSelect: () => cycleMenu(targets),
       },
       { id: "archive", label: "Archive", section, onSelect: () => void archiveIssues(targets) },
     );

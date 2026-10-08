@@ -7,6 +7,7 @@ import { badRequest, notFound, ServiceError } from "../errors.js";
 import { DEFAULT_STATES } from "../seed.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import { companyTimeZone, syncTeamCycles } from "./cycles.js";
 import { authorize } from "./requests.js";
 
 export interface TeamCreateInput {
@@ -18,7 +19,20 @@ export interface TeamCreateInput {
   leadId?: string | null;
 }
 
-export type TeamUpdateInput = { [K in keyof TeamCreateInput]?: TeamCreateInput[K] | null };
+export type TeamUpdateInput = { [K in keyof TeamCreateInput]?: TeamCreateInput[K] | null } & {
+  triageEnabled?: boolean | null;
+  cyclesEnabled?: boolean | null;
+  cycleDuration?: number | null;
+  cycleStartDay?: number | null;
+  cycleCooldown?: number | null;
+  upcomingCycleCount?: number | null;
+};
+
+function whole(value: number, label: string, min: number, max: number) {
+  if (!Number.isInteger(value) || value < min || value > max)
+    throw badRequest(`${label} must be a whole number from ${min} to ${max}`);
+  return value;
+}
 
 const KEY_PATTERN = /^[A-Z][A-Z0-9]{0,6}$/;
 
@@ -128,6 +142,17 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
     next.leadId = input.leadId;
   }
 
+  if (input.triageEnabled != null) next.triageEnabled = input.triageEnabled;
+  if (input.cyclesEnabled != null) next.cyclesEnabled = input.cyclesEnabled;
+  if (input.cycleDuration != null)
+    next.cycleDuration = whole(input.cycleDuration, "Cycle length in weeks", 1, 8);
+  if (input.cycleStartDay != null)
+    next.cycleStartDay = whole(input.cycleStartDay, "Cycle start day", 0, 6);
+  if (input.cycleCooldown != null)
+    next.cycleCooldown = whole(input.cycleCooldown, "Cooldown in weeks", 0, 4);
+  if (input.upcomingCycleCount != null)
+    next.upcomingCycleCount = whole(input.upcomingCycleCount, "Upcoming cycles", 1, 10);
+
   const diff = changes(team, next);
   if (!diff) return id;
   const ops: WriteOp[] = [
@@ -146,5 +171,8 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
   }
   ops.push(...audit(db, [event(ctx, "team.update", "team", id, diff)], now));
   await commit(db, ops);
+  // Turning cycles on (or changing their shape) creates the cycles straight away.
+  const updated = { ...team, ...next };
+  if (updated.cyclesEnabled) await syncTeamCycles(db, updated, await companyTimeZone(db), now);
   return id;
 }

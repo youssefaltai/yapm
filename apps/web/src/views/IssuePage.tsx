@@ -3,6 +3,8 @@ import {
   archiveIssues,
   assigneeMenu,
   createIssueStore,
+  cycleMenu,
+  cycleName,
   estimateMenu,
   labelsMenu,
   parentMenu,
@@ -121,6 +123,7 @@ export function IssuePage({ identifier }: { identifier: string }) {
     l: open(labelsMenu),
     e: open(estimateMenu),
     "shift+p": () => issue && void projectMenu([issue]).then(openMenu),
+    "shift+c": () => issue && void cycleMenu([issue]).then((spec) => spec && openMenu(spec)),
     Escape: () => issue && navigate(paths.team(issue.team.key)),
   });
 
@@ -363,6 +366,17 @@ function Properties({
           </>
         ) : (
           <span className="text-faint">Add to project</span>
+        )}
+      </PropertyButton>
+      <PropertyLabel>Cycle</PropertyLabel>
+      <PropertyButton
+        onClick={() => void cycleMenu([issue]).then((spec) => spec && openMenu(spec))}
+        hint="Shift+C"
+      >
+        {issue.cycle ? (
+          <span className="truncate">{cycleName(issue.cycle)}</span>
+        ) : (
+          <span className="text-faint">Add to cycle</span>
         )}
       </PropertyButton>
       <PropertyLabel>Parent</PropertyLabel>

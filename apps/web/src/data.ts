@@ -35,18 +35,34 @@ export interface Team {
   members: { nodes: { id: string }[] };
   states: { nodes: WorkflowState[] };
   labels: { nodes: Label[] };
+  triageEnabled: boolean;
+  cyclesEnabled: boolean;
+  cycleDuration: number;
+  cycleStartDay: number;
+  cycleCooldownTime: number;
+  upcomingCycleCount: number;
+}
+
+export interface SavedView {
+  id: string;
+  name: string;
+  shared: boolean;
+  filterData: Record<string, unknown>;
+  team: { id: string } | null;
 }
 
 export interface Workspace {
-  organization: { name: string };
+  organization: { name: string; timezone: string };
+  customViews: { nodes: SavedView[] };
   viewer: { id: string; name: string; kind: "owner" | "agent" };
   teams: { nodes: Team[] };
   users: { nodes: Member[] };
 }
 
 export const WORKSPACE_QUERY = `{
-  organization { name }
+  organization { name timezone }
   viewer { id name kind }
+  customViews { nodes { id name shared filterData team { id } } }
   teams {
     nodes {
       id key name description
@@ -54,6 +70,7 @@ export const WORKSPACE_QUERY = `{
       members { nodes { id } }
       states { nodes { id name type color position } }
       labels { nodes { id name color } }
+      triageEnabled cyclesEnabled cycleDuration cycleStartDay cycleCooldownTime upcomingCycleCount
     }
   }
   users { nodes { id name kind title isMe manager { id } } }
@@ -77,6 +94,7 @@ export interface Issue {
   parent: { id: string; identifier: string; title: string } | null;
   project: { id: string; name: string; color: string } | null;
   projectMilestone: { id: string; name: string } | null;
+  cycle: { id: string; number: number; name: string | null } | null;
 }
 
 export const ISSUE_FIELDS = `
@@ -89,6 +107,7 @@ export const ISSUE_FIELDS = `
     parent { id identifier title }
     project { id name color }
     projectMilestone { id name }
+    cycle { id number name }
   }
 `;
 

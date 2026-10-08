@@ -1,5 +1,6 @@
 import {
   comments,
+  cycles,
   grants,
   ISSUE_RELATION_TYPES,
   issues,
@@ -150,6 +151,32 @@ export async function resolveMilestone(c: McpContext, ref: string, projectId: st
   return row;
 }
 
+/** A team's cycle by "current", "next", number or id. */
+export async function resolveCycle(c: McpContext, teamId: string, ref: string) {
+  const rows = await c.db
+    .select()
+    .from(cycles)
+    .where(eq(cycles.teamId, teamId))
+    .orderBy(asc(cycles.number))
+    .all();
+  const at = Date.now();
+  const key = ref.trim().toLowerCase();
+  const open = rows.filter((r) => !r.completedAt && r.endsAt > at);
+  const row =
+    key === "current" || key === "active"
+      ? open.find((r) => r.startsAt <= at)
+      : key === "next" || key === "upcoming"
+        ? open.find((r) => r.startsAt > at)
+        : rows.find((r) => r.id === ref || String(r.number) === key.replace(/^cycle\s*/, ""));
+  if (!row)
+    throw new ToolError(
+      rows.length
+        ? `No cycle "${ref}" in that team. Use list_cycles to see them.`
+        : "That team doesn't use cycles. The owner can turn them on in the team's settings.",
+    );
+  return row;
+}
+
 export async function requireIssue(c: McpContext, ref: string) {
   const issue = await findIssue(c.db, ref);
   if (!issue) throw new ToolError(`No issue matches "${ref}".`);
@@ -171,13 +198,14 @@ function priority(value: unknown): number | undefined {
 // Compact shapes for the model: names over ids where it helps, ids where it needs them.
 
 export async function issueSummary(c: McpContext, issue: IssueRow) {
-  const [team, state, assignee, issueLabels, project, milestone] = await Promise.all([
+  const [team, state, assignee, issueLabels, project, milestone, cycle] = await Promise.all([
     c.loaders.team.load(issue.teamId),
     c.loaders.state.load(issue.stateId),
     issue.assigneeId ? c.loaders.user.load(issue.assigneeId) : null,
     c.loaders.labelsByIssue.load(issue.id),
     issue.projectId ? c.loaders.project.load(issue.projectId) : null,
     issue.projectMilestoneId ? c.loaders.projectMilestone.load(issue.projectMilestoneId) : null,
+    issue.cycleId ? c.loaders.cycle.load(issue.cycleId) : null,
   ]);
   const identifier = `${team?.key}-${issue.number}`;
   return {
@@ -195,6 +223,7 @@ export async function issueSummary(c: McpContext, issue: IssueRow) {
     dueDate: issue.dueDate,
     project: project?.name ?? null,
     milestone: milestone?.name ?? null,
+    cycle: cycle?.number ?? null,
     parentId: issue.parentId,
     createdAt: new Date(issue.createdAt).toISOString(),
     updatedAt: new Date(issue.updatedAt).toISOString(),
@@ -274,6 +303,10 @@ const issueFields = {
     type: ["string", "null"],
     description: "Milestone name (in the issue's project) or id; null to remove",
   },
+  cycle: {
+    type: ["string", "integer", "null"],
+    description: 'Cycle: "current", "next", its number, or id; null to remove',
+  },
 } as const;
 
 async function issueInput(c: McpContext, args: Args, teamId: string) {
@@ -301,6 +334,9 @@ async function issueInput(c: McpContext, args: Args, teamId: string) {
       ? (await resolveMilestone(c, String(args.milestone), projectId ?? null)).id
       : null;
   }
+  if (args.cycle !== undefined)
+    input.cycleId =
+      args.cycle === null ? null : (await resolveCycle(c, teamId, String(args.cycle))).id;
   return input;
 }
 

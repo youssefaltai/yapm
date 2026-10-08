@@ -1,4 +1,4 @@
-import { createHub, type Hub, type HubDb } from "@life-os/core";
+import { createHub, type Hub, type HubDb, type HubDeps, tick } from "@life-os/core";
 import * as schema from "@life-os/schema";
 import { drizzle } from "drizzle-orm/d1";
 import { durableObjectRealtime, type LiveHub } from "./live.js";
@@ -17,18 +17,26 @@ export interface Env {
 
 let hub: Hub | undefined;
 
+function depsOf(env: Env): HubDeps {
+  return {
+    db: drizzle(env.DB, { schema }) as unknown as HubDb,
+    config: {
+      platform: "cloudflare",
+      version: env.LIFE_OS_VERSION ?? "dev",
+      ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
+      ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
+    },
+    realtime: durableObjectRealtime(env.LIVE),
+  };
+}
+
 export default {
   fetch(request, env, ctx) {
-    hub ??= createHub({
-      db: drizzle(env.DB, { schema }) as unknown as HubDb,
-      config: {
-        platform: "cloudflare",
-        version: env.LIFE_OS_VERSION ?? "dev",
-        ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
-        ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
-      },
-      realtime: durableObjectRealtime(env.LIVE),
-    });
+    hub ??= createHub(depsOf(env));
     return hub.fetch(request, env, ctx);
+  },
+  // Cycles, rituals and other time-based work (see the cron trigger in wrangler.jsonc).
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(tick(depsOf(env), controller.scheduledTime));
   },
 } satisfies ExportedHandler<Env>;

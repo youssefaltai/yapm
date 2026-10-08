@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
+import { type HubDeps, tick } from "@life-os/core";
 import { WebSocketServer } from "ws";
 import { createNodeApp } from "./app.js";
 import { openDatabase } from "./db.js";
@@ -17,19 +18,22 @@ if (databaseUrl.startsWith("file:")) {
 }
 
 const { db } = await openDatabase(databaseUrl, env.MIGRATIONS_DIR);
-const app = createNodeApp(
-  {
-    db,
-    config: {
-      platform: "node",
-      version: env.LIFE_OS_VERSION ?? "dev",
-      ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
-      ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
-    },
-    realtime: createNodeRealtime(),
+const deps: HubDeps = {
+  db,
+  config: {
+    platform: "node",
+    version: env.LIFE_OS_VERSION ?? "dev",
+    ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
+    ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
   },
-  webDir,
-);
+  realtime: createNodeRealtime(),
+};
+const app = createNodeApp(deps, webDir);
+
+// The scheduler: cycles, rituals and other time-based work, once a minute.
+const runTick = () => tick(deps).catch((error) => console.error("Scheduler tick failed", error));
+setInterval(runTick, 60_000).unref();
+void runTick();
 
 serve(
   { fetch: app.fetch, port, websocket: { server: new WebSocketServer({ noServer: true }) } },

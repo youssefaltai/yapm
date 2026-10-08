@@ -2122,5 +2122,129 @@ export function hubContract(
       expect(metrics.current.requestsAnswered).toBeGreaterThan(0);
       expect(metrics.previous.requestsAnswered).toBe(0);
     });
+    it("installs MCP servers on machines, with approval and sign-in through the hub", async () => {
+      const runner = async <T = Record<string, unknown>>(
+        path: string,
+        token: string,
+        json: unknown,
+      ) => {
+        const response = await client.request(`/api/runner${path}`, {
+          method: "POST",
+          json,
+          token,
+        });
+        const text = await response.text();
+        return { status: response.status, body: (text ? JSON.parse(text) : null) as T };
+      };
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+        token?: string,
+      ) => client.graphql<T>(query, variables, token);
+      const enrol = await runner<{ id: string; token: string; pairingCode: string }>("/enrol", "", {
+        name: "Work laptop",
+        tags: ["employer-a"],
+        mcps: [],
+        capacity: 1,
+      });
+      const machine = enrol.body;
+      await gql(
+        "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
+        { id: machine.id, code: machine.pairingCode },
+      );
+
+      // An agent needs mcp.install on the machine; the owner doesn't.
+      const asCeo = await gql(
+        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "slack-a", url: "https://slack.example/mcp" }) { success } }',
+        { id: machine.id },
+        ceoToken,
+      );
+      expect(asCeo.errors?.[0]?.message).toContain("mcp.install");
+      const bad = await gql(
+        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "Slack A!", url: "https://slack.example/mcp" }) { success } }',
+        { id: machine.id },
+      );
+      expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const insecure = await gql(
+        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "slack-a", url: "http://slack.example/mcp" }) { success } }',
+        { id: machine.id },
+      );
+      expect(insecure.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const created = await gql<{
+        mcpServerCreate: { mcpServer: { id: string; status: string; allAgents: boolean } };
+      }>(
+        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "slack-a", url: "https://slack.example/mcp" }) { mcpServer { id status allAgents } } }',
+        { id: machine.id },
+      );
+      const server = created.data?.mcpServerCreate.mcpServer;
+      expect(server).toMatchObject({ status: "installing", allAgents: true });
+
+      // The machine learns about it on check-in and says it needs a sign-in.
+      const beat = await runner<{ mcpServers: { id: string; name: string; url: string }[] }>(
+        "/heartbeat",
+        machine.token,
+        { runIds: [] },
+      );
+      expect(beat.body.mcpServers).toMatchObject([
+        { id: server?.id, name: "slack-a", url: "https://slack.example/mcp" },
+      ]);
+      const state = `${server?.id}.abc123`;
+      await runner("/heartbeat", machine.token, {
+        runIds: [],
+        mcpServers: [
+          {
+            id: server?.id,
+            status: "needs_auth",
+            authUrl: "https://slack.example/authorize?state=x",
+            authState: state,
+          },
+        ],
+      });
+      const listed = await gql<{
+        machines: { id: string; mcpServers: { status: string; authUrl: string }[] }[];
+      }>("{ machines { id mcpServers { status authUrl } } }");
+      expect(listed.data?.machines.find((m) => m.id === machine.id)?.mcpServers).toEqual([
+        { status: "needs_auth", authUrl: "https://slack.example/authorize?state=x" },
+      ]);
+
+      // The provider sends the owner back to the hub; the code waits for the machine.
+      const back = await client.request(
+        `/api/mcp/oauth/callback?state=${encodeURIComponent(state)}&code=c0de`,
+      );
+      expect(back.status).toBe(200);
+      const handed = await runner<{ mcpServers: { authCode?: string }[] }>(
+        "/heartbeat",
+        machine.token,
+        {
+          runIds: [],
+        },
+      );
+      expect(handed.body.mcpServers[0]?.authCode).toBe("c0de");
+      await runner("/heartbeat", machine.token, {
+        runIds: [],
+        mcpServers: [{ id: server?.id, status: "ready" }],
+      });
+      const ready = await runner<{ mcpServers: { status: string; authCode?: string }[] }>(
+        "/heartbeat",
+        machine.token,
+        { runIds: [] },
+      );
+      expect(ready.body.mcpServers[0]).toMatchObject({ status: "ready" });
+      expect(ready.body.mcpServers[0]?.authCode).toBeUndefined();
+      expect(
+        (
+          await client.request(
+            `/api/mcp/oauth/callback?state=${encodeURIComponent(state)}&code=again`,
+          )
+        ).status,
+      ).toBe(400);
+
+      await gql("mutation($id: String!) { mcpServerDelete(id: $id) { success } }", {
+        id: server?.id,
+      });
+      await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+        id: machine.id,
+      });
+    });
   });
 }

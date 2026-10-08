@@ -1,3 +1,5 @@
+import type { McpServerReport, McpServerSpec } from "./mcp.js";
+
 /** Talks to the hub: the runner protocol with the machine's secret, GraphQL with a run's token. */
 export class HubError extends Error {
   constructor(
@@ -29,6 +31,8 @@ export interface Claim {
   token: string;
   mcpUrl: string;
   input: RunInput;
+  /** Hub-managed MCP servers this agent gets on this machine. */
+  mcpServers?: McpServerSpec[];
 }
 
 export interface Enrolment {
@@ -104,13 +108,20 @@ export class HubClient {
 
   heartbeat(
     token: string,
-    info: { mcps: string[]; capacity: number; version: string; runIds: string[]; tags?: string[] },
+    info: {
+      mcps: string[];
+      capacity: number;
+      version: string;
+      runIds: string[];
+      tags?: string[];
+      mcpServers?: McpServerReport[];
+    },
   ) {
-    return this.call<{ status: string; stop: { id: string; reason: string | null }[] }>(
-      "/api/runner/heartbeat",
-      token,
-      info,
-    );
+    return this.call<{
+      status: string;
+      stop: { id: string; reason: string | null }[];
+      mcpServers?: McpServerSpec[];
+    }>("/api/runner/heartbeat", token, info);
   }
 
   claim(token: string) {

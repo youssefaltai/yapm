@@ -7,6 +7,7 @@ import { badRequest, notFound, ServiceError } from "../errors.js";
 import { DEFAULT_STATES } from "../seed.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import { authorize } from "./requests.js";
 
 export interface TeamCreateInput {
   name: string;
@@ -62,6 +63,7 @@ export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
   const key = normalizeKey(input.key ?? suggestKey(name));
   await assertKeyFree(db, key);
   if (input.leadId) await assertActiveUser(db, input.leadId, "Team lead");
+  const allowed = await authorize(ctx, "team.create");
 
   const id = newId();
   const stamp = { createdAt: now, updatedAt: now };
@@ -69,6 +71,7 @@ export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
   const memberIds = new Set([actorId, owner?.id, input.leadId].filter((v): v is string => !!v));
 
   const ops: WriteOp[] = [
+    ...allowed,
     db.insert(teams).values({
       id,
       key,

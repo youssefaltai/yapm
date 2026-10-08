@@ -304,3 +304,69 @@ export const reactions = sqliteTable(
     index("reactions_user_idx").on(t.userId),
   ],
 );
+
+export const REQUEST_STATUSES = ["pending", "approved", "rejected", "canceled"] as const;
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
+/**
+ * An agent asking for something it isn't allowed to do yet. Approving it once lets the
+ * requester do it one time; "always allow" also creates a grant.
+ */
+export const requests = sqliteTable(
+  "requests",
+  {
+    id: text("id").primaryKey(),
+    requesterId: text("requester_id").notNull(),
+    /** What is asked, in a few words, e.g. "Hire a Head of Fitness". Shown in notifications. */
+    title: text("title").notNull(),
+    /** The permission it needs, e.g. `agent.hire` or `tool:Bash`. */
+    action: text("action").notNull(),
+    /** What the action applies to, e.g. a team id or a command; null means unspecific. */
+    resource: text("resource"),
+    reason: text("reason").notNull(),
+    /** Markdown: the exact action, so the owner sees what they approve. */
+    details: text("details"),
+    issueId: text("issue_id"),
+    runId: text("run_id"),
+    status: text("status", { enum: REQUEST_STATUSES }).notNull().default("pending"),
+    answeredById: text("answered_by_id"),
+    answeredAt: integer("answered_at", { mode: "number" }),
+    /** The rejection reason, or a note with the approval. */
+    answer: text("answer"),
+    /** The standing grant an "always allow" created. */
+    grantId: text("grant_id"),
+    /** When a one-time approval was used up. */
+    consumedAt: integer("consumed_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("requests_status_idx").on(t.status, t.createdAt),
+    index("requests_requester_idx").on(t.requesterId, t.action),
+    index("requests_issue_idx").on(t.issueId),
+  ],
+);
+
+export const GRANT_SCOPES = ["user", "team", "everyone"] as const;
+export type GrantScope = (typeof GRANT_SCOPES)[number];
+
+/** A standing permission: who (one agent, a team, everyone) may do which action, on what. */
+export const grants = sqliteTable(
+  "grants",
+  {
+    id: text("id").primaryKey(),
+    action: text("action").notNull(),
+    /** Null allows the action on anything. */
+    resource: text("resource"),
+    scope: text("scope", { enum: GRANT_SCOPES }).notNull(),
+    /** The user or team id the grant is for; null when the scope is everyone. */
+    subjectId: text("subject_id"),
+    note: text("note"),
+    createdById: text("created_by_id").notNull(),
+    requestId: text("request_id"),
+    useCount: integer("use_count").notNull().default(0),
+    lastUsedAt: integer("last_used_at", { mode: "number" }),
+    revokedAt: integer("revoked_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [index("grants_action_idx").on(t.action)],
+);

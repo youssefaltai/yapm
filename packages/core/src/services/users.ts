@@ -5,6 +5,7 @@ import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { forbidden, notFound, ServiceError } from "../errors.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import { authorize } from "./requests.js";
 
 export interface AgentHireInput {
   name: string;
@@ -27,7 +28,6 @@ async function actor(ctx: Ctx) {
   return row;
 }
 
-/** Org changes are the owner's for now; agents get them through grants. */
 async function requireOwnerActor(ctx: Ctx, what: string) {
   if ((await actor(ctx)).kind !== "owner") throw forbidden(`Only the owner can ${what} for now`);
 }
@@ -67,7 +67,7 @@ async function checkManager(db: HubDb, userId: string | null, managerId: string)
 
 export async function hireAgent(ctx: Ctx, input: AgentHireInput): Promise<string> {
   const { db, now } = ctx;
-  await requireOwnerActor(ctx, "hire agents");
+  const allowed = await authorize(ctx, "agent.hire");
   const name = cleanText(input.name, "Name", 60);
   await assertNameFree(db, name);
   const owner = await db.select({ id: users.id }).from(users).where(eq(users.kind, "owner")).get();
@@ -87,6 +87,7 @@ export async function hireAgent(ctx: Ctx, input: AgentHireInput): Promise<string
       createdAt: now,
       updatedAt: now,
     }),
+    ...allowed,
     ...audit(db, [event(ctx, "agent.hire", "user", id, { name, title, managerId })], now),
   ]);
   return id;
@@ -96,7 +97,6 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
   const { db, now } = ctx;
   const user = await db.select().from(users).where(eq(users.id, id)).get();
   if (!user) throw notFound("User");
-  if (id !== ctx.actorId) await requireOwnerActor(ctx, "change other members");
   const next: Partial<typeof user> = {};
   if (input.name != null) {
     next.name = cleanText(input.name, "Name", 60);
@@ -118,6 +118,11 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents have charters");
     next.charter = charter?.trim() || null;
   }
+  // Agents change their own name and title freely; the rest of the org needs a grant.
+  const allowed: WriteOp[] = [];
+  if (diff && (id !== ctx.actorId || next.managerId !== undefined))
+    allowed.push(...(await authorize(ctx, "user.update", id)));
+  if (charterChanged) allowed.push(...(await authorize(ctx, "charter.update", id)));
   const events = [];
   if (diff) events.push(event(ctx, "user.update", "user", id, diff));
   // Charters are long; the history keeps both versions so changes can be explained later.
@@ -128,6 +133,7 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
       .update(users)
       .set({ ...next, updatedAt: now })
       .where(eq(users.id, id)),
+    ...allowed,
     ...audit(db, events, now),
   ]);
   return id;
@@ -136,12 +142,12 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
 /** Retires an agent: it can no longer sign in or act, and its tokens stop working. Its history stays. */
 export async function retireAgent(ctx: Ctx, id: string): Promise<string> {
   const { db, now } = ctx;
-  await requireOwnerActor(ctx, "retire agents");
   const user = await db.select().from(users).where(eq(users.id, id)).get();
   if (!user) throw notFound("User");
   if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents can be retired");
   if (!user.active) return id;
   const ops: WriteOp[] = [
+    ...(await authorize(ctx, "agent.retire", id)),
     db.update(users).set({ active: false, updatedAt: now }).where(eq(users.id, id)),
     db
       .update(apiTokens)

@@ -1,14 +1,16 @@
 import {
   comments,
+  grants,
   ISSUE_RELATION_TYPES,
   issues,
   labels,
   PRIORITY_LABELS,
+  requests,
   teams,
   users,
   workflowStates,
 } from "@life-os/schema";
-import { and, asc, eq, isNull, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, type SQL, sql } from "drizzle-orm";
 import type { User } from "../context.js";
 import type { HubDb } from "../db.js";
 import { type IssueFilterShape, queryIssues } from "../graphql/filters.js";
@@ -23,7 +25,9 @@ import {
   updateIssue,
 } from "../services/issues.js";
 import { createLabel } from "../services/labels.js";
+import { cancelRequest, checkPermission, createRequest } from "../services/requests.js";
 import { createTeam } from "../services/teams.js";
+import { hireAgent, retireAgent, updateUser } from "../services/users.js";
 import { type Tool, ToolError } from "./protocol.js";
 
 export interface McpContext {
@@ -714,4 +718,234 @@ export const tools: Tool<McpContext>[] = [
       return { id };
     },
   },
+  {
+    name: "hire_agent",
+    title: "Hire agent",
+    description:
+      "Hire an AI agent employee with a title, a manager and a charter (its job: what it owns, how it works, when it escalates). Needs the agent.hire permission; ask with create_request if you don't have it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        title: { type: "string" },
+        charter: { type: "string", description: "Markdown" },
+        manager: { type: "string", description: 'Who it reports to: a name, id or "me"' },
+      },
+      required: ["name", "charter"],
+    },
+    async run(args, c) {
+      const manager = str(args.manager) ? await resolveUser(c, String(args.manager)) : null;
+      const id = await c.act((s) =>
+        hireAgent(s, {
+          name: String(args.name),
+          title: str(args.title) ?? null,
+          charter: str(args.charter) ?? null,
+          managerId: manager?.id ?? null,
+        }),
+      );
+      return { id, name: String(args.name) };
+    },
+  },
+  {
+    name: "update_user",
+    title: "Update member",
+    description:
+      "Change a member's name, title, manager or charter. You may rename yourself freely; changing others needs user.update, and charters need charter.update.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        user: { type: "string", description: 'Name, id or "me"' },
+        name: { type: "string" },
+        title: { type: "string" },
+        charter: { type: "string" },
+        manager: { type: "string" },
+      },
+      required: ["user"],
+    },
+    async run(args, c) {
+      const user = await resolveUser(c, String(args.user));
+      const manager = str(args.manager) ? await resolveUser(c, String(args.manager)) : undefined;
+      await c.act((s) =>
+        updateUser(s, user.id, {
+          ...(str(args.name) !== undefined ? { name: str(args.name) } : {}),
+          ...(str(args.title) !== undefined ? { title: str(args.title) } : {}),
+          ...(str(args.charter) !== undefined ? { charter: str(args.charter) } : {}),
+          ...(manager ? { managerId: manager.id } : {}),
+        }),
+      );
+      return { id: user.id };
+    },
+  },
+  {
+    name: "retire_agent",
+    title: "Retire agent",
+    description:
+      "Retire an agent: its tokens stop working and its reports move to its manager. Needs agent.retire.",
+    inputSchema: {
+      type: "object",
+      properties: { user: { type: "string", description: "Name or id" } },
+      required: ["user"],
+    },
+    async run(args, c) {
+      const user = await resolveUser(c, String(args.user));
+      await c.act((s) => retireAgent(s, user.id));
+      return { id: user.id, retired: true };
+    },
+  },
+  {
+    name: "check_permission",
+    title: "Check permission",
+    description:
+      "Check whether you may do something now, without using anything up. Org changes use their names (team.create, agent.hire, agent.retire, user.update, charter.update); other actions use your own names, e.g. tool:Bash or spend.",
+    readOnly: true,
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string" },
+        resource: { type: "string", description: "What it applies to, if specific" },
+      },
+      required: ["action"],
+    },
+    async run(args, c) {
+      return checkPermission(c.db, c.viewer.id, String(args.action), str(args.resource) ?? null);
+    },
+  },
+  {
+    name: "create_request",
+    title: "Ask for approval",
+    description:
+      "Ask the owner for permission to do something you aren't allowed to do yet. The owner approves once, always allows it, or rejects it with a reason. Then poll get_request (or wait for its answer) before acting. Asking again while one is pending returns the pending one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: 'In a few words, e.g. "Hire a Head of Fitness"' },
+        action: { type: "string", description: "The permission, e.g. agent.hire or tool:Bash" },
+        resource: { type: "string", description: "What it applies to, if specific" },
+        reason: { type: "string", description: "Why you need it" },
+        details: { type: "string", description: "Markdown: exactly what you will do" },
+        issue: { type: "string", description: "The issue you are working on, e.g. PF-3" },
+      },
+      required: ["title", "action", "reason"],
+    },
+    async run(args, c) {
+      const issue = str(args.issue) ? await requireIssue(c, String(args.issue)) : null;
+      const id = await c.act((s) =>
+        createRequest(s, {
+          title: String(args.title),
+          action: String(args.action),
+          resource: str(args.resource) ?? null,
+          reason: String(args.reason),
+          details: str(args.details) ?? null,
+          issueId: issue?.id ?? null,
+        }),
+      );
+      return requestSummary(c, id);
+    },
+  },
+  {
+    name: "get_request",
+    title: "Get request",
+    description:
+      "A request's status (pending, approved, rejected, canceled) and the owner's answer. A one-time approval is used up by the action it allows.",
+    readOnly: true,
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      return requestSummary(c, String(args.id));
+    },
+  },
+  {
+    name: "list_requests",
+    title: "List requests",
+    description: "Requests, newest first. Defaults to your own.",
+    readOnly: true,
+    inputSchema: {
+      type: "object",
+      properties: {
+        requester: { type: "string", description: 'Name, id, "me" (default) or "anyone"' },
+        status: { type: "string", enum: ["pending", "approved", "rejected", "canceled"] },
+        limit: { type: "number" },
+      },
+    },
+    async run(args, c) {
+      const who = str(args.requester) ?? "me";
+      const requester = who.toLowerCase() === "anyone" ? null : await resolveUser(c, who);
+      const status = str(args.status) as (typeof requests.$inferSelect)["status"] | undefined;
+      const rows = await c.db
+        .select({ id: requests.id })
+        .from(requests)
+        .where(
+          and(
+            requester ? eq(requests.requesterId, requester.id) : undefined,
+            status ? eq(requests.status, status) : undefined,
+          ),
+        )
+        .orderBy(desc(requests.createdAt))
+        .limit(Math.min(Math.max(num(args.limit) ?? 25, 1), 100))
+        .all();
+      return { requests: await Promise.all(rows.map((r) => requestSummary(c, r.id))) };
+    },
+  },
+  {
+    name: "cancel_request",
+    title: "Cancel request",
+    description: "Withdraw your pending request, e.g. when you no longer need it.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      await c.act((s) => cancelRequest(s, String(args.id)));
+      return requestSummary(c, String(args.id));
+    },
+  },
+  {
+    name: "list_grants",
+    title: "List grants",
+    description: "Standing permissions: who may do what without asking.",
+    readOnly: true,
+    inputSchema: { type: "object", properties: {} },
+    async run(_args, c) {
+      const rows = await c.db
+        .select()
+        .from(grants)
+        .where(isNull(grants.revokedAt))
+        .orderBy(desc(grants.createdAt))
+        .all();
+      return {
+        grants: await Promise.all(
+          rows.map(async (g) => ({
+            id: g.id,
+            action: g.action,
+            resource: g.resource,
+            scope: g.scope,
+            for:
+              g.scope === "user" && g.subjectId
+                ? ((await c.loaders.user.load(g.subjectId))?.name ?? null)
+                : g.scope === "team" && g.subjectId
+                  ? ((await c.loaders.team.load(g.subjectId))?.name ?? null)
+                  : "everyone",
+            useCount: g.useCount,
+          })),
+        ),
+      };
+    },
+  },
 ];
+
+async function requestSummary(c: McpContext, id: string) {
+  const r = await c.db.select().from(requests).where(eq(requests.id, id)).get();
+  if (!r) throw new ToolError(`No request ${id}`);
+  const requester = await c.loaders.user.load(r.requesterId);
+  const issue = r.issueId ? await c.loaders.issue.load(r.issueId) : null;
+  return {
+    id: r.id,
+    title: r.title,
+    action: r.action,
+    resource: r.resource,
+    status: r.status,
+    answer: r.answer,
+    used: r.consumedAt !== null,
+    alwaysAllowed: r.grantId !== null,
+    requester: requester?.name ?? null,
+    issue: issue ? (await issueSummary(c, issue)).identifier : null,
+    url: `${c.appUrl}/request/${r.id}`,
+    createdAt: new Date(r.createdAt).toISOString(),
+  };
+}

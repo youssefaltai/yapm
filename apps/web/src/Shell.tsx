@@ -10,7 +10,7 @@ import type { Viewer } from "./api.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
-import { Kbd, MenuHost, openMenu, useHotkeys } from "./ui.js";
+import { Kbd, MenuHost, openMenu, useHotkeys, usePresence } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
@@ -68,8 +68,8 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
   return (
     <div className="flex h-full">
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border-line bg-panel px-3 py-3 md:static md:flex md:w-60 ${
-          drawer ? "flex" : "hidden"
+        className={`fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border-line bg-panel px-3 py-3 md:static md:flex md:w-60 md:animate-none ${
+          drawer ? "flex animate-drawer-in" : "hidden"
         }`}
       >
         <Sidebar workspace={workspace} viewer={viewer} route={route} onSignOut={onSignOut} />
@@ -78,7 +78,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
         <button
           type="button"
           aria-label="Close menu"
-          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          className="fixed inset-0 z-20 animate-fade-in bg-black/50 md:hidden"
           onClick={() => setDrawer(false)}
         />
       )}
@@ -104,7 +104,12 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
         </div>
         <div className="min-h-0 flex-1">
           {error && <p className="p-6 text-red-400">{error}</p>}
-          {workspace && <RouteView route={route} workspace={workspace} />}
+          {workspace && (
+            // A fresh page fades in; switching tabs within a page doesn't.
+            <div key={pageKey(route)} className="h-full animate-fade-in">
+              <RouteView route={route} workspace={workspace} />
+            </div>
+          )}
         </div>
       </main>
       <CreateIssueHost />
@@ -221,6 +226,13 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
   }
 }
 
+function pageKey(route: Route): string {
+  if ("id" in route) return `${route.name}:${route.id}`;
+  if ("key" in route) return `${route.name}:${route.key}`;
+  if ("identifier" in route) return `${route.name}:${route.identifier}`;
+  return route.name;
+}
+
 function NotFound({ what }: { what: string }) {
   return <p className="px-6 py-10 text-center text-muted">{what} not found.</p>;
 }
@@ -287,7 +299,7 @@ function Sidebar({
         <NavLink to={paths.inbox()} active={route.name === "inbox"}>
           <span className="flex w-full items-center justify-between">
             Inbox
-            {unread > 0 && <span className="text-[11px] text-muted">{unread}</span>}
+            {unread > 0 && <span className="animate-fade-in text-[11px] text-muted">{unread}</span>}
           </span>
         </NavLink>
         <NavLink to={paths.myIssues()} active={route.name === "myIssues"}>
@@ -300,7 +312,7 @@ function Sidebar({
           <span className="flex w-full items-center justify-between">
             Approvals
             {pending > 0 && (
-              <span className="rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">
+              <span className="animate-badge-in rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">
                 {pending}
               </span>
             )}
@@ -329,7 +341,9 @@ function Sidebar({
         >
           <span className="flex w-full items-center justify-between">
             Runs
-            {running > 0 && <span className="text-[11px] text-accent">{running}</span>}
+            {running > 0 && (
+              <span className="animate-fade-in text-[11px] text-accent">{running}</span>
+            )}
           </span>
         </NavLink>
         <NavLink to={paths.insights()} active={route.name === "insights"}>
@@ -367,7 +381,7 @@ function Sidebar({
                 </span>
               </NavLink>
               {active && (
-                <div className="ml-3 space-y-0.5 border-l border-line pl-2">
+                <div className="ml-3 animate-reveal space-y-0.5 border-l border-line pl-2">
                   {team.triageEnabled && (
                     <NavLink to={paths.team(team.key, "triage")} active={view === "triage"}>
                       Triage
@@ -441,12 +455,17 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
 }
 
 function ToastHost() {
-  const { toast, dismiss } = useToast();
+  const { toast: current, dismiss } = useToast();
+  const { shown: toast, leaving } = usePresence(current);
   if (!toast) return null;
   return (
     <div
+      key={toast.message}
       role="status"
-      className="fixed right-4 bottom-4 z-50 flex max-w-sm items-center gap-3 rounded-lg border border-line bg-raised px-4 py-3 shadow-2xl"
+      aria-hidden={leaving || undefined}
+      className={`fixed right-4 bottom-4 z-50 flex max-w-sm items-center gap-3 rounded-lg border border-line bg-raised px-4 py-3 shadow-2xl ${
+        leaving ? "pointer-events-none animate-sink-out" : "animate-rise-in"
+      }`}
     >
       <span className="whitespace-pre-line">{toast.message}</span>
       {toast.action && (

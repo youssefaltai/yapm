@@ -579,7 +579,7 @@ function Activity({ issue, workspace }: { issue: IssueDetail; workspace: Workspa
       <ol className="space-y-3">
         {items.map((item) =>
           item.kind === "event" ? (
-            <li key={item.entry.id} className="flex items-start gap-2 text-muted">
+            <li key={item.entry.id} className="flex animate-fade-in items-start gap-2 text-muted">
               <span className="mt-0.5">
                 {item.entry.actor ? (
                   <Avatar name={item.entry.actor.name} kind={item.entry.actor.kind} size={16} />
@@ -595,7 +595,7 @@ function Activity({ issue, workspace }: { issue: IssueDetail; workspace: Workspa
               </span>
             </li>
           ) : (
-            <li key={item.comment.id}>
+            <li key={item.comment.id} className="animate-fade-in">
               <CommentThread
                 comment={item.comment}
                 replies={comments.filter((c) => c.parent?.id === item.comment.id)}
@@ -823,7 +823,7 @@ function Reactions({
           type="button"
           title={list.map((r) => r.user.name).join(", ")}
           onClick={() => toggle(emoji)}
-          className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] ${
+          className={`flex animate-pop-in items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] ${
             list.some((r) => r.user.isMe) ? "border-accent/60 bg-accent/10" : "border-line"
           }`}
         >

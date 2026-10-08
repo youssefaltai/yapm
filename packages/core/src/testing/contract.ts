@@ -77,7 +77,19 @@ export class TestClient {
  * Behaviour every hub deployment must have, whatever platform runs it.
  * Each adapter runs this suite against a fresh, migrated, empty database.
  */
-export function hubContract(platform: string, makeFetch: () => Promise<FetchLike>) {
+export interface ContractOptions {
+  /**
+   * Takes the hub's answer to a WebSocket upgrade and returns the accepted client socket,
+   * where the platform's fetch can do that (Workers can; Node's is covered end to end).
+   */
+  liveSocket?: (response: Response) => WebSocket | null;
+}
+
+export function hubContract(
+  platform: string,
+  makeFetch: () => Promise<FetchLike>,
+  options: ContractOptions = {},
+) {
   describe(`hub contract (${platform})`, () => {
     let client: TestClient;
     const authenticator = new SoftwareAuthenticator();
@@ -103,6 +115,7 @@ export function hubContract(platform: string, makeFetch: () => Promise<FetchLike
       const result = await client.graphql("{ viewer { id } }");
       expect(result.errors?.[0]?.extensions?.code).toBe("UNAUTHENTICATED");
       expect((await client.json("/api/auth/me")).status).toBe(401);
+      expect((await client.json("/api/live")).status).toBe(401);
     });
 
     it("validates setup input", async () => {
@@ -558,6 +571,38 @@ export function hubContract(platform: string, makeFetch: () => Promise<FetchLike
         { id: relation.data?.issueRelationCreate.issueRelation.id },
       );
       expect(removed.data?.issueRelationDelete.success).toBe(true);
+    });
+
+    it("offers live updates to signed-in members only, over WebSockets", async () => {
+      expect((await client.json("/api/live")).status).toBe(426);
+      const crossSite = await client.request("/api/live", {
+        headers: { upgrade: "websocket", origin: "https://evil.example" },
+      });
+      expect(crossSite.status).toBe(403);
+      if (!options.liveSocket) return;
+
+      const response = await client.request("/api/live", {
+        headers: { upgrade: "websocket" },
+        token: ceoToken,
+      });
+      expect(response.status).toBe(101);
+      const socket = options.liveSocket(response);
+      if (!socket) throw new Error("no socket");
+      const received = new Promise<Record<string, unknown>>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("no live event")), 5000);
+        socket.addEventListener("message", (event) => {
+          if (event.data === "pong") return;
+          clearTimeout(timer);
+          resolve(JSON.parse(String(event.data)));
+        });
+      });
+      await client.request("/graphql", {
+        method: "POST",
+        json: { query: 'mutation { issueUpdate(id: "PF-1", input: { estimate: 3 }) { success } }' },
+        headers: { "x-life-os-client": "tab-1" },
+      });
+      expect(await received).toMatchObject({ type: "change", clientId: "tab-1" });
+      socket.close();
     });
 
     it("archives issues out of lists and back", async () => {

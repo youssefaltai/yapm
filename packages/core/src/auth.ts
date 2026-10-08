@@ -24,7 +24,7 @@ function now(c: Context<HubEnv>): number {
   return c.var.deps.now?.() ?? Date.now();
 }
 
-function relyingParty(c: Context<HubEnv>): { origin: string; rpID: string; rpName: string } {
+export function relyingParty(c: Context<HubEnv>): { origin: string; rpID: string; rpName: string } {
   const { config } = c.var.deps;
   const origin = config.origin ?? new URL(c.req.url).origin;
   return { origin, rpID: new URL(origin).hostname, rpName: config.rpName ?? "Life OS" };

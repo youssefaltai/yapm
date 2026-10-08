@@ -1,0 +1,14 @@
+services:
+  hub:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Public HTTPS origin of the app, e.g. https://life.example.com. Passkeys are bound to it.
+      ORIGIN: ${ORIGIN:-}
+    volumes:
+      - life-os-data:/data
+
+volumes:
+  life-os-data:

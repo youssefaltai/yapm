@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.turbo
+**/.wrangler
+**/.data
+**/test-results
+data
+.git

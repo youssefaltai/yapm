@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { type Engine, MODELS } from "./engine.js";
 import { type Claim, type Completion, type HubClient, HubError, type Usage } from "./hub.js";
+import { McpManager } from "./mcp.js";
 import { decideTool } from "./permissions.js";
 
 export interface RunnerOptions {
@@ -13,6 +14,8 @@ export interface RunnerOptions {
   version: string;
   /** Names of the machine's own MCP servers, and their configs. */
   mcpServers: Record<string, unknown>;
+  /** Runs the servers the hub manages; keeps sign-ins in memory when omitted. */
+  mcp?: McpManager;
   /** Where agents work; each gets its own folder, so resumed sessions find their files. */
   workDir: string;
   pollMs?: number;
@@ -46,12 +49,16 @@ export class Runner {
   private readonly heartbeatMs: number;
   private readonly logFlushMs: number;
   private readonly log: (line: string) => void;
+  private readonly mcp: McpManager;
 
   constructor(private readonly options: RunnerOptions) {
     this.pollMs = options.pollMs ?? 5000;
     this.heartbeatMs = options.heartbeatMs ?? 30_000;
     this.logFlushMs = options.logFlushMs ?? 2000;
     this.log = options.log ?? ((line) => console.log(line));
+    this.mcp =
+      options.mcp ??
+      new McpManager({ hubUrl: options.hub.url, machineName: "this machine", log: this.log });
   }
 
   get running() {
@@ -61,13 +68,18 @@ export class Runner {
   /** One check-in: stops what the hub wants stopped, then claims up to capacity. */
   async heartbeat() {
     const { hub, token } = this.options;
-    const answer = await hub.heartbeat(token, {
-      mcps: Object.keys(this.options.mcpServers),
-      capacity: this.options.capacity,
-      version: this.options.version,
-      runIds: this.running,
-    });
+    const beat = () =>
+      hub.heartbeat(token, {
+        mcps: Object.keys(this.options.mcpServers),
+        capacity: this.options.capacity,
+        version: this.options.version,
+        runIds: this.running,
+        mcpServers: this.mcp.reports(),
+      });
+    const answer = await beat();
     for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
+    // Tell the hub straight away when a server needs a sign-in or became ready.
+    if (answer?.mcpServers && (await this.mcp.sync(answer.mcpServers))) await beat();
     return answer?.status ?? "active";
   }
 
@@ -158,7 +170,10 @@ export class Runner {
         input: claim.input,
         model: MODELS[claim.run.modelTier] ?? MODELS.standard,
         hubMcp: { url: claim.mcpUrl, token: claim.token },
-        mcpServers: this.options.mcpServers,
+        mcpServers: {
+          ...this.options.mcpServers,
+          ...(await this.mcp.configFor(claim.mcpServers ?? [])),
+        },
         resume: claim.run.sessionId,
         cwd,
         signal: abort.signal,

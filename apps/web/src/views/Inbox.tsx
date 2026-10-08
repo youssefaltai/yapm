@@ -17,7 +17,8 @@ type NotificationType =
   | "requestCreated"
   | "requestAnswered"
   | "projectUpdateCreated"
-  | "issueSlaBreached";
+  | "issueSlaBreached"
+  | "mcpServerNeedsAuth";
 
 interface Notification {
   id: string;
@@ -74,6 +75,8 @@ function describe(n: Notification): string {
       return `${who} posted an update: ${snippet(n.projectUpdate?.body)}`;
     case "issueSlaBreached":
       return "Missed its SLA";
+    case "mcpServerNeedsAuth":
+      return `Sign in so agents on ${String(n.data?.machine ?? "a machine")} can use it`;
   }
 }
 
@@ -86,6 +89,7 @@ function heading(n: Notification) {
   if (n.request) return n.request.title;
   if (n.issue) return n.issue.title;
   if (n.project) return n.project.name;
+  if (n.type === "mcpServerNeedsAuth") return `Connect ${String(n.data?.name ?? "an MCP server")}`;
   return "Notification";
 }
 
@@ -108,6 +112,7 @@ export function InboxView() {
     if (n.request) navigate(paths.request(n.request.id));
     else if (n.issue) navigate(paths.issue(n.issue.identifier));
     else if (n.project) navigate(paths.project(n.project.id));
+    else if (n.type === "mcpServerNeedsAuth") navigate(paths.machines());
   }
 
   return (

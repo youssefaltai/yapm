@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
-import { timeAgo, useStore } from "../ui.js";
+import { openMenu, timeAgo, useStore } from "../ui.js";
 
 interface Machine {
   id: string;
@@ -16,10 +16,26 @@ interface Machine {
   lastSeenAt: string | null;
   createdAt: string;
   runningCount: number;
+  mcpServers: McpServer[];
 }
 
-const MACHINES =
-  "{ machines { id name status tags mcps capacity version online lastSeenAt createdAt runningCount } }";
+interface McpServer {
+  id: string;
+  name: string;
+  url: string | null;
+  command: string | null;
+  args: string[];
+  status: "installing" | "needs_auth" | "ready" | "failed";
+  statusDetail: string | null;
+  authUrl: string | null;
+  allAgents: boolean;
+  agents: { id: string; name: string }[];
+}
+
+const MACHINES = `{ machines {
+  id name status tags mcps capacity version online lastSeenAt createdAt runningCount
+  mcpServers { id name url command args status statusDetail authUrl allAgents agents { id name } }
+} }`;
 
 /** The computers agents run on: approve new ones with their code, tag them, remove them. */
 export function MachinesView() {
@@ -147,7 +163,7 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
         </dd>
         {m.mcps.length > 0 && (
           <>
-            <dt className="text-faint">MCP servers</dt>
+            <dt className="text-faint">Own servers</dt>
             <dd className="text-muted">{m.mcps.join(", ")}</dd>
           </>
         )}
@@ -158,6 +174,7 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
           </>
         )}
       </dl>
+      {m.status === "active" && <McpServers machine={m} canEdit={canEdit} />}
       {canEdit && (
         <div className="mt-2 flex justify-end">
           <button
@@ -179,5 +196,186 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
         </div>
       )}
     </div>
+  );
+}
+
+const STATUS_TEXT: Record<McpServer["status"], string> = {
+  installing: "Setting up",
+  needs_auth: "Needs sign-in",
+  ready: "Ready",
+  failed: "Failed",
+};
+
+/** Servers the hub runs on this machine: sign in, choose who gets them, add and remove. */
+function McpServers({ machine, canEdit }: { machine: Machine; canEdit: boolean }) {
+  const workspace = useStore(workspaceStore);
+  const [adding, setAdding] = useState(false);
+  const agents = (workspace?.users.nodes ?? []).filter((u) => u.kind === "agent");
+  const setAgents = (server: McpServer, agentIds: string[] | null) =>
+    void mutate(
+      "mutation($id: String!, $input: McpServerUpdateInput!) { mcpServerUpdate(id: $id, input: $input) { success } }",
+      { id: server.id, input: { agentIds } },
+    );
+  return (
+    <section
+      className="mt-3 border-t border-line pt-3"
+      aria-label={`MCP servers on ${machine.name}`}
+    >
+      <div className="flex items-center">
+        <h3 className="text-[12px] font-medium text-faint uppercase">MCP servers</h3>
+        {canEdit && !adding && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="ml-auto rounded-md px-2 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-ink"
+          >
+            + Add server
+          </button>
+        )}
+      </div>
+      {machine.mcpServers.length === 0 && !adding && (
+        <p className="mt-1 text-[13px] text-faint">
+          None yet. Agents ask for the ones they need; you approve them.
+        </p>
+      )}
+      <div className="mt-1 divide-y divide-line">
+        {machine.mcpServers.map((server) => (
+          <div
+            key={server.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-[13px]"
+          >
+            <span className="font-medium">{server.name}</span>
+            <span className="min-w-0 flex-1 truncate text-faint">
+              {server.url ?? [server.command, ...server.args].join(" ")}
+            </span>
+            <span
+              className={
+                server.status === "ready"
+                  ? "text-emerald-400"
+                  : server.status === "failed"
+                    ? "text-red-400"
+                    : "text-amber-400"
+              }
+              title={server.statusDetail ?? undefined}
+            >
+              {STATUS_TEXT[server.status]}
+            </span>
+            {server.status === "needs_auth" && server.authUrl && canEdit && (
+              <a
+                href={server.authUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md bg-accent px-2 py-0.5 font-medium text-white"
+              >
+                Connect
+              </a>
+            )}
+            <button
+              type="button"
+              disabled={!canEdit}
+              onClick={() =>
+                openMenu({
+                  placeholder: `Who gets ${server.name}?`,
+                  items: [
+                    {
+                      id: "all",
+                      label: "Every agent",
+                      checked: server.allAgents,
+                      onSelect: () => setAgents(server, null),
+                    },
+                    ...agents.map((a) => {
+                      const has = !server.allAgents && server.agents.some((x) => x.id === a.id);
+                      const current = server.allAgents ? [] : server.agents.map((x) => x.id);
+                      return {
+                        id: a.id,
+                        label: a.name,
+                        checked: has,
+                        onSelect: () =>
+                          setAgents(
+                            server,
+                            has ? current.filter((id) => id !== a.id) : [...current, a.id],
+                          ),
+                      };
+                    }),
+                  ],
+                })
+              }
+              className="rounded-md px-1 text-muted hover:bg-raised hover:text-ink"
+            >
+              {server.allAgents
+                ? "Every agent"
+                : server.agents.map((a) => a.name).join(", ") || "No agents"}
+            </button>
+            {canEdit && (
+              <button
+                type="button"
+                aria-label={`Remove ${server.name}`}
+                onClick={() => {
+                  if (window.confirm(`Remove ${server.name} from ${machine.name}?`))
+                    void mutate("mutation($id: String!) { mcpServerDelete(id: $id) { success } }", {
+                      id: server.id,
+                    });
+                }}
+                className="text-faint hover:text-red-400"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {adding && <AddServer machine={machine} onDone={() => setAdding(false)} />}
+    </section>
+  );
+}
+
+function AddServer({ machine, onDone }: { machine: Machine; onDone: () => void }) {
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const remote = /^https?:\/\//.test(address.trim());
+  return (
+    <form
+      className="mt-2 flex flex-wrap gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const [command = "", ...args] = address.trim().split(/\s+/);
+        const result = await mutate(
+          "mutation($input: McpServerCreateInput!) { mcpServerCreate(input: $input) { success } }",
+          {
+            input: {
+              machineId: machine.id,
+              name,
+              ...(remote ? { url: address.trim() } : { command, args }),
+            },
+          },
+        );
+        if (result) onDone();
+      }}
+    >
+      <input
+        aria-label="Server name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="name, e.g. slack-acme"
+        className="w-40 rounded-md border border-line bg-panel px-2 py-1 outline-none placeholder:text-faint focus:border-faint"
+      />
+      <input
+        aria-label="Server address"
+        value={address}
+        onChange={(e) => setAddress(e.target.value)}
+        placeholder="https://… or a command, e.g. npx some-mcp"
+        className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2 py-1 outline-none placeholder:text-faint focus:border-faint"
+      />
+      <button
+        type="submit"
+        disabled={!name.trim() || !address.trim()}
+        className="rounded-md bg-accent px-3 py-1 font-medium text-white disabled:opacity-40"
+      >
+        Add
+      </button>
+      <button type="button" onClick={onDone} className="px-2 text-muted hover:text-ink">
+        Cancel
+      </button>
+    </form>
   );
 }

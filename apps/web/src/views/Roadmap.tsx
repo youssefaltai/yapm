@@ -1,6 +1,8 @@
 import { useMemo } from "react";
+import { createProjectStore } from "../actions.js";
 import { useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState, ListSkeleton } from "../states.js";
 import { ProjectDot } from "./Projects.js";
 
 interface RoadmapProject {
@@ -80,10 +82,14 @@ export function RoadmapView() {
         <span className="font-medium">Roadmap</span>
       </header>
       {error && <p className="p-6 text-red-400">{error}</p>}
+      {!data && !error && <ListSkeleton rows={5} />}
       {data && projects.length === 0 && (
-        <p className="px-6 py-16 text-center text-muted">
-          No projects yet. Projects with dates show up here on a timeline.
-        </p>
+        <EmptyState
+          icon="roadmap"
+          title="Nothing on the roadmap yet"
+          description="Projects with dates show up here on a timeline, grouped by initiative."
+          action={{ label: "New project", onClick: () => createProjectStore.set(true) }}
+        />
       )}
       {projects.length > 0 && (
         <div className="min-h-0 flex-1 overflow-auto">

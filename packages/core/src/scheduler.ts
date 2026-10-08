@@ -3,6 +3,7 @@ import { deliverPush } from "./push.js";
 import { dispatch } from "./runs/service.js";
 import { syncCycles } from "./services/cycles.js";
 import { autoArchive, checkSlas } from "./services/maintenance.js";
+import { snapshotMetrics } from "./services/metrics.js";
 import { createRecurringIssues } from "./services/templates.js";
 
 /**
@@ -19,6 +20,11 @@ export async function tick(deps: HubDeps, at = deps.now?.() ?? Date.now()) {
     await autoArchive(deps.db, at);
   } catch (error) {
     console.error("Auto-archive failed", error);
+  }
+  try {
+    await snapshotMetrics(deps.db, at);
+  } catch (error) {
+    console.error("Metric snapshot failed", error);
   }
   let notified = false;
   for (const [name, step] of [

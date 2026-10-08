@@ -3,6 +3,7 @@ import { workspaceStore } from "../actions.js";
 import { mutate, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { Avatar, openMenu, timeAgo, useStore } from "../ui.js";
+import { RunsSection } from "./Runs.js";
 
 interface Token {
   id: string;
@@ -27,11 +28,12 @@ interface MemberDetail {
     nodes: { id: string; name: string; kind: "owner" | "agent"; title: string | null }[];
   };
   apiTokens: Token[];
+  runnerTags: string[];
   assignedIssues: { nodes: { id: string }[] };
 }
 
 const MEMBER_QUERY = `query($id: String!) { user(id: $id) {
-  id name kind title charter active isMe createdAt
+  id name kind title charter active isMe createdAt runnerTags
   manager { id name }
   directReports { nodes { id name kind title } }
   apiTokens { id name prefix createdAt lastUsedAt revokedAt }
@@ -161,7 +163,32 @@ export function MemberPage({ id }: { id: string }) {
           <dd className="text-muted">{member.assignedIssues.nodes.length}</dd>
           <dt className="text-faint">Joined</dt>
           <dd className="text-muted">{timeAgo(member.createdAt)}</dd>
+          {member.kind === "agent" && (
+            <>
+              <dt className="text-faint">Runs on</dt>
+              <dd>
+                <EditableLine
+                  label="Runner tags"
+                  value={member.runnerTags.join(", ")}
+                  placeholder="Any machine"
+                  disabled={!canEdit || !member.active}
+                  allowEmpty
+                  onSave={(value) =>
+                    update({
+                      runnerTags: value
+                        .split(",")
+                        .map((t) => t.trim().toLowerCase())
+                        .filter(Boolean),
+                    })
+                  }
+                  className="text-muted"
+                />
+              </dd>
+            </>
+          )}
         </dl>
+
+        {member.kind === "agent" && canEdit && member.active && <GiveWork agent={member} />}
 
         {member.kind === "agent" && (
           <section className="mt-8">
@@ -176,6 +203,8 @@ export function MemberPage({ id }: { id: string }) {
             />
           </section>
         )}
+
+        {member.kind === "agent" && <RunsSection agentId={member.id} />}
 
         {(canEdit || member.isMe) && (
           <section className="mt-8">
@@ -247,10 +276,12 @@ function EditableLine(props: {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  allowEmpty?: boolean;
   onSave: (value: string) => void;
 }) {
   const [value, setValue] = useState(props.value);
   useEffect(() => setValue(props.value), [props.value]);
+  const changed = value.trim() !== props.value && (props.allowEmpty || value.trim());
   return (
     <input
       aria-label={props.label}
@@ -258,10 +289,79 @@ function EditableLine(props: {
       placeholder={props.placeholder}
       disabled={props.disabled}
       onChange={(e) => setValue(e.target.value)}
-      onBlur={() => value.trim() !== props.value && value.trim() && props.onSave(value.trim())}
+      onBlur={() => changed && props.onSave(value.trim())}
       onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
       className={`block w-full bg-transparent outline-none placeholder:text-faint ${props.className ?? ""}`}
     />
+  );
+}
+
+/** The owner hands an agent a goal directly, optionally on an issue. */
+function GiveWork({ agent }: { agent: { id: string; name: string } }) {
+  const [open, setOpen] = useState(false);
+  const [goal, setGoal] = useState("");
+  const [issue, setIssue] = useState("");
+  if (!open)
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-4 rounded-md border border-line px-3 py-1.5 text-muted hover:bg-raised hover:text-ink"
+      >
+        Give {agent.name} work
+      </button>
+    );
+  return (
+    <form
+      className="mt-4 rounded-lg border border-line p-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const result = await mutate<{ runCreate: { run: { id: string } } }>(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
+          { input: { agentId: agent.id, goal, issueId: issue.trim() || null } },
+        );
+        if (result) navigate(paths.run(result.runCreate.run.id));
+      }}
+    >
+      <label className="block">
+        <span className="mb-1.5 block text-muted">What should {agent.name} get done?</span>
+        <textarea
+          // biome-ignore lint/a11y/noAutofocus: the goal is the first thing to type
+          autoFocus
+          aria-label="Goal"
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+          rows={3}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 outline-none focus:border-faint"
+        />
+      </label>
+      <label className="mt-3 flex items-center gap-2">
+        <span className="text-muted">On issue</span>
+        <input
+          aria-label="On issue"
+          value={issue}
+          placeholder="Optional, e.g. FIT-3"
+          onChange={(e) => setIssue(e.target.value)}
+          className="w-40 rounded-md border border-line bg-panel px-2 py-1 outline-none placeholder:text-faint focus:border-faint"
+        />
+      </label>
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!goal.trim()}
+          className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
+        >
+          Start
+        </button>
+      </div>
+    </form>
   );
 }
 

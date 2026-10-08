@@ -25,6 +25,7 @@ export function usePath(): string {
 }
 
 export type RequestsTab = "pending" | "answered" | "grants";
+export type RunsTab = "active" | "all";
 
 export type Route =
   | { name: "inbox" }
@@ -35,6 +36,9 @@ export type Route =
   | { name: "member"; id: string }
   | { name: "requests"; tab: RequestsTab }
   | { name: "request"; id: string }
+  | { name: "runs"; tab: RunsTab }
+  | { name: "run"; id: string }
+  | { name: "machines" }
   | { name: "notFound" };
 
 export function parseRoute(path: string): Route {
@@ -51,6 +55,9 @@ export function parseRoute(path: string): Route {
       tab: second === "answered" || second === "grants" ? second : "pending",
     };
   if (first === "request" && second) return { name: "request", id: second };
+  if (first === "runs") return { name: "runs", tab: second === "all" ? "all" : "active" };
+  if (first === "run" && second) return { name: "run", id: second };
+  if (first === "machines") return { name: "machines" };
   if (first === "issue" && second) return { name: "issue", identifier: second.toUpperCase() };
   if (first === "team" && second) {
     const view = third === "active" || third === "backlog" ? third : "all";
@@ -71,4 +78,7 @@ export const paths = {
   requests: (tab: RequestsTab = "pending") =>
     tab === "pending" ? "/approvals" : `/approvals/${tab}`,
   request: (id: string) => `/request/${id}`,
+  runs: (tab: RunsTab = "active") => (tab === "active" ? "/runs" : "/runs/all"),
+  run: (id: string) => `/run/${id}`,
+  machines: () => "/machines",
 };

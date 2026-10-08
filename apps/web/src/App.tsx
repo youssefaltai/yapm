@@ -1,7 +1,7 @@
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Viewer } from "./api.js";
-import { Home } from "./Home.js";
+import { Shell } from "./Shell.js";
 
 type State =
   | { screen: "loading" }
@@ -41,7 +41,7 @@ export function App() {
       return <LoginScreen onDone={(viewer) => setState({ screen: "home", viewer })} />;
     case "home":
       return (
-        <Home
+        <Shell
           viewer={state.viewer}
           onSignOut={async () => {
             await api("/api/auth/logout", {});

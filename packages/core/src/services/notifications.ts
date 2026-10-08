@@ -99,7 +99,7 @@ export function notify(ctx: Ctx, inputs: NotificationInput[]): WriteOp[] {
       id: newId(),
       userId: input.userId,
       type: input.type,
-      actorId: ctx.actorId,
+      actorId: ctx.actorId || null,
       issueId: input.issueId ?? null,
       commentId: input.commentId ?? null,
       requestId: input.requestId ?? null,

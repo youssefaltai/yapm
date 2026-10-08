@@ -11,7 +11,19 @@ import {
   projectUpdates,
   teams,
 } from "@life-os/schema";
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import {
   createDocument,
   createInitiative,
@@ -439,7 +451,64 @@ const ProjectFilter = builder.inputType("ProjectFilter", {
   }),
 });
 
+const likeTerm = (term: string) => `%${term.toLowerCase().replace(/[%_\\]/g, "\\$&")}%`;
+
 builder.queryFields((t) => ({
+  searchProjects: t.field({
+    type: ProjectConnection,
+    description: "Projects whose name, summary or description contains the term.",
+    args: { ...pageArgs, term: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      requireViewer(ctx);
+      const like = likeTerm(args.term.trim());
+      return paginate(
+        await db(ctx)
+          .select()
+          .from(projects)
+          .where(
+            and(
+              isNull(projects.archivedAt),
+              or(
+                sql`lower(${projects.name}) like ${like} escape '\\'`,
+                sql`lower(coalesce(${projects.summary}, '')) like ${like} escape '\\'`,
+                sql`lower(coalesce(${projects.description}, '')) like ${like} escape '\\'`,
+              ),
+            ),
+          )
+          .orderBy(desc(projects.updatedAt))
+          .limit(50)
+          .all(),
+        args,
+      );
+    },
+  }),
+  searchDocuments: t.field({
+    type: DocumentConnection,
+    description: "Documents whose title or content contains the term.",
+    args: { ...pageArgs, term: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      requireViewer(ctx);
+      const like = likeTerm(args.term.trim());
+      return paginate(
+        await db(ctx)
+          .select()
+          .from(documents)
+          .where(
+            and(
+              isNull(documents.archivedAt),
+              or(
+                sql`lower(${documents.title}) like ${like} escape '\\'`,
+                sql`lower(${documents.content}) like ${like} escape '\\'`,
+              ),
+            ),
+          )
+          .orderBy(desc(documents.updatedAt))
+          .limit(50)
+          .all(),
+        args,
+      );
+    },
+  }),
   projects: t.field({
     type: ProjectConnection,
     description: "Projects in their manual order.",

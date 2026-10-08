@@ -19,6 +19,7 @@ import { MachinesView } from "./views/Machines.js";
 import { MemberPage } from "./views/MemberPage.js";
 import { CreateProjectHost, ProjectPage, ProjectsView } from "./views/Projects.js";
 import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
+import { RoadmapView } from "./views/Roadmap.js";
 import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
 import { ViewPage } from "./views/SavedView.js";
 import { TeamSettings } from "./views/TeamSettings.js";
@@ -194,6 +195,8 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <ProjectPage key={route.id} id={route.id} tab={route.tab} />;
     case "initiatives":
       return <InitiativesView />;
+    case "roadmap":
+      return <RoadmapView />;
     case "documents":
       return <DocumentsView />;
     case "document":
@@ -291,7 +294,10 @@ function Sidebar({
         <NavLink
           to={paths.projects()}
           active={
-            route.name === "projects" || route.name === "project" || route.name === "initiatives"
+            route.name === "projects" ||
+            route.name === "project" ||
+            route.name === "initiatives" ||
+            route.name === "roadmap"
           }
         >
           Projects

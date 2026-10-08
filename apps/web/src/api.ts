@@ -14,10 +14,16 @@ export class ApiError extends Error {
   }
 }
 
+/** Identifies this tab, so live updates can skip the echo of its own changes. */
+export const CLIENT_ID = crypto.randomUUID();
+
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
-    headers: body === undefined ? {} : { "content-type": "application/json" },
+    headers:
+      body === undefined
+        ? {}
+        : { "content-type": "application/json", "x-life-os-client": CLIENT_ID },
     body: body === undefined ? null : JSON.stringify(body),
     credentials: "same-origin",
   });

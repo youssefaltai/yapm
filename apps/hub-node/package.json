@@ -17,10 +17,12 @@
     "@life-os/core": "workspace:*",
     "@life-os/schema": "workspace:*",
     "drizzle-orm": "0.45.3",
-    "hono": "4.13.13"
+    "hono": "4.13.13",
+    "ws": "8.18.3"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
+    "@types/ws": "8.18.1",
     "tsup": "8.5.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",

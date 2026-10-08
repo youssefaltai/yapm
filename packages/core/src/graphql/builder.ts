@@ -9,6 +9,8 @@ export interface GraphQLContext {
   deps: HubDeps;
   viewer: Viewer | null;
   loaders: Loaders;
+  /** The calling tab or runner, echoed in live-update events. */
+  clientId?: string | null;
 }
 
 interface GraphQLTypes {
@@ -70,12 +72,29 @@ export function now(ctx: GraphQLContext): number {
 export async function act<T>(ctx: GraphQLContext, fn: (service: Ctx) => Promise<T>): Promise<T> {
   const viewer = requireViewer(ctx);
   try {
-    return await fn({ db: ctx.deps.db, actorId: viewer.user.id, now: now(ctx) });
+    const at = now(ctx);
+    const result = await fn({ db: ctx.deps.db, actorId: viewer.user.id, now: at });
+    await announce(ctx, viewer.user.id, at);
+    return result;
   } catch (error) {
     if (error instanceof ServiceError) {
       throw createGraphQLError(error.message, { extensions: { code: error.code } });
     }
     throw error;
+  }
+}
+
+/** Tells live clients something changed. A failed broadcast never fails the mutation. */
+async function announce(ctx: GraphQLContext, actorId: string, at: number) {
+  try {
+    await ctx.deps.realtime?.publish({
+      type: "change",
+      actorId,
+      clientId: ctx.clientId ?? null,
+      at,
+    });
+  } catch (error) {
+    console.error("Live update failed", error);
   }
 }
 

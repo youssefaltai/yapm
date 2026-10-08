@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { commandPalette, createIssueStore, createTeamStore, workspaceStore } from "./actions.js";
 import type { Viewer } from "./api.js";
 import { type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
+import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
 import { Kbd, MenuHost, openMenu, useHotkeys } from "./ui.js";
 import { Company } from "./views/Company.js";
@@ -15,6 +16,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
   const path = usePath();
   const route = parseRoute(path);
   const [drawer, setDrawer] = useState(false);
+  useLiveUpdates();
 
   useEffect(() => {
     if (workspace) workspaceStore.set(workspace);

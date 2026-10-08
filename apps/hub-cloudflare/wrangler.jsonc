@@ -20,6 +20,12 @@
       "migrations_dir": "../../packages/schema/migrations"
     }
   ],
+  // Live updates: one Durable Object fans change events out to every open app and runner.
+  "durable_objects": {
+    "bindings": [{ "name": "LIVE", "class_name": "LiveHub" }]
+  },
+  // SQLite-backed classes are what the free plan supports.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveHub"] }],
   "vars": {
     "LIFE_OS_VERSION": "dev"
   },

@@ -1,5 +1,6 @@
 import type { users } from "@life-os/schema";
 import type { HubDb } from "./db.js";
+import type { Realtime } from "./realtime.js";
 
 export type User = typeof users.$inferSelect;
 
@@ -21,6 +22,8 @@ export interface HubDeps {
   config: HubConfig;
   /** Clock override for tests. */
   now?: () => number;
+  /** Live updates; without it, apps fall back to refetching on focus. */
+  realtime?: Realtime;
 }
 
 export interface Viewer {

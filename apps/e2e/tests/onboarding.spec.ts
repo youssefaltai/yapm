@@ -22,12 +22,12 @@ test.describe
     let page: Page;
 
     test.beforeAll(async ({ browser }: { browser: Browser }) => {
-      page = await browser.newPage();
+      page = await (await browser.newContext()).newPage();
       await addPasskeyAuthenticator(page);
     });
 
     test.afterAll(async () => {
-      await page.close();
+      await page.context().close();
     });
 
     test("starts a company with a passkey, signs out and back in", async () => {
@@ -135,5 +135,20 @@ test.describe
       await page.getByRole("button", { name: "board" }).click();
       await expect(page.getByText("Todo", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: /PF-3/ })).toBeVisible();
+    });
+
+    test("shows changes from another tab live, without a reload", async () => {
+      const other = await page.context().newPage();
+      await other.goto("/team/PF");
+      await other.getByRole("button", { name: "list" }).click();
+      await expect(other.getByRole("button", { name: /Find a cheaper tariff/ })).toBeVisible();
+
+      await page.goto("/issue/PF-2");
+      const title = page.getByLabel("Issue title");
+      await title.fill("Switch to a cheaper tariff");
+      await title.press("Enter");
+
+      await expect(other.getByRole("button", { name: /Switch to a cheaper tariff/ })).toBeVisible();
+      await other.close();
     });
   });

@@ -1,8 +1,9 @@
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths, type RunsTab } from "../router.js";
+import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
 import { Avatar, timeAgo, useStore } from "../ui.js";
 
 export type RunStatus =
@@ -153,12 +154,12 @@ export function RunsView({ tab }: { tab: RunsTab }) {
   );
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
+      <header className="isolate flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
         <span className="mr-2 font-medium">Runs</span>
-        <TabLink active={tab === "active"} to={paths.runs("active")}>
+        <TabLink group="runs-tabs" active={tab === "active"} to={paths.runs("active")}>
           Active
         </TabLink>
-        <TabLink active={tab === "all"} to={paths.runs("all")}>
+        <TabLink group="runs-tabs" active={tab === "all"} to={paths.runs("all")}>
           All
         </TabLink>
         <a
@@ -174,33 +175,27 @@ export function RunsView({ tab }: { tab: RunsTab }) {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
-        {data && data.runs.nodes.length === 0 && (
-          <p className="px-6 py-16 text-center text-muted">
-            {tab === "active"
-              ? "No agent is working right now. Assign an issue to an agent or mention one to wake it."
-              : "No runs yet. Agents run on your machines; add one under Machines."}
-          </p>
-        )}
+        {!data && !error && <ListSkeleton rows={6} />}
+        {data &&
+          data.runs.nodes.length === 0 &&
+          (tab === "active" ? (
+            <EmptyState
+              icon="run"
+              title="No agent is working right now"
+              description="Assign an issue to an agent, or mention one in a comment, to wake it."
+              secondary={{ label: "See all runs", onClick: () => navigate(paths.runs("all")) }}
+            />
+          ) : (
+            <EmptyState
+              icon="run"
+              title="No runs yet"
+              description="Agents run on your own machines. Add one, and runs show up here as agents work."
+              action={{ label: "Set up a machine", onClick: () => navigate(paths.machines()) }}
+            />
+          ))}
         {data && <RunRows runs={data.runs.nodes} />}
       </div>
     </div>
-  );
-}
-
-function TabLink({ active, to, children }: { active: boolean; to: string; children: ReactNode }) {
-  return (
-    <a
-      href={to}
-      onClick={(e) => {
-        e.preventDefault();
-        navigate(to);
-      }}
-      className={`shrink-0 rounded-md border px-2 py-0.5 ${
-        active ? "border-line bg-raised text-ink" : "border-transparent text-muted hover:text-ink"
-      }`}
-    >
-      {children}
-    </a>
   );
 }
 
@@ -258,7 +253,7 @@ export function RunPage({ id }: { id: string }) {
   const run = data?.run;
   if (run && live && !isActive(run.status)) setLive(false);
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
-  if (!run || !workspace) return null;
+  if (!run || !workspace) return <PageSkeleton />;
   const canStop = workspace.viewer.kind === "owner" && isActive(run.status);
   const events = run.logs.flatMap((batch) => batch.events);
   const triggers = (run.trigger?.notes ?? []).map((n) => TRIGGERS[n.type] ?? n.type);
@@ -275,7 +270,7 @@ export function RunPage({ id }: { id: string }) {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full animate-fade-in overflow-y-auto">
       <header className="flex h-11 items-center gap-2 border-b border-line px-4 md:px-6">
         <button
           type="button"

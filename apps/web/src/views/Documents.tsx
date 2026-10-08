@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { createDocument } from "../actions.js";
+import { createDocument, documentContextMenu } from "../actions.js";
+import { contextMenu } from "../contextMenu.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
+import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { timeAgo } from "../ui.js";
 import { ProjectDot } from "./Projects.js";
 
@@ -42,17 +44,31 @@ export function DocumentsView() {
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
-        {data && data.documents.nodes.length === 0 && (
-          <p className="px-6 py-16 text-center text-muted">
-            {query ? "No document matches." : "No documents yet. Briefs, plans and notes go here."}
-          </p>
-        )}
+        {!data && !error && <ListSkeleton rows={6} />}
+        {data &&
+          data.documents.nodes.length === 0 &&
+          (query ? (
+            <EmptyState
+              icon="search"
+              title="No document matches"
+              description={`Nothing is titled like “${query.trim()}”. Try another word.`}
+              action={{ label: "Clear search", onClick: () => setQuery("") }}
+            />
+          ) : (
+            <EmptyState
+              icon="document"
+              title="No documents yet"
+              description="Briefs, plans and notes go here, written by you or your agents."
+              action={{ label: "New document", onClick: () => void createDocument() }}
+            />
+          ))}
         <ul>
           {data?.documents.nodes.map((d) => (
             <li key={d.id}>
               <button
                 type="button"
                 onClick={() => navigate(paths.document(d.id))}
+                onContextMenu={contextMenu(() => documentContextMenu(d))}
                 className="flex w-full animate-fade-in items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
@@ -123,11 +139,11 @@ export function DocumentPage({ id }: { id: string }) {
   }, [title, content, id]);
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
-  if (!doc) return null;
+  if (!doc) return <PageSkeleton />;
   // A brand new document opens ready to write in.
   const fresh = doc.content === "" && doc.title === "Untitled";
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full animate-fade-in flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
         {doc.project ? (
           <button

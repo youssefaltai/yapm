@@ -61,7 +61,7 @@ test.describe
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
       await expect(page.getByText("1 AI employee, no teams yet.")).toBeVisible();
       await expect(page.getByText("Chief Executive Officer")).toBeVisible();
-      await expect(page.getByText("No teams yet. Your CEO creates them")).toBeVisible();
+      await expect(page.getByText("Your CEO creates them")).toBeVisible();
 
       await page.getByRole("button", { name: "Sign out" }).first().click();
       await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
@@ -79,7 +79,7 @@ test.describe
       await expect(page.getByLabel("Identifier")).toHaveValue("PF");
       await page.getByRole("button", { name: "Create team" }).last().click();
       await expect(page).toHaveURL(/\/team\/PF$/);
-      await expect(page.getByText("No issues here yet.")).toBeVisible();
+      await expect(page.getByText("No issues in Personal Finance yet")).toBeVisible();
 
       await page.keyboard.press("c");
       await page.getByLabel("Issue title").fill("Pay the electricity bill");
@@ -311,7 +311,7 @@ test.describe
 
     test("plans a project with milestones, updates and a document", async () => {
       await page.getByRole("link", { name: "Projects" }).click();
-      await page.getByRole("button", { name: "New project" }).click();
+      await page.getByRole("button", { name: "New project" }).first().click();
       const dialog = page.getByRole("dialog", { name: "New project" });
       await dialog.getByLabel("Name").fill("Pay off the car");
       await dialog.getByLabel("Summary").fill("Owe nothing on the car by spring");
@@ -816,5 +816,65 @@ test.describe
       await expect(agentReply.locator("em")).toHaveText("times");
       const comments = await mcp("list_comments", { issueId: "PF-2" });
       expect(JSON.stringify(comments)).toContain("```ts\\nconst total = 42;\\n```");
+    });
+    test("right-clicks issues and comments for Linear's context menus", async () => {
+      await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+      await page.goto("/team/PF");
+      await page.getByRole("button", { name: "list" }).click();
+      const row = page.getByRole("button", { name: /PF-2.*cheaper tariff/ });
+
+      // The menu's shortcuts work inside it: S opens Status, already focused for the keyboard.
+      await row.click({ button: "right" });
+      await expect(page.getByRole("menuitem", { name: /Status/ })).toBeVisible();
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({
+          path: `${process.env.SCREENSHOTS}/context-menu.png`,
+          animations: "disabled",
+        });
+      await page.keyboard.press("s");
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({
+          path: `${process.env.SCREENSHOTS}/context-submenu.png`,
+          animations: "disabled",
+        });
+      await page.getByRole("menuitem", { name: "Todo" }).click();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      const todo = page.getByRole("region", { name: "Todo" });
+      await expect(todo.getByRole("button", { name: /PF-2/ })).toBeVisible();
+
+      // Submenus open on hover, beside the entry.
+      await row.click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Copy/ }).hover();
+      await page.getByRole("menuitem", { name: /Copy ID/ }).click();
+      await expect(page.getByRole("status")).toContainText("Copied PF-2 to clipboard");
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("PF-2");
+
+      // Typed dates work in the due date submenu.
+      await row.click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Due date/ }).hover();
+      await page.getByRole("textbox", { name: /Due date/ }).fill("tomorrow");
+      await page.keyboard.press("Enter");
+      await expect(row).toContainText("Tomorrow");
+
+      // Archive, then undo it from the toast.
+      await row.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Archive" }).click();
+      await expect(page.getByRole("status")).toContainText("Archived PF-2");
+      await expect(row).toBeHidden();
+      await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
+      await expect(row).toBeVisible();
+
+      // Escape closes it without doing anything.
+      await row.click({ button: "right" });
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+
+      // Comments: react from the menu.
+      await page.goto("/issue/PF-1");
+      const comment = page.getByText("Paid through the bank app.");
+      await comment.click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Add reaction/ }).hover();
+      await page.getByRole("menuitem", { name: "🎉" }).click();
+      await expect(page.getByRole("button", { name: /🎉 1/ })).toBeVisible();
     });
   });

@@ -1,15 +1,19 @@
 import { type ReactNode, useEffect, useState } from "react";
 import {
   commandPalette,
+  copyText,
   createIssueStore,
   createTeamStore,
+  linkEntries,
   shortcutsStore,
   workspaceStore,
 } from "./actions.js";
 import type { Viewer } from "./api.js";
+import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
+import { EmptyState, SelectedPill, TabLink } from "./states.js";
 import { Kbd, MenuHost, openMenu, useHotkeys, usePresence } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
@@ -29,7 +33,7 @@ import { CreateProjectHost, ProjectPage, ProjectsView } from "./views/Projects.j
 import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
 import { RoadmapView } from "./views/Roadmap.js";
 import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
-import { ViewPage } from "./views/SavedView.js";
+import { deleteView, renameView, ViewPage } from "./views/SavedView.js";
 import { ShortcutsHost } from "./views/Shortcuts.js";
 import { TeamSettings } from "./views/TeamSettings.js";
 import { UsageView } from "./views/Usage.js";
@@ -67,9 +71,9 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
   });
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full animate-fade-in">
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border-line bg-panel px-3 py-3 md:static md:flex md:w-60 md:animate-none ${
+        className={`isolate fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border-line bg-panel px-3 py-3 md:static md:flex md:w-60 md:animate-none ${
           drawer ? "flex animate-drawer-in" : "hidden"
         }`}
       >
@@ -119,6 +123,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       <ShortcutsHost />
       <CreateProjectHost />
       <MenuHost />
+      <ContextMenuHost />
       <ToastHost />
     </div>
   );
@@ -136,12 +141,20 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
           title="My issues"
           tabs={
             <>
-              <Tab active={route.tab === "assigned"} to={paths.myIssues("assigned")}>
+              <TabLink
+                group="view-tabs"
+                active={route.tab === "assigned"}
+                to={paths.myIssues("assigned")}
+              >
                 Assigned
-              </Tab>
-              <Tab active={route.tab === "created"} to={paths.myIssues("created")}>
+              </TabLink>
+              <TabLink
+                group="view-tabs"
+                active={route.tab === "created"}
+                to={paths.myIssues("created")}
+              >
                 Created
-              </Tab>
+              </TabLink>
             </>
           }
         />
@@ -156,24 +169,40 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
           title={team.name}
           tabs={
             <>
-              <Tab active={route.view === "all"} to={paths.team(team.key, "all")}>
+              <TabLink
+                group="view-tabs"
+                active={route.view === "all"}
+                to={paths.team(team.key, "all")}
+              >
                 All issues
-              </Tab>
-              <Tab active={route.view === "active"} to={paths.team(team.key, "active")}>
+              </TabLink>
+              <TabLink
+                group="view-tabs"
+                active={route.view === "active"}
+                to={paths.team(team.key, "active")}
+              >
                 Active
-              </Tab>
-              <Tab active={route.view === "backlog"} to={paths.team(team.key, "backlog")}>
+              </TabLink>
+              <TabLink
+                group="view-tabs"
+                active={route.view === "backlog"}
+                to={paths.team(team.key, "backlog")}
+              >
                 Backlog
-              </Tab>
+              </TabLink>
               {team.triageEnabled && (
-                <Tab active={route.view === "triage"} to={paths.team(team.key, "triage")}>
+                <TabLink
+                  group="view-tabs"
+                  active={route.view === "triage"}
+                  to={paths.team(team.key, "triage")}
+                >
                   Triage
-                </Tab>
+                </TabLink>
               )}
               {team.cyclesEnabled && (
-                <Tab active={false} to={paths.cycles(team.key)}>
+                <TabLink group="view-tabs" active={false} to={paths.cycles(team.key)}>
                   Cycles
-                </Tab>
+                </TabLink>
               )}
             </>
           }
@@ -237,23 +266,13 @@ function pageKey(route: Route): string {
 }
 
 function NotFound({ what }: { what: string }) {
-  return <p className="px-6 py-10 text-center text-muted">{what} not found.</p>;
-}
-
-function Tab({ active, to, children }: { active: boolean; to: string; children: ReactNode }) {
   return (
-    <a
-      href={to}
-      onClick={(e) => {
-        e.preventDefault();
-        navigate(to);
-      }}
-      className={`shrink-0 rounded-md border px-2 py-0.5 ${
-        active ? "border-line bg-raised text-ink" : "border-transparent text-muted hover:text-ink"
-      }`}
-    >
-      {children}
-    </a>
+    <EmptyState
+      icon="compass"
+      title={`${what} not found`}
+      description="It may have been moved or deleted, or the link is mistyped."
+      action={{ label: "Go to Inbox", onClick: () => navigate(paths.inbox()) }}
+    />
   );
 }
 
@@ -380,7 +399,11 @@ function Sidebar({
           const view = route.name === "team" ? route.view : null;
           return (
             <div key={team.id}>
-              <NavLink to={paths.team(team.key)} active={active && view === "all"}>
+              <NavLink
+                to={paths.team(team.key)}
+                active={active && view === "all"}
+                menu={() => teamMenu(team)}
+              >
                 <span className="flex w-full items-center justify-between">
                   <span className="truncate">{team.name}</span>
                   <span className="text-[11px] text-faint">{team.key}</span>
@@ -422,6 +445,10 @@ function Sidebar({
                 key={v.id}
                 to={paths.view(v.id)}
                 active={route.name === "view" && route.id === v.id}
+                menu={() => [
+                  { id: "rename", label: "Rename…", onSelect: () => renameView(v) },
+                  { id: "delete", label: "Delete…", danger: true, onSelect: () => deleteView(v) },
+                ]}
               >
                 <span className="truncate">{v.name}</span>
               </NavLink>
@@ -443,7 +470,50 @@ function teamFor(workspace: Workspace | null, route: Route): Team | undefined {
   return "key" in route ? workspace?.teams.nodes.find((t) => t.key === route.key) : undefined;
 }
 
-function NavLink({ to, active, children }: { to: string; active: boolean; children: ReactNode }) {
+/** A team's shortcuts: its views, a new issue in it, its settings. */
+function teamMenu(team: Team): ContextEntry[] {
+  return [
+    {
+      id: "new-issue",
+      label: "New issue",
+      hint: "C",
+      onSelect: () => createIssueStore.set({ teamId: team.id }),
+    },
+    "divider",
+    team.triageEnabled && {
+      id: "triage",
+      label: "Triage",
+      onSelect: () => navigate(paths.team(team.key, "triage")),
+    },
+    { id: "active", label: "Active", onSelect: () => navigate(paths.team(team.key, "active")) },
+    { id: "backlog", label: "Backlog", onSelect: () => navigate(paths.team(team.key, "backlog")) },
+    team.cyclesEnabled && {
+      id: "cycles",
+      label: "Cycles",
+      onSelect: () => navigate(paths.cycles(team.key)),
+    },
+    {
+      id: "settings",
+      label: "Team settings",
+      onSelect: () => navigate(paths.teamSettings(team.key)),
+    },
+    "divider",
+    { id: "copy-key", label: "Copy identifier", onSelect: () => copyText(team.key, team.key) },
+  ];
+}
+
+function NavLink({
+  to,
+  active,
+  menu,
+  children,
+}: {
+  to: string;
+  active: boolean;
+  /** Entries for its right-click menu, after opening it in a new tab and copying its link. */
+  menu?: () => ContextEntry[];
+  children: ReactNode;
+}) {
   return (
     <a
       href={to}
@@ -451,10 +521,13 @@ function NavLink({ to, active, children }: { to: string; active: boolean; childr
         e.preventDefault();
         navigate(to);
       }}
-      className={`flex items-center rounded-md px-2 py-1.5 ${
-        active ? "bg-raised text-ink" : "text-muted hover:bg-raised hover:text-ink"
+      onContextMenu={contextMenu(() => [...(menu?.() ?? []), "divider", ...linkEntries(to)])}
+      aria-current={active ? "page" : undefined}
+      className={`relative flex items-center rounded-md px-2 py-1.5 ${
+        active ? "text-ink" : "text-muted hover:bg-raised/60 hover:text-ink"
       }`}
     >
+      {active && <SelectedPill group="sidebar" />}
       {children}
     </a>
   );

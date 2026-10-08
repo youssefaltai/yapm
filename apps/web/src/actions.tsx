@@ -1,4 +1,6 @@
 import { graphql } from "./api.js";
+import type { ContextEntry } from "./contextMenu.js";
+import { confirmDialog, formatDate, isoDate, parseDate, promptDialog } from "./controls.js";
 import {
   ISSUE_FIELDS,
   type Issue,
@@ -438,6 +440,303 @@ export async function archiveIssues(issues: Issue[]) {
   for (const issue of issues) {
     await mutate("mutation($id: String!) { issueArchive(id: $id) { success } }", { id: issue.id });
   }
+}
+
+async function unarchiveIssues(issues: Issue[]) {
+  for (const issue of issues) {
+    await mutate("mutation($id: String!) { issueUnarchive(id: $id) { success } }", {
+      id: issue.id,
+    });
+  }
+}
+
+// Context menus -------------------------------------------------------------
+
+/** Copies text and says so, like Linear's "Copied PF-1 to clipboard". */
+export function copyText(text: string, what: string) {
+  if (!navigator.clipboard) return toast("Copying needs a secure (https) page.");
+  navigator.clipboard.writeText(text).then(
+    () => toast(`Copied ${what} to clipboard`),
+    () => toast("Couldn't copy to the clipboard."),
+  );
+}
+
+export const linkTo = (path: string) => new URL(path, window.location.origin).href;
+
+export function openInNewTab(path: string) {
+  window.open(path, "_blank", "noopener");
+}
+
+/** The entries every linkable thing shares: open it in a new tab, copy its link. */
+export function linkEntries(path: string, name = "link"): ContextEntry[] {
+  return [
+    { id: "new-tab", label: "Open in new tab", onSelect: () => openInNewTab(path) },
+    { id: "copy-link", label: "Copy link", onSelect: () => copyText(linkTo(path), name) },
+  ];
+}
+
+const addDays = (n: number) => {
+  const d = new Date();
+  return isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
+};
+
+/** Picks a date from a few presets, or whatever is typed ("fri", "in 3 days", "oct 20"). */
+export function dateMenu({
+  placeholder,
+  value,
+  onPick,
+}: {
+  placeholder: string;
+  value: string | null;
+  onPick: (date: string | null) => unknown;
+}): MenuSpec {
+  const friday = (5 - new Date().getDay() + 7) % 7;
+  const presets: [string, string][] = [
+    ["Today", addDays(0)],
+    ["Tomorrow", addDays(1)],
+    ["End of this week", addDays(friday)],
+    ["In one week", addDays(7)],
+    ["In two weeks", addDays(14)],
+    ["In a month", isoDate(new Date(new Date().setMonth(new Date().getMonth() + 1)))],
+  ];
+  return {
+    placeholder,
+    items: [
+      ...presets.map(([label, date]) => ({
+        id: label,
+        label,
+        hint: formatDate(date),
+        checked: value === date,
+        onSelect: () => void onPick(date),
+      })),
+      ...(value ? [{ id: "none", label: "Remove date", onSelect: () => void onPick(null) }] : []),
+    ],
+    search: async (query) => {
+      const date = parseDate(query);
+      return date
+        ? [{ id: `on-${date}`, label: formatDate(date), onSelect: () => void onPick(date) }]
+        : [];
+    },
+  };
+}
+
+function copyMenu(issues: Issue[]): MenuSpec {
+  const [only] = issues;
+  const ids = issues.map((i) => i.identifier).join(", ");
+  return {
+    placeholder: `Copy ${plural(issues)}…`,
+    items: [
+      { id: "id", label: "Copy ID", hint: ids, onSelect: () => copyText(ids, ids) },
+      {
+        id: "link",
+        label: issues.length === 1 ? "Copy link" : "Copy links",
+        onSelect: () =>
+          copyText(
+            issues.map((i) => linkTo(paths.issue(i.identifier))).join("\n"),
+            issues.length === 1 ? "link" : "links",
+          ),
+      },
+      ...(only && issues.length === 1
+        ? [
+            {
+              id: "title",
+              label: "Copy title",
+              onSelect: () => copyText(only.title, "title"),
+            },
+            {
+              id: "markdown",
+              label: "Copy as Markdown link",
+              onSelect: () =>
+                copyText(
+                  `[${only.identifier} ${only.title}](${linkTo(paths.issue(only.identifier))})`,
+                  "link",
+                ),
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+/** Linear's issue menu: every property, then copy, relations and archive. For a row or a selection. */
+export function issueContextMenu(issues: Issue[]): ContextEntry[] {
+  const [first] = issues;
+  if (!first) return [];
+  const one = issues.length === 1 ? first : undefined;
+  const sameTeam = issues.every((i) => i.team.id === first.team.id);
+  const team = teamOf(first);
+  const archived = issues.every((i) => i.archivedAt);
+  return [
+    sameTeam && {
+      id: "status",
+      label: "Status",
+      hint: "S",
+      icon: one && <StatusIcon type={one.state.type} color={one.state.color} />,
+      submenu: () => statusMenu(issues),
+    },
+    {
+      id: "assignee",
+      label: "Assignee",
+      hint: "A",
+      icon:
+        one &&
+        (one.assignee ? (
+          <Avatar name={one.assignee.name} kind={one.assignee.kind} size={14} />
+        ) : (
+          <UnassignedIcon size={14} />
+        )),
+      submenu: () => assigneeMenu(issues),
+    },
+    {
+      id: "priority",
+      label: "Priority",
+      hint: "P",
+      icon: one && <PriorityIcon priority={one.priority} />,
+      submenu: () => priorityMenu(issues),
+    },
+    { id: "labels", label: "Labels", hint: "L", submenu: () => labelsMenu(issues) },
+    { id: "project", label: "Project", hint: "⇧P", submenu: () => projectMenu(issues) },
+    sameTeam &&
+      team?.cyclesEnabled && {
+        id: "cycle",
+        label: "Cycle",
+        hint: "⇧C",
+        submenu: () => cycleMenu(issues),
+      },
+    { id: "estimate", label: "Estimate", hint: "E", submenu: () => estimateMenu(issues) },
+    {
+      id: "due",
+      label: "Due date",
+      submenu: () =>
+        dateMenu({
+          placeholder: "Due date… try “fri” or “in 2 weeks”",
+          value: issues.every((i) => i.dueDate === first.dueDate) ? first.dueDate : null,
+          onPick: (dueDate) =>
+            updateIssues(
+              issues.map((i) => i.id),
+              { dueDate },
+            ),
+        }),
+    },
+    "divider",
+    one && {
+      id: "sub",
+      label: "Create sub-issue",
+      onSelect: () => createIssueStore.set({ teamId: one.team.id, parentId: one.id }),
+    },
+    one && { id: "parent", label: "Set parent issue", submenu: () => parentMenu(one) },
+    one && { id: "relation", label: "Add relation", submenu: () => relationMenu(one) },
+    "divider",
+    { id: "copy", label: "Copy", submenu: () => copyMenu(issues) },
+    one && {
+      id: "new-tab",
+      label: "Open in new tab",
+      onSelect: () => openInNewTab(paths.issue(one.identifier)),
+    },
+    "divider",
+    archived
+      ? {
+          id: "unarchive",
+          label: "Unarchive",
+          onSelect: () => unarchiveIssues(issues),
+        }
+      : {
+          id: "archive",
+          label: "Archive",
+          onSelect: async () => {
+            await archiveIssues(issues);
+            toast(`Archived ${plural(issues)}`, {
+              label: "Undo",
+              run: () => void unarchiveIssues(issues),
+            });
+          },
+        },
+  ];
+}
+
+/** Moves a document into a project, or out of one. */
+async function documentProjectMenu(doc: {
+  id: string;
+  project: { id: string } | null;
+}): Promise<MenuSpec> {
+  const data = await graphql<{ projects: { nodes: ProjectOption[] } }>(
+    "{ projects(first: 100) { nodes { id name color projectMilestones { nodes { id name } } } } }",
+  );
+  const move = (projectId: string | null) =>
+    mutate(
+      "mutation($id: String!, $input: DocumentUpdateInput!) { documentUpdate(id: $id, input: $input) { success } }",
+      { id: doc.id, input: { projectId } },
+    );
+  return {
+    placeholder: "Move to project…",
+    items: [
+      {
+        id: "none",
+        label: "No project",
+        checked: !doc.project,
+        onSelect: () => void move(null),
+      },
+      ...data.projects.nodes.map((p) => ({
+        id: p.id,
+        label: p.name,
+        icon: <span className="size-2.5 rounded-[3px]" style={{ background: p.color }} />,
+        checked: doc.project?.id === p.id,
+        onSelect: () => void move(p.id),
+      })),
+    ],
+  };
+}
+
+export function documentContextMenu(
+  doc: { id: string; title: string; project: { id: string } | null },
+  /** Where to go once it's deleted, when it's the open page. */
+  afterDelete?: string,
+): ContextEntry[] {
+  const title = doc.title || "Untitled";
+  return [
+    ...linkEntries(paths.document(doc.id)),
+    "divider",
+    {
+      id: "rename",
+      label: "Rename…",
+      onSelect: async () => {
+        const next = await promptDialog({
+          title: "Rename document",
+          label: "Title",
+          initial: title,
+          confirmLabel: "Rename",
+        });
+        if (next && next !== doc.title)
+          await mutate(
+            "mutation($id: String!, $input: DocumentUpdateInput!) { documentUpdate(id: $id, input: $input) { success } }",
+            { id: doc.id, input: { title: next } },
+          );
+      },
+    },
+    { id: "project", label: "Move to project", submenu: () => documentProjectMenu(doc) },
+    "divider",
+    {
+      id: "delete",
+      label: "Delete…",
+      danger: true,
+      onSelect: async () => {
+        if (
+          !(await confirmDialog({
+            title: `Delete “${title}”?`,
+            body: "The document is deleted for everyone.",
+            confirmLabel: "Delete",
+            destructive: true,
+          }))
+        )
+          return;
+        const deleted = await mutate(
+          "mutation($id: String!) { documentDelete(id: $id) { success } }",
+          { id: doc.id },
+        );
+        if (deleted && afterDelete) navigate(afterDelete);
+      },
+    },
+  ];
 }
 
 /** Everything Cmd+K offers: navigation, creation, and actions on the current issues. */

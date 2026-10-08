@@ -2347,6 +2347,8 @@ export function hubContract(
       expect(text).toContain(`HUB="${client.origin}"`);
       expect(text).toContain(`${client.origin}/downloads/life-os-runner.tgz`);
       expect(text).not.toContain("__HUB__");
+      // macOS sh reads non-ASCII bytes after a variable as part of its name.
+      expect(text).not.toMatch(/[^\t\n -~]/);
 
       await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
         id: joined.body.id,

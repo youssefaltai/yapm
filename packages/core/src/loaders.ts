@@ -4,6 +4,8 @@ import {
   issueRelations,
   issues,
   labels,
+  projectMilestones,
+  projects,
   reactions,
   teams,
   users,
@@ -58,6 +60,10 @@ export function createLoaders(db: HubDb) {
     ),
     issue: byId((ids) => db.select().from(issues).where(inArray(issues.id, ids)).all()),
     label: byId((ids) => db.select().from(labels).where(inArray(labels.id, ids)).all()),
+    project: byId((ids) => db.select().from(projects).where(inArray(projects.id, ids)).all()),
+    projectMilestone: byId((ids) =>
+      db.select().from(projectMilestones).where(inArray(projectMilestones.id, ids)).all(),
+    ),
     statesByTeam: groupBy(
       (ids) =>
         db

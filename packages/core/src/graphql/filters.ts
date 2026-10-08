@@ -174,6 +174,15 @@ const NullableIssueFilter = builder
     }),
   });
 
+const NullableProjectFilter = builder
+  .inputRef<{ id?: IDComparatorShape | null; null?: boolean | null }>("NullableProjectFilter")
+  .implement({
+    fields: (t) => ({
+      id: t.field({ type: IDComparator, required: false }),
+      null: t.boolean({ required: false }),
+    }),
+  });
+
 export interface IssueFilterShape {
   id?: IDComparatorShape | null;
   number?: NumberComparatorShape | null;
@@ -187,6 +196,8 @@ export interface IssueFilterShape {
   creator?: UserFilterShape | null;
   labels?: { some?: LabelFilterShape | null; every?: LabelFilterShape | null } | null;
   parent?: { id?: IDComparatorShape | null; null?: boolean | null } | null;
+  project?: { id?: IDComparatorShape | null; null?: boolean | null } | null;
+  projectMilestone?: { id?: IDComparatorShape | null; null?: boolean | null } | null;
   and?: IssueFilterShape[] | null;
   or?: IssueFilterShape[] | null;
 }
@@ -206,6 +217,8 @@ export const IssueFilter = builder.inputRef<IssueFilterShape>("IssueFilter").imp
     creator: t.field({ type: NullableUserFilter, required: false }),
     labels: t.field({ type: IssueLabelCollectionFilter, required: false }),
     parent: t.field({ type: NullableIssueFilter, required: false }),
+    project: t.field({ type: NullableProjectFilter, required: false }),
+    projectMilestone: t.field({ type: NullableProjectFilter, required: false }),
     and: t.field({ type: [IssueFilter], required: false }),
     or: t.field({ type: [IssueFilter], required: false }),
   }),
@@ -342,6 +355,16 @@ export function issueWhere(
         : filter.parent.null === false
           ? isNotNull(issues.parentId)
           : undefined,
+    );
+  }
+  for (const [f, column] of [
+    [filter.project, issues.projectId],
+    [filter.projectMilestone, issues.projectMilestoneId],
+  ] as const) {
+    if (!f) continue;
+    parts.push(
+      compare(column, f.id),
+      f.null === true ? isNull(column) : f.null === false ? isNotNull(column) : undefined,
     );
   }
   if (filter.and?.length) parts.push(...filter.and.map((f) => issueWhere(db, f, viewerId)));

@@ -28,11 +28,13 @@ export interface CreateIssueDefaults {
   stateId?: string;
   parentId?: string;
   assigneeId?: string;
+  projectId?: string;
 }
 
 export const createIssueStore = createStore<CreateIssueDefaults | null>(null);
 export const createTeamStore = createStore(false);
 export const hireAgentStore = createStore(false);
+export const createProjectStore = createStore(false);
 
 /** The issues the next shortcut or command applies to: the open issue, or the list's selection. */
 export const targetStore = createStore<Issue[]>([]);
@@ -70,6 +72,61 @@ export function statusMenu(issues: Issue[]): MenuSpec | undefined {
         );
       },
     })),
+  };
+}
+
+interface ProjectOption {
+  id: string;
+  name: string;
+  color: string;
+  projectMilestones: { nodes: { id: string; name: string }[] };
+}
+
+/** Creates an untitled document (optionally in a project) and opens it to write. */
+export async function createDocument(projectId?: string) {
+  const result = await mutate<{ documentCreate: { document: { id: string } } }>(
+    "mutation($input: DocumentCreateInput!) { documentCreate(input: $input) { document { id } } }",
+    { input: { title: "Untitled", projectId: projectId ?? null } },
+  );
+  if (result) navigate(paths.document(result.documentCreate.document.id));
+}
+
+/** Moves issues into a project, or one of its milestones. Loads the projects first. */
+export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
+  const data = await graphql<{ projects: { nodes: ProjectOption[] } }>(
+    "{ projects(first: 100) { nodes { id name color projectMilestones { nodes { id name } } } } }",
+  );
+  const ids = issues.map((i) => i.id);
+  const dot = (color: string) => (
+    <span className="size-2.5 rounded-full" style={{ background: color }} aria-hidden />
+  );
+  return {
+    placeholder: `Move ${plural(issues)} to project…`,
+    items: [
+      {
+        id: "none",
+        label: "No project",
+        checked: issues.every((i) => !i.project),
+        onSelect: () => void updateIssues(ids, { projectId: null }),
+      },
+      ...data.projects.nodes.flatMap((p): MenuItem[] => [
+        {
+          id: p.id,
+          label: p.name,
+          icon: dot(p.color),
+          checked: issues.every((i) => i.project?.id === p.id && !i.projectMilestone),
+          onSelect: () => void updateIssues(ids, { projectId: p.id }),
+        },
+        ...p.projectMilestones.nodes.map((m) => ({
+          id: m.id,
+          label: `${p.name} › ${m.name}`,
+          keywords: p.name,
+          icon: dot(p.color),
+          checked: issues.every((i) => i.projectMilestone?.id === m.id),
+          onSelect: () => void updateIssues(ids, { projectMilestoneId: m.id }),
+        })),
+      ]),
+    ],
   };
 }
 
@@ -365,6 +422,13 @@ export function commandPalette(): MenuSpec {
         hint: "E",
         onSelect: () => estimateMenu(targets),
       },
+      {
+        id: "project",
+        label: "Move to project…",
+        section,
+        hint: "⇧P",
+        onSelect: () => projectMenu(targets),
+      },
       { id: "archive", label: "Archive", section, onSelect: () => void archiveIssues(targets) },
     );
     const [only] = targets;
@@ -406,6 +470,36 @@ export function commandPalette(): MenuSpec {
       label: "Hire an agent",
       section: "Create",
       onSelect: () => hireAgentStore.set(true),
+    },
+    {
+      id: "new-project",
+      label: "Create new project",
+      section: "Create",
+      onSelect: () => createProjectStore.set(true),
+    },
+    {
+      id: "new-document",
+      label: "Create new document",
+      section: "Create",
+      onSelect: () => void createDocument(),
+    },
+    {
+      id: "projects",
+      label: "Go to Projects",
+      section: "Navigation",
+      onSelect: () => navigate(paths.projects()),
+    },
+    {
+      id: "initiatives",
+      label: "Go to Initiatives",
+      section: "Navigation",
+      onSelect: () => navigate(paths.initiatives()),
+    },
+    {
+      id: "documents",
+      label: "Go to Documents",
+      section: "Navigation",
+      onSelect: () => navigate(paths.documents()),
     },
     {
       id: "inbox",

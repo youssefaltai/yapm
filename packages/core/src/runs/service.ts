@@ -118,7 +118,13 @@ async function wake(
         .all()
     : [];
 
-  if (note.type === "issueStatusChanged" || note.type === "issueUnassignedFromYou") return false;
+  // Status changes and project updates are news, not asks.
+  if (
+    note.type === "issueStatusChanged" ||
+    note.type === "issueUnassignedFromYou" ||
+    note.type === "projectUpdateCreated"
+  )
+    return false;
   if (note.type === "requestAnswered" && note.requestId) {
     // A run waiting on its own request hears the answer directly.
     const request = await db.select().from(requests).where(eq(requests.id, note.requestId)).get();

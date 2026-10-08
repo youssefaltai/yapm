@@ -6,6 +6,7 @@ import {
   estimateMenu,
   labelsMenu,
   priorityMenu,
+  projectMenu,
   statusMenu,
   targetStore,
   workspaceStore,
@@ -40,7 +41,8 @@ import {
 
 export type IssueSource =
   | { kind: "team"; team: Team; view: "all" | "active" | "backlog" }
-  | { kind: "my"; tab: "assigned" | "created" };
+  | { kind: "my"; tab: "assigned" | "created" }
+  | { kind: "project"; project: { id: string; name: string } };
 
 interface Filters {
   stateTypes: StateType[];
@@ -100,7 +102,12 @@ export function IssuesView({
   title: ReactNode;
   tabs: ReactNode;
 }) {
-  const sourceKey = source.kind === "team" ? `team:${source.team.key}` : "my";
+  const sourceKey =
+    source.kind === "team"
+      ? `team:${source.team.key}`
+      : source.kind === "project"
+        ? `project:${source.project.id}`
+        : "my";
   const [layout, setLayoutState] = useState<"list" | "board">(() => readLayout(sourceKey));
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const filtersRef = useRef(filters);
@@ -120,14 +127,29 @@ export function IssuesView({
   const query =
     source.kind === "team"
       ? `query($key: String!, $filter: IssueFilter) { team(id: $key) { issues(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`
-      : `query($filter: IssueFilter) { viewer { list: ${source.tab === "assigned" ? "assignedIssues" : "createdIssues"}(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`;
+      : source.kind === "project"
+        ? `query($key: String!, $filter: IssueFilter) { project(id: $key) { issues(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`
+        : `query($filter: IssueFilter) { viewer { list: ${source.tab === "assigned" ? "assignedIssues" : "createdIssues"}(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`;
   const { data, error } = useQuery<{
     team?: { issues: { nodes: Issue[] } };
+    project?: { issues: { nodes: Issue[] } };
     viewer?: { list: { nodes: Issue[] } };
-  }>(query, source.kind === "team" ? { key: source.team.key, filter } : { filter });
+  }>(
+    query,
+    source.kind === "team"
+      ? { key: source.team.key, filter }
+      : source.kind === "project"
+        ? { key: source.project.id, filter }
+        : { filter },
+  );
   const issues = useMemo(
     () =>
-      [...(data?.team?.issues.nodes ?? data?.viewer?.list.nodes ?? [])].sort(
+      [
+        ...(data?.team?.issues.nodes ??
+          data?.project?.issues.nodes ??
+          data?.viewer?.list.nodes ??
+          []),
+      ].sort(
         (a, b) =>
           priorityRank(a.priority) - priorityRank(b.priority) ||
           b.updatedAt.localeCompare(a.updatedAt),
@@ -188,6 +210,7 @@ export function IssuesView({
     a: withTargets(assigneeMenu),
     l: withTargets(labelsMenu),
     e: withTargets(estimateMenu),
+    "shift+p": () => targets.length && void projectMenu(targets).then(openMenu),
     "mod+b": () => setLayout(layout === "list" ? "board" : "list"),
   });
 
@@ -226,7 +249,13 @@ export function IssuesView({
         <EmptyState
           filtered={filter !== null}
           onCreate={() =>
-            createIssueStore.set(source.kind === "team" ? { teamId: source.team.id } : {})
+            createIssueStore.set(
+              source.kind === "team"
+                ? { teamId: source.team.id }
+                : source.kind === "project"
+                  ? { projectId: source.project.id }
+                  : {},
+            )
           }
         />
       )}
@@ -260,7 +289,7 @@ export function IssuesView({
                     selected={selected.has(issue.id)}
                     onFocus={() => setFocusedId(issue.id)}
                     onToggle={() => toggle(issue.id)}
-                    showTeam={source.kind === "my"}
+                    showTeam={source.kind !== "team"}
                   />
                 ))}
               </section>

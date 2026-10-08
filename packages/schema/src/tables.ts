@@ -234,10 +234,13 @@ export const issues = sqliteTable(
     completedAt: integer("completed_at", { mode: "number" }),
     canceledAt: integer("canceled_at", { mode: "number" }),
     archivedAt: integer("archived_at", { mode: "number" }),
+    projectId: text("project_id"),
+    projectMilestoneId: text("project_milestone_id"),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("issues_team_number_idx").on(t.teamId, t.number),
+    index("issues_project_idx").on(t.projectId),
     index("issues_state_idx").on(t.stateId),
     index("issues_assignee_idx").on(t.assigneeId),
     index("issues_parent_idx").on(t.parentId),
@@ -385,6 +388,7 @@ export const NOTIFICATION_TYPES = [
   "issueStatusChanged",
   "requestCreated",
   "requestAnswered",
+  "projectUpdateCreated",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -399,6 +403,8 @@ export const notifications = sqliteTable(
     issueId: text("issue_id"),
     commentId: text("comment_id"),
     requestId: text("request_id"),
+    projectId: text("project_id"),
+    projectUpdateId: text("project_update_id"),
     /** Details for the line in the Inbox, e.g. `{ from, to }` for a status change. */
     data: text("data", { mode: "json" }).$type<Record<string, unknown>>(),
     readAt: integer("read_at", { mode: "number" }),
@@ -554,4 +560,127 @@ export const runLogs = sqliteTable(
     createdAt: integer("created_at", { mode: "number" }).notNull(),
   },
   (t) => [uniqueIndex("run_logs_run_seq_idx").on(t.runId, t.seq)],
+);
+
+export const PROJECT_STATES = [
+  "backlog",
+  "planned",
+  "started",
+  "paused",
+  "completed",
+  "canceled",
+] as const;
+export type ProjectState = (typeof PROJECT_STATES)[number];
+
+/** A body of work with a goal and a date, across teams, like Linear's projects. */
+export const projects = sqliteTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    /** One line: what the project achieves. */
+    summary: text("summary"),
+    /** Markdown. */
+    description: text("description"),
+    icon: text("icon"),
+    color: text("color").notNull(),
+    state: text("state", { enum: PROJECT_STATES }).notNull().default("planned"),
+    leadId: text("lead_id"),
+    initiativeId: text("initiative_id"),
+    creatorId: text("creator_id"),
+    /** ISO dates. */
+    startDate: text("start_date"),
+    targetDate: text("target_date"),
+    sortOrder: real("sort_order").notNull(),
+    startedAt: integer("started_at", { mode: "number" }),
+    completedAt: integer("completed_at", { mode: "number" }),
+    canceledAt: integer("canceled_at", { mode: "number" }),
+    archivedAt: integer("archived_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [index("projects_initiative_idx").on(t.initiativeId)],
+);
+
+export const projectTeams = sqliteTable(
+  "project_teams",
+  {
+    projectId: text("project_id").notNull(),
+    teamId: text("team_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.teamId] }),
+    index("project_teams_team_idx").on(t.teamId),
+  ],
+);
+
+/** Checkpoints inside a project, each with its own target date. */
+export const projectMilestones = sqliteTable(
+  "project_milestones",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    targetDate: text("target_date"),
+    sortOrder: real("sort_order").notNull(),
+    ...timestamps,
+  },
+  (t) => [index("project_milestones_project_idx").on(t.projectId)],
+);
+
+export const PROJECT_HEALTHS = ["onTrack", "atRisk", "offTrack"] as const;
+export type ProjectHealth = (typeof PROJECT_HEALTHS)[number];
+
+/** A status post on a project: how it's going, in words and a health flag. */
+export const projectUpdates = sqliteTable(
+  "project_updates",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    userId: text("user_id").notNull(),
+    /** Markdown. */
+    body: text("body").notNull(),
+    health: text("health", { enum: PROJECT_HEALTHS }).notNull(),
+    editedAt: integer("edited_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [index("project_updates_project_idx").on(t.projectId, t.createdAt)],
+);
+
+export const INITIATIVE_STATUSES = ["planned", "active", "completed"] as const;
+export type InitiativeStatus = (typeof INITIATIVE_STATUSES)[number];
+
+/** A company-level goal that groups projects, like Linear's initiatives. */
+export const initiatives = sqliteTable("initiatives", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status", { enum: INITIATIVE_STATUSES }).notNull().default("planned"),
+  ownerId: text("owner_id"),
+  targetDate: text("target_date"),
+  sortOrder: real("sort_order").notNull(),
+  archivedAt: integer("archived_at", { mode: "number" }),
+  ...timestamps,
+});
+
+/** Long-form Markdown pages: specs, plans, briefs. Optionally part of a project. */
+export const documents = sqliteTable(
+  "documents",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    /** Markdown. */
+    content: text("content").notNull().default(""),
+    icon: text("icon"),
+    projectId: text("project_id"),
+    initiativeId: text("initiative_id"),
+    creatorId: text("creator_id"),
+    updatedById: text("updated_by_id"),
+    archivedAt: integer("archived_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("documents_project_idx").on(t.projectId),
+    index("documents_updated_idx").on(t.updatedAt),
+  ],
 );

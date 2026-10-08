@@ -228,6 +228,11 @@ async function describeTriggers(db: HubDb, notes: TriggerNote[]) {
         );
         break;
       }
+      case "issueSlaBreached":
+        lines.push(
+          "- The issue missed its SLA: it's overdue for its priority. Finish it or say why.",
+        );
+        break;
       case "wake":
         lines.push("- You asked to look at this again now.");
         break;

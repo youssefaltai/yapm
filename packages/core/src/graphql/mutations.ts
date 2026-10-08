@@ -116,6 +116,13 @@ const TeamUpdateInput = builder.inputType("TeamUpdateInput", {
     cycleStartDay: t.int({ required: false, description: "0 Sunday … 6 Saturday." }),
     cycleCooldown: t.int({ required: false, description: "Weeks between cycles, 0–4." }),
     upcomingCycleCount: t.int({ required: false, description: "Future cycles to keep, 1–10." }),
+    slaHours: t.field({
+      type: "JSONObject",
+      required: false,
+      description:
+        'Hours to finish an issue by priority, e.g. { "1": 24, "2": 72 }; null turns SLAs off.',
+    }),
+    autoArchivePeriod: t.int({ required: false, description: "Months, 0–24; 0 never." }),
   }),
 });
 

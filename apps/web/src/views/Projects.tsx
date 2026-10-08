@@ -91,6 +91,13 @@ export function ProjectsView() {
         </button>
         <button
           type="button"
+          onClick={() => navigate(paths.roadmap())}
+          className="text-muted hover:text-ink"
+        >
+          Roadmap
+        </button>
+        <button
+          type="button"
           onClick={() => createProjectStore.set(true)}
           className="ml-auto rounded-md bg-accent px-2.5 py-1 font-medium text-white"
         >

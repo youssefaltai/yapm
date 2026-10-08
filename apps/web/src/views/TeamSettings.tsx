@@ -3,6 +3,23 @@ import { createIssueStore } from "../actions.js";
 import { mutate, type Team, toast } from "../data.js";
 import { navigate, paths } from "../router.js";
 
+const PRIORITY_SLAS = [
+  { value: 1, label: "Urgent", hint: "Priority 1" },
+  { value: 2, label: "High", hint: "Priority 2" },
+  { value: 3, label: "Medium", hint: "Priority 3" },
+  { value: 4, label: "Low", hint: "Priority 4" },
+];
+
+const SLA_OPTIONS = [
+  { value: 0, label: "No SLA" },
+  { value: 4, label: "4 hours" },
+  { value: 24, label: "1 day" },
+  { value: 72, label: "3 days" },
+  { value: 168, label: "1 week" },
+  { value: 336, label: "2 weeks" },
+  { value: 720, label: "30 days" },
+];
+
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 async function save(team: Team, input: Record<string, unknown>) {
@@ -108,6 +125,42 @@ export function TeamSettings({ team }: { team: Team }) {
           </Row>
 
           <Templates team={team} />
+
+          <h2 className="mt-8 mb-1 font-medium">SLAs</h2>
+          <p className="border-b border-line pb-3 text-[12px] text-faint">
+            How long an issue of each priority may stay open. When one runs over, its assignee is
+            woken and you're notified.
+          </p>
+          {PRIORITY_SLAS.map((p) => (
+            <Row key={p.value} label={p.label} hint={p.hint}>
+              <Select
+                label={`${p.label} SLA`}
+                value={team.slaHours?.[String(p.value)] ?? 0}
+                options={SLA_OPTIONS}
+                onChange={(hours) =>
+                  void save(team, {
+                    slaHours: { ...(team.slaHours ?? {}), [String(p.value)]: hours },
+                  })
+                }
+              />
+            </Row>
+          ))}
+
+          <h2 className="mt-8 mb-1 font-medium">Archive</h2>
+          <Row label="Auto-archive" hint="Done and canceled issues leave the lists after a while.">
+            <Select
+              label="Auto-archive"
+              value={team.autoArchivePeriod}
+              options={[
+                { value: 0, label: "Never" },
+                ...[1, 3, 6, 9, 12].map((n) => ({
+                  value: n,
+                  label: n === 1 ? "After 1 month" : `After ${n} months`,
+                })),
+              ]}
+              onChange={(v) => void save(team, { autoArchivePeriod: v })}
+            />
+          </Row>
 
           <h2 className="mt-8 mb-1 font-medium">Cycles</h2>
           <Row

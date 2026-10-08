@@ -170,7 +170,7 @@ builder.queryType({
     }),
     searchIssues: t.field({
       type: IssueConnection,
-      description: "Issues whose identifier, title or description contains the term.",
+      description: "Issues whose identifier, title, description or comments contain the term.",
       args: { ...issueArgs, term: t.arg.string({ required: true }) },
       resolve: async (_root, args, ctx) => {
         const viewer = requireViewer(ctx);
@@ -198,6 +198,13 @@ builder.queryType({
             byIdentifier,
             sql`lower(${issues.title}) like ${like} escape '\\'`,
             sql`lower(coalesce(${issues.description}, '')) like ${like} escape '\\'`,
+            inArray(
+              issues.id,
+              db(ctx)
+                .select({ id: comments.issueId })
+                .from(comments)
+                .where(sql`lower(${comments.body}) like ${like} escape '\\'`),
+            ),
           ),
         );
       },

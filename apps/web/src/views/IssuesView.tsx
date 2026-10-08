@@ -35,6 +35,7 @@ import {
   type MenuSpec,
   openMenu,
   PriorityIcon,
+  SlaBadge,
   StatusIcon,
   shortDate,
   UnassignedIcon,
@@ -504,6 +505,10 @@ function IssueRow({
           <LabelChip key={label.id} label={label} />
         ))}
       </span>
+      <SlaBadge
+        breachesAt={issue.slaBreachesAt}
+        open={issue.state.type !== "completed" && issue.state.type !== "canceled"}
+      />
       {due && (
         <span className={`shrink-0 text-[12px] ${due.overdue ? "text-red-400" : "text-muted"}`}>
           {due.text}

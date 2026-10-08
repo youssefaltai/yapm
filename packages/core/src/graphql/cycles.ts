@@ -130,6 +130,15 @@ CustomView.implement({
 });
 
 builder.objectFields(Team, (t) => ({
+  slaHours: t.field({
+    type: "JSONObject",
+    nullable: true,
+    description: 'Hours to finish an issue by priority, e.g. { "1": 24 }; null when off.',
+    resolve: (team) => team.slaHours,
+  }),
+  autoArchivePeriod: t.exposeInt("autoArchivePeriod", {
+    description: "Months after which closed issues are archived; 0 never.",
+  }),
   triageEnabled: t.exposeBoolean("triageEnabled"),
   cyclesEnabled: t.exposeBoolean("cyclesEnabled"),
   cycleDuration: t.exposeInt("cycleDuration", { description: "Weeks per cycle." }),
@@ -155,6 +164,16 @@ builder.objectFields(Team, (t) => ({
           .all(),
         args,
       ),
+  }),
+}));
+
+builder.objectFields(Issue, (t) => ({
+  slaStartedAt: t.field({ type: "DateTime", nullable: true, resolve: (i) => i.slaStartedAt }),
+  slaBreachesAt: t.field({
+    type: "DateTime",
+    nullable: true,
+    description: "When the issue misses its SLA, if its team has one for its priority.",
+    resolve: (i) => i.slaBreachesAt,
   }),
 }));
 

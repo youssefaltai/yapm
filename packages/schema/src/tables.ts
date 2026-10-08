@@ -78,6 +78,10 @@ export const teams = sqliteTable("teams", {
   upcomingCycleCount: integer("upcoming_cycle_count").notNull().default(2),
   /** Last cycle number handed out. */
   cycleCount: integer("cycle_count").notNull().default(0),
+  /** Hours to finish an issue, by priority (`"1"` urgent … `"4"` low); none means no SLA. */
+  slaHours: text("sla_hours", { mode: "json" }).$type<Record<string, number>>(),
+  /** Months after which done and canceled issues are archived; 0 never. */
+  autoArchivePeriod: integer("auto_archive_period").notNull().default(6),
   archivedAt: integer("archived_at", { mode: "number" }),
   ...timestamps,
 });
@@ -252,11 +256,16 @@ export const issues = sqliteTable(
     projectId: text("project_id"),
     projectMilestoneId: text("project_milestone_id"),
     cycleId: text("cycle_id"),
+    slaStartedAt: integer("sla_started_at", { mode: "number" }),
+    slaBreachesAt: integer("sla_breaches_at", { mode: "number" }),
+    /** When the breach was announced, so it's announced once. */
+    slaBreachedAt: integer("sla_breached_at", { mode: "number" }),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("issues_team_number_idx").on(t.teamId, t.number),
     index("issues_cycle_idx").on(t.cycleId),
+    index("issues_sla_idx").on(t.slaBreachesAt),
     index("issues_project_idx").on(t.projectId),
     index("issues_state_idx").on(t.stateId),
     index("issues_assignee_idx").on(t.assigneeId),
@@ -406,6 +415,7 @@ export const NOTIFICATION_TYPES = [
   "requestCreated",
   "requestAnswered",
   "projectUpdateCreated",
+  "issueSlaBreached",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

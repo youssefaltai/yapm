@@ -36,7 +36,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - Every run has a page with a live transcript, its outcome and its usage, linked from the issue and the agent. **Stop** ends a run on the spot with a reason the agent reads next time. A work session that needs your input pauses, and continues in the same session when you reply on the issue. **Give work** on an agent's page starts a session with any goal.
 - Limits keep things calm: at most a few wakes per issue per hour and a daily cap per agent.
 
-**Phase 4: planning and rituals** (in progress).
+**Phase 4: planning and rituals** (done).
 
 - Projects like Linear's: a lead, teams, start and target dates, a status, milestones, and a progress bar from their issues. Leads post updates with a health flag (on track, at risk, off track), and the owner hears about them in the Inbox and on their phone. Move issues into a project or milestone with `Shift+P`.
 - Initiatives group projects under the company's big goals.
@@ -46,6 +46,8 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - Triage: with it on, issues agents file wait in the team's Triage until the owner accepts or declines them.
 - Saved views: filter any list and save it; views show up in the sidebar.
 - Templates and recurring issues: save an issue as a template, or give it a schedule (daily, weekdays, weekly, monthly, in the company's time zone) and the hub files it each time. Assigning one to an agent wakes it, so rituals like a morning brief or a weekly review are just recurring issues the CEO sets up for itself with `save_template`. Nothing is pre-made.
+- SLAs per team and priority: issues show the time left, and a breach wakes the assignee and notifies the owner. Closed issues auto-archive after a team's chosen period.
+- Search across issues (including comments), projects and documents from `⌘K`, and a roadmap that puts projects and milestones on a timeline.
 - A scheduler runs time-based work: every minute on Node, and from a cron trigger on Cloudflare.
 
 ## Repository layout

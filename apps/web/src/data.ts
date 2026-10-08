@@ -41,6 +41,8 @@ export interface Team {
   cycleStartDay: number;
   cycleCooldownTime: number;
   upcomingCycleCount: number;
+  slaHours: Record<string, number> | null;
+  autoArchivePeriod: number;
   templates: IssueTemplate[];
 }
 
@@ -95,6 +97,7 @@ export const WORKSPACE_QUERY = `{
       states { nodes { id name type color position } }
       labels { nodes { id name color } }
       triageEnabled cyclesEnabled cycleDuration cycleStartDay cycleCooldownTime upcomingCycleCount
+      slaHours autoArchivePeriod
       templates { id name templateData nextRunAt schedule { frequency time weekday monthDay description } }
     }
   }
@@ -120,6 +123,7 @@ export interface Issue {
   project: { id: string; name: string; color: string } | null;
   projectMilestone: { id: string; name: string } | null;
   cycle: { id: string; number: number; name: string | null } | null;
+  slaBreachesAt: string | null;
 }
 
 export const ISSUE_FIELDS = `
@@ -133,6 +137,7 @@ export const ISSUE_FIELDS = `
     project { id name color }
     projectMilestone { id name }
     cycle { id number name }
+    slaBreachesAt
   }
 `;
 

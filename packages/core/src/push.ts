@@ -214,6 +214,7 @@ async function message(db: HubDb, n: NotificationRow): Promise<PushMessage> {
     requestCreated: `${who} asks for approval`,
     requestAnswered: `${who} answered your request`,
     projectUpdateCreated: `${who} posted a project update`,
+    issueSlaBreached: "Missed its SLA",
   };
   return { title, body: body[n.type], url, tag: n.issueId ?? n.id };
 }

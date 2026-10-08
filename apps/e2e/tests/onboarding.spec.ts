@@ -138,7 +138,7 @@ test.describe
 
     test("finds issues with Cmd+K and switches to the board", async () => {
       await page.keyboard.press("Control+k");
-      await page.getByPlaceholder("Type a command or search issues…").fill("tariff");
+      await page.getByPlaceholder("Type a command or search…").fill("tariff");
       await page.getByRole("option", { name: /Find a cheaper tariff/ }).click();
       await expect(page).toHaveURL(/\/issue\/PF-2$/);
 
@@ -414,6 +414,32 @@ test.describe
       await expect(page.getByLabel("Issue title")).toHaveValue("Pay the ___ bill");
       await expect(page.getByLabel("Issue description")).toHaveValue("Amount:\nDue:");
       await page.keyboard.press("Escape");
+    });
+
+    test("holds urgent issues to an SLA, searches everything and shows the roadmap", async () => {
+      await page.getByRole("link", { name: /Personal Finance/ }).click();
+      await page.getByRole("link", { name: "Settings" }).click();
+      await page.getByLabel("Urgent SLA").selectOption({ label: "1 day" });
+      await expect(page.getByRole("status")).toContainText("Team settings saved");
+
+      await page.getByRole("link", { name: "Personal Finance" }).first().click();
+      await page.keyboard.press("c");
+      await page.getByLabel("Issue title").fill("Report the stolen card");
+      await page.getByRole("button", { name: "No priority" }).click();
+      await page.getByRole("option", { name: "Urgent" }).click();
+      await page.getByRole("button", { name: "Create issue", exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: /Report the stolen card/ }).getByText(/SLA 2[34]h/),
+      ).toBeVisible();
+
+      await page.keyboard.press("Control+k");
+      await page.getByPlaceholder("Type a command or search…").fill("payment");
+      await page.getByRole("option", { name: "Payment plan" }).click();
+      await expect(page.getByLabel("Document title")).toHaveValue("Payment plan");
+
+      await page.getByRole("link", { name: "Projects" }).click();
+      await page.getByRole("button", { name: "Roadmap" }).click();
+      await expect(page.getByRole("button", { name: "Pay off the car" })).toBeVisible();
     });
 
     test("installs as an app and shows pushed notifications", async () => {

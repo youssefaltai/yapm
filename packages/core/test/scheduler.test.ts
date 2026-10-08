@@ -8,6 +8,7 @@ import { commit, type HubDb } from "../src/db.js";
 import { seedCompany } from "../src/seed.js";
 import { syncCycles } from "../src/services/cycles.js";
 import { createIssue, updateIssue } from "../src/services/issues.js";
+import { autoArchive, checkSlas } from "../src/services/maintenance.js";
 import { createTeam, updateTeam } from "../src/services/teams.js";
 import { createRecurringIssues, createTemplate } from "../src/services/templates.js";
 import { addDays, localDate, nextOccurrence, weekday, zonedTime } from "../src/time.js";
@@ -203,5 +204,48 @@ describe("recurring issues", () => {
     expect(woke.map((n) => n.type)).toEqual(["issueAssignedToYou"]);
     await createRecurringIssues(deps, start + DAY + 61 * 60_000);
     expect(await db.select().from(schema.issues).all()).toHaveLength(2);
+  });
+});
+
+describe("SLAs and auto-archive", () => {
+  it("announces a breach once and archives old closed issues", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ctx = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(ctx, { name: "Bills", key: "BIL" });
+    await updateTeam(ctx, teamId, { slaHours: { "1": 4 }, autoArchivePeriod: 1 });
+    const urgent = await createIssue(ctx, { teamId, title: "Card blocked", priority: 1 });
+    const done = await createIssue(ctx, { teamId, title: "Old bill" });
+    const states = await db
+      .select()
+      .from(schema.workflowStates)
+      .where(eq(schema.workflowStates.teamId, teamId))
+      .all();
+    await updateIssue(ctx, done, {
+      stateId: nth(
+        states.filter((s) => s.type === "completed"),
+        0,
+      ).id,
+    });
+
+    expect(await checkSlas(db, start + 3 * 3_600_000)).toBe(false);
+    expect(await checkSlas(db, start + 5 * 3_600_000)).toBe(true);
+    expect(await checkSlas(db, start + 6 * 3_600_000)).toBe(false);
+    const breaches = await db
+      .select()
+      .from(schema.notifications)
+      .where(eq(schema.notifications.type, "issueSlaBreached"))
+      .all();
+    expect(breaches.map((n) => [n.userId, n.issueId, n.actorId])).toEqual([
+      ["owner", urgent, null],
+    ]);
+
+    await autoArchive(db, start + 10 * DAY);
+    const kept = await db.select().from(schema.issues).where(eq(schema.issues.id, done)).get();
+    expect(kept?.archivedAt).toBeNull();
+    await autoArchive(db, start + 31 * DAY);
+    const archived = await db.select().from(schema.issues).all();
+    expect(archived.find((i) => i.id === done)?.archivedAt).not.toBeNull();
+    expect(archived.find((i) => i.id === urgent)?.archivedAt).toBeNull();
   });
 });

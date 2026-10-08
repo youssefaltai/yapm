@@ -26,7 +26,24 @@ export type TeamUpdateInput = { [K in keyof TeamCreateInput]?: TeamCreateInput[K
   cycleStartDay?: number | null;
   cycleCooldown?: number | null;
   upcomingCycleCount?: number | null;
+  /** Hours by priority, e.g. `{ "1": 24, "2": 72 }`; empty turns SLAs off. */
+  slaHours?: Record<string, unknown> | null;
+  autoArchivePeriod?: number | null;
 };
+
+function checkSla(value: Record<string, unknown> | null): Record<string, number> | null {
+  if (!value) return null;
+  const out: Record<string, number> = {};
+  for (const [priority, hours] of Object.entries(value)) {
+    if (!["1", "2", "3", "4"].includes(priority))
+      throw badRequest("SLA priorities are 1 (urgent) to 4 (low)");
+    if (hours === null || hours === 0) continue;
+    if (typeof hours !== "number" || !Number.isFinite(hours) || hours < 1 || hours > 24 * 365)
+      throw badRequest("SLA hours must be between 1 and 8760");
+    out[priority] = Math.round(hours);
+  }
+  return Object.keys(out).length ? out : null;
+}
 
 function whole(value: number, label: string, min: number, max: number) {
   if (!Number.isInteger(value) || value < min || value > max)
@@ -153,8 +170,16 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
   if (input.upcomingCycleCount != null)
     next.upcomingCycleCount = whole(input.upcomingCycleCount, "Upcoming cycles", 1, 10);
 
-  const diff = changes(team, next);
-  if (!diff) return id;
+  if (input.slaHours !== undefined) next.slaHours = checkSla(input.slaHours);
+  if (input.autoArchivePeriod != null)
+    next.autoArchivePeriod = whole(input.autoArchivePeriod, "Auto-archive after months", 0, 24);
+
+  const { slaHours, ...plain } = next;
+  const diff = changes(team, plain) ?? {};
+  if (slaHours !== undefined && JSON.stringify(slaHours) !== JSON.stringify(team.slaHours))
+    diff.slaHours = { from: team.slaHours, to: slaHours };
+  else delete next.slaHours;
+  if (!Object.keys(diff).length) return id;
   const ops: WriteOp[] = [
     db
       .update(teams)

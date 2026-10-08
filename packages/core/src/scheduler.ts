@@ -2,6 +2,7 @@ import type { HubDeps } from "./context.js";
 import { deliverPush } from "./push.js";
 import { dispatch } from "./runs/service.js";
 import { syncCycles } from "./services/cycles.js";
+import { autoArchive, checkSlas } from "./services/maintenance.js";
 import { createRecurringIssues } from "./services/templates.js";
 
 /**
@@ -15,12 +16,26 @@ export async function tick(deps: HubDeps, at = deps.now?.() ?? Date.now()) {
     console.error("Cycle sync failed", error);
   }
   try {
-    // New recurring issues wake their assignees and reach the owner's phone like any other change.
-    if (await createRecurringIssues(deps, at)) {
-      await dispatch(deps, at);
-      await deliverPush(deps, at, deps.config.origin ?? "");
-    }
+    await autoArchive(deps.db, at);
   } catch (error) {
-    console.error("Recurring issues failed", error);
+    console.error("Auto-archive failed", error);
+  }
+  let notified = false;
+  for (const [name, step] of [
+    ["Recurring issues", () => createRecurringIssues(deps, at)],
+    ["SLA check", () => checkSlas(deps.db, at)],
+  ] as const) {
+    try {
+      if (await step()) notified = true;
+    } catch (error) {
+      console.error(`${name} failed`, error);
+    }
+  }
+  // New issues and breaches wake their assignees and reach the owner's phone like any change.
+  if (notified) {
+    await dispatch(deps, at);
+    await deliverPush(deps, at, deps.config.origin ?? "").catch((error) =>
+      console.error("Push failed", error),
+    );
   }
 }

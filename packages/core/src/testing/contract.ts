@@ -1909,5 +1909,80 @@ export function hubContract(
       );
       expect(left.templates).toEqual([{ name: "Weekly review {date}", nextRunAt: null }]);
     });
+    it("tracks SLAs and searches projects, documents and comments", async () => {
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+      ) => {
+        const result = await client.graphql<T>(query, variables);
+        if (result.errors) throw new Error(result.errors[0]?.message);
+        return result.data as T;
+      };
+      const bad = await client.graphql(
+        "mutation($id: String!, $sla: JSONObject) { teamUpdate(id: $id, input: { slaHours: $sla }) { success } }",
+        { id: teamId, sla: { "9": 5 } },
+      );
+      expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const { teamUpdate } = await gql<{
+        teamUpdate: { team: { slaHours: Record<string, number>; autoArchivePeriod: number } };
+      }>(
+        `mutation($id: String!, $sla: JSONObject) {
+          teamUpdate(id: $id, input: { slaHours: $sla, autoArchivePeriod: 3 }) {
+            team { slaHours autoArchivePeriod }
+          }
+        }`,
+        { id: teamId, sla: { "1": 24, "2": 72 } },
+      );
+      expect(teamUpdate.team).toEqual({ slaHours: { "1": 24, "2": 72 }, autoArchivePeriod: 3 });
+
+      const before = Date.now();
+      const created = await gql<{
+        issueCreate: { issue: { id: string; slaStartedAt: string; slaBreachesAt: string } };
+      }>(
+        `mutation($input: IssueCreateInput!) {
+          issueCreate(input: $input) { issue { id slaStartedAt slaBreachesAt } }
+        }`,
+        { input: { teamId, title: "Dispute the double charge", priority: 1 } },
+      );
+      const sla = created.issueCreate.issue;
+      const hours = (Date.parse(sla.slaBreachesAt) - Date.parse(sla.slaStartedAt)) / 3_600_000;
+      expect(hours).toBe(24);
+      expect(Date.parse(sla.slaStartedAt)).toBeGreaterThanOrEqual(before - 1000);
+      const high = await gql<{ issueUpdate: { issue: { slaBreachesAt: string } } }>(
+        "mutation($id: String!) { issueUpdate(id: $id, input: { priority: 2 }) { issue { slaBreachesAt } } }",
+        { id: sla.id },
+      );
+      expect(Date.parse(high.issueUpdate.issue.slaBreachesAt)).toBe(
+        Date.parse(sla.slaStartedAt) + 72 * 3_600_000,
+      );
+      const low = await gql<{ issueUpdate: { issue: { slaBreachesAt: string | null } } }>(
+        "mutation($id: String!) { issueUpdate(id: $id, input: { priority: 4 }) { issue { slaBreachesAt } } }",
+        { id: sla.id },
+      );
+      expect(low.issueUpdate.issue.slaBreachesAt).toBeNull();
+
+      await gql(
+        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "The bank reference is ZX-4471." }) { success } }',
+        { id: sla.id },
+      );
+      const found = await gql<{
+        searchIssues: { nodes: { title: string }[] };
+        searchProjects: { nodes: unknown[] };
+        searchDocuments: { nodes: { title: string }[] };
+      }>(
+        `{
+          searchIssues(term: "zx-4471") { nodes { title } }
+          searchProjects(term: "zzz-no-such-project") { nodes { id } }
+          searchDocuments(term: "long run") { nodes { title } }
+        }`,
+      );
+      expect(found.searchIssues.nodes.map((i) => i.title)).toEqual(["Dispute the double charge"]);
+      expect(found.searchProjects.nodes).toEqual([]);
+      expect(found.searchDocuments.nodes.map((d) => d.title)).toEqual(["Training plan"]);
+      await gql(
+        "mutation($id: String!) { teamUpdate(id: $id, input: { slaHours: null }) { success } }",
+        { id: teamId },
+      );
+    });
   });
 }

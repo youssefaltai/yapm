@@ -15,16 +15,32 @@ interface Metrics {
   rejectionRate: number | null;
   tokens: number;
   tokensPerCompletedIssue: number | null;
+  costUsd: number;
+  costPerCompletedIssue: number | null;
+}
+
+interface RouteMetrics {
+  kind: string;
+  modelTier: string;
+  model: string | null;
+  effort: string | null;
+  routeRule: string | null;
+  runs: number;
+  completed: number;
+  successRate: number | null;
+  costUsd: number;
+  costPerCompletedRun: number | null;
 }
 
 const FIELDS =
-  "created completed cycleTimeHours slaBreaches runs runSuccessRate stopRate requestsAnswered rejectionRate tokens tokensPerCompletedIssue";
+  "created completed cycleTimeHours slaBreaches runs runSuccessRate stopRate requestsAnswered rejectionRate tokens tokensPerCompletedIssue costUsd costPerCompletedIssue";
 
 const QUERY = `query($days: Int) {
   insights(days: $days) {
     company { ${FIELDS} }
     teams { team { id key name } metrics { ${FIELDS} } }
     users { user { id name kind title } metrics { ${FIELDS} } }
+    routes { kind modelTier model effort routeRule runs completed successRate costUsd costPerCompletedRun }
   }
   metricHistory(days: $days) { date metrics { completed created } }
 }`;
@@ -37,6 +53,7 @@ interface InsightsData {
       user: { id: string; name: string; kind: "owner" | "agent"; title: string | null } | null;
       metrics: Metrics;
     }[];
+    routes: RouteMetrics[];
   };
   metricHistory: { date: string; metrics: { completed: number; created: number } }[];
 }
@@ -54,6 +71,8 @@ const compact = (v: number | null) =>
       : v >= 1000
         ? `${(v / 1000).toFixed(1)}k`
         : String(Math.round(v));
+const usd = (v: number | null) =>
+  v === null ? "–" : v >= 100 ? `$${Math.round(v)}` : `$${v.toFixed(v >= 1 ? 2 : 3)}`;
 
 /** How the company is working: throughput, speed, and how often agents needed correcting. */
 export function Insights() {
@@ -111,6 +130,12 @@ export function Insights() {
               value={compact(company.tokensPerCompletedIssue)}
               hint="per completed issue"
             />
+            <Stat label="Cost" value={usd(company.costUsd)} hint="at API prices" />
+            <Stat
+              label="Cost per issue"
+              value={usd(company.costPerCompletedIssue)}
+              hint="per completed issue"
+            />
           </div>
 
           <Daily rows={data?.metricHistory ?? []} />
@@ -147,6 +172,12 @@ export function Insights() {
                 metrics: t.metrics,
               }))}
             />
+          )}
+          <h2 className="mt-8 mb-2 text-[12px] font-medium text-faint uppercase">Model routes</h2>
+          {(insights?.routes ?? []).length === 0 ? (
+            <p className="text-muted">No runs ended in this period.</p>
+          ) : (
+            <Routes rows={insights?.routes ?? []} />
           )}
           <p className="mt-6 text-faint">
             Agents read these with get_metrics in their retros, compared with the period before.
@@ -185,6 +216,52 @@ function Daily({ rows }: { rows: InsightsData["metricHistory"] }) {
         ))}
       </div>
     </section>
+  );
+}
+
+/** Which model, effort and rule each run used, and what it bought: the evidence for routing. */
+function Routes({ rows }: { rows: RouteMetrics[] }) {
+  const head = ["Rule", "Runs", "Success", "Cost", "Per completed run"];
+  return (
+    <div className="overflow-x-auto rounded-lg border border-line">
+      <table className="w-full text-left">
+        <thead className="text-[12px] text-faint">
+          <tr className="border-b border-line">
+            <th className="px-4 py-2 font-normal">Route</th>
+            {head.map((h) => (
+              <th key={h} className="px-3 py-2 text-right font-normal whitespace-nowrap">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line">
+          {rows.map((r) => {
+            const cells = [
+              r.routeRule ?? "–",
+              String(r.runs),
+              pct(r.successRate),
+              usd(r.costUsd),
+              usd(r.costPerCompletedRun),
+            ];
+            const key = [r.kind, r.modelTier, r.model, r.effort, r.routeRule].join("|");
+            return (
+              <tr key={key}>
+                <td className="px-4 py-2 whitespace-nowrap">
+                  {r.kind} · {r.model ?? r.modelTier}
+                  {r.effort && <span className="text-muted"> · {r.effort}</span>}
+                </td>
+                {cells.map((c, i) => (
+                  <td key={head[i]} className="px-3 py-2 text-right text-muted tabular-nums">
+                    {c}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

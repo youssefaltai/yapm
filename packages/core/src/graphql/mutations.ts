@@ -239,6 +239,19 @@ const UserUpdateInput = builder.inputType("UserUpdateInput", {
       required: false,
       description: "Owner only: machines need all these tags to run this agent.",
     }),
+    modelFloor: t.string({
+      required: false,
+      description:
+        "Owner only: the cheapest tier this agent's work runs on (small, standard, top).",
+    }),
+    modelCeiling: t.string({
+      required: false,
+      description: "Owner only: the dearest tier this agent's work may run on.",
+    }),
+    topRunsPerWeek: t.int({
+      required: false,
+      description: "Owner only: top-tier work runs allowed in any 7 days; more drop to standard.",
+    }),
   }),
 });
 

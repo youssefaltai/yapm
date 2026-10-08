@@ -132,7 +132,7 @@ export class Runner {
   private async execute(entry: Active) {
     const { claim, abort } = entry;
     const { hub, token } = this.options;
-    const label = `${claim.agent.name} · ${claim.run.kind}${claim.run.issue ? ` on ${claim.run.issue}` : ""}`;
+    const label = `${claim.agent.name} · ${claim.run.kind}${claim.run.issue ? ` on ${claim.run.issue}` : ""}${claim.run.model ? ` (${claim.run.model}, ${claim.run.effort ?? "default"} effort)` : ""}`;
     this.log(`Starting ${label}`);
 
     let seq = 0;
@@ -168,7 +168,8 @@ export class Runner {
     try {
       const result = await this.options.engine({
         input: claim.input,
-        model: MODELS[claim.run.modelTier] ?? MODELS.standard,
+        model: claim.run.model ?? MODELS[claim.run.modelTier] ?? MODELS.standard,
+        ...(claim.run.effort ? { effort: claim.run.effort } : {}),
         hubMcp: { url: claim.mcpUrl, token: claim.token },
         mcpServers: {
           ...this.options.mcpServers,

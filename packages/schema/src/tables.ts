@@ -24,8 +24,24 @@ export const workspaces = sqliteTable("workspaces", {
   timezone: text("timezone").notNull().default("UTC"),
   /** How the company works, in markdown: every agent reads it. Starts empty. */
   handbook: text("handbook"),
+  /**
+   * How runs pick a model and effort: each tier's pinned model and effort, and labels that
+   * route an issue to a tier. Null means the hub's defaults (`DEFAULT_ROUTING` in core).
+   */
+  modelRouting: text("model_routing", { mode: "json" }).$type<ModelRouting>(),
   ...timestamps,
 });
+
+export const MODEL_TIERS = ["small", "standard", "top"] as const;
+export type ModelTier = (typeof MODEL_TIERS)[number];
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+export interface ModelRouting {
+  tiers: Record<ModelTier, { model: string; effort: Effort }>;
+  /** Issue label name (lowercase) to the tier its work runs on. */
+  labels: Record<string, ModelTier>;
+}
 
 export const USER_KINDS = ["owner", "agent"] as const;
 export type UserKind = (typeof USER_KINDS)[number];
@@ -48,6 +64,11 @@ export const users = sqliteTable(
     lessons: text("lessons"),
     /** Machines must have all of these tags to run this agent, e.g. `["employer-a"]`. */
     runnerTags: text("runner_tags", { mode: "json" }).$type<string[]>(),
+    /** The cheapest and dearest tiers this agent's work runs may use. */
+    modelFloor: text("model_floor", { enum: MODEL_TIERS }).notNull().default("small"),
+    modelCeiling: text("model_ceiling", { enum: MODEL_TIERS }).notNull().default("top"),
+    /** Top-tier work runs allowed in any 7 days; more drop to standard. */
+    topRunsPerWeek: integer("top_runs_per_week").notNull().default(3),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     ...timestamps,
   },
@@ -569,6 +590,12 @@ export const runs = sqliteTable(
     goal: text("goal"),
     /** small, standard or top. */
     modelTier: text("model_tier").notNull().default("standard"),
+    /** The pinned model id and effort the hub chose, and the routing rule that chose them. */
+    model: text("model"),
+    effort: text("effort"),
+    routeRule: text("route_rule"),
+    /** What the session would cost at API prices, as the Agent SDK reports it. */
+    costUsd: real("cost_usd").notNull().default(0),
     /** Not before this time (a `wait_until` decision). */
     notBefore: integer("not_before", { mode: "number" }),
     machineId: text("machine_id"),

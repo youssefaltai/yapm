@@ -1828,5 +1828,86 @@ export function hubContract(
         { id: teamId },
       );
     });
+    it("keeps issue templates and recurring issues", async () => {
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+      ) => {
+        const result = await client.graphql<T>(query, variables);
+        if (result.errors) throw new Error(result.errors[0]?.message);
+        return result.data as T;
+      };
+      const mcp = async (name: string, args: Record<string, unknown>) => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+          token: ceoToken,
+        });
+        const body = (await response.json()) as {
+          result: { content: { text: string }[]; isError?: boolean };
+        };
+        const text = body.result.content[0]?.text ?? "";
+        if (body.result.isError) throw new Error(text);
+        return JSON.parse(text);
+      };
+
+      const { templateCreate } = await gql<{
+        templateCreate: { template: { id: string; name: string; schedule: null } };
+      }>(
+        `mutation($input: TemplateCreateInput!) {
+          templateCreate(input: $input) { template { id name schedule { description } } }
+        }`,
+        {
+          input: {
+            teamId,
+            templateData: { title: "Bug report", description: "## Steps\n1.", priority: 2 },
+          },
+        },
+      );
+      expect(templateCreate.template).toMatchObject({ name: "Bug report", schedule: null });
+      const bad = await client.graphql(
+        `mutation($id: String!) {
+          templateUpdate(id: $id, input: { schedule: { frequency: "hourly", time: "09:00" } }) { success }
+        }`,
+        { id: templateCreate.template.id },
+      );
+      expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+
+      // The CEO sets up its own recurring issue over MCP.
+      const saved = await mcp("save_template", {
+        team: teamId,
+        title: "Weekly review {date}",
+        assignee: "me",
+        schedule: { frequency: "weekly", time: "17:00", weekday: 5 },
+      });
+      expect(saved).toMatchObject({ name: "Weekly review {date}", schedule: "Fridays at 17:00" });
+      expect(Date.parse(saved.nextRunAt)).toBeGreaterThan(Date.now());
+      const listed = await mcp("list_templates", { team: teamId });
+      expect(listed.templates.map((t: { name: string }) => t.name).sort()).toEqual([
+        "Bug report",
+        "Weekly review {date}",
+      ]);
+
+      const team = await gql<{
+        team: { templates: { name: string; schedule: { frequency: string } | null }[] };
+      }>("query($id: String!) { team(id: $id) { templates { name schedule { frequency } } } }", {
+        id: teamId,
+      });
+      expect(team.team.templates).toContainEqual({
+        name: "Weekly review {date}",
+        schedule: { frequency: "weekly" },
+      });
+      await gql(
+        "mutation($id: String!) { templateUpdate(id: $id, input: { schedule: null }) { success } }",
+        { id: saved.id },
+      );
+      await gql("mutation($id: String!) { templateDelete(id: $id) { success } }", {
+        id: templateCreate.template.id,
+      });
+      const left = await gql<{ templates: { name: string; nextRunAt: string | null }[] }>(
+        "{ templates { name nextRunAt } }",
+      );
+      expect(left.templates).toEqual([{ name: "Weekly review {date}", nextRunAt: null }]);
+    });
   });
 }

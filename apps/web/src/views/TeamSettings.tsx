@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { createIssueStore } from "../actions.js";
 import { mutate, type Team, toast } from "../data.js";
 import { navigate, paths } from "../router.js";
 
@@ -106,6 +107,8 @@ export function TeamSettings({ team }: { team: Team }) {
             />
           </Row>
 
+          <Templates team={team} />
+
           <h2 className="mt-8 mb-1 font-medium">Cycles</h2>
           <Row
             label="Use cycles"
@@ -158,5 +161,59 @@ export function TeamSettings({ team }: { team: Team }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function Templates({ team }: { team: Team }) {
+  const remove = async (id: string, name: string) => {
+    if (!window.confirm(`Delete the template “${name}”?`)) return;
+    await mutate("mutation($id: String!) { templateDelete(id: $id) { success } }", { id });
+  };
+  const button = "rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-ink";
+  return (
+    <>
+      <div className="mt-8 mb-1 flex items-center gap-2">
+        <h2 className="font-medium">Templates and recurring issues</h2>
+        <button
+          type="button"
+          onClick={() => createIssueStore.set({ teamId: team.id, template: { recurring: false } })}
+          className={`ml-auto ${button}`}
+        >
+          New template
+        </button>
+        <button
+          type="button"
+          onClick={() => createIssueStore.set({ teamId: team.id, template: { recurring: true } })}
+          className={button}
+        >
+          New recurring issue
+        </button>
+      </div>
+      {team.templates.length === 0 && (
+        <p className="border-b border-line py-3 text-[12px] text-faint">
+          None yet. A recurring issue is a template on a schedule: a daily brief, a weekly review,
+          rent on the 1st. Agents set them up too.
+        </p>
+      )}
+      <ul>
+        {team.templates.map((t) => (
+          <li key={t.id} className="flex items-center gap-3 border-b border-line py-2.5">
+            <button
+              type="button"
+              onClick={() => createIssueStore.set({ teamId: team.id, template: t })}
+              className="min-w-0 flex-1 text-left"
+            >
+              <span className="block truncate">{t.name}</span>
+              <span className="block text-[12px] text-faint">
+                {t.schedule?.description ?? "Template"}
+              </span>
+            </button>
+            <button type="button" onClick={() => void remove(t.id, t.name)} className={button}>
+              Delete
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

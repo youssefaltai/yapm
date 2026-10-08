@@ -8,6 +8,7 @@ import {
   projectTeams,
   projectUpdates,
   teams,
+  templates,
 } from "@life-os/schema";
 import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
@@ -20,6 +21,8 @@ import {
   updateMilestone,
   updateProject,
 } from "../services/projects.js";
+import { createTemplate, requireTemplate, updateTemplate } from "../services/templates.js";
+import { describeSchedule } from "../time.js";
 import { type Tool, ToolError } from "./protocol.js";
 import {
   type Args,
@@ -523,6 +526,95 @@ export const planningTools: Tool<McpContext>[] = [
             progress: { completed: n?.completed ?? 0, scope: (n?.total ?? 0) - (n?.canceled ?? 0) },
           };
         }),
+      };
+    },
+  },
+  {
+    name: "list_templates",
+    title: "List templates",
+    description:
+      "List issue templates and recurring issues (templates with a schedule), optionally for one team.",
+    readOnly: true,
+    inputSchema: {
+      type: "object",
+      properties: { team: { type: "string", description: "Team name, key or id" } },
+    },
+    async run(args, c) {
+      const team = args.team ? await resolveTeam(c, String(args.team)) : null;
+      const rows = await c.db
+        .select()
+        .from(templates)
+        .where(team ? eq(templates.teamId, team.id) : undefined)
+        .orderBy(asc(templates.name))
+        .all();
+      return {
+        templates: rows.map((t) => ({
+          id: t.id,
+          name: t.name,
+          team: t.teamId,
+          issue: t.templateData,
+          schedule: t.schedule
+            ? { ...t.schedule, description: describeSchedule(t.schedule) }
+            : null,
+          nextRunAt: iso(t.nextRunAt),
+        })),
+      };
+    },
+  },
+  {
+    name: "save_template",
+    title: "Create or update a template",
+    description:
+      'Create or update an issue template. Give it a schedule to make a recurring issue: each time it fires, the hub creates the issue (use "{date}" in the title for the day), and assigning it to an agent wakes that agent, e.g. a daily "Morning brief {date}" assigned to yourself.',
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Template id, to update one" },
+        team: { type: "string", description: "Team name, key or id (to create)" },
+        name: { type: "string" },
+        title: { type: "string", description: "The issue's title" },
+        description: { type: "string", description: "The issue's description, in markdown" },
+        assignee: { type: ["string", "null"], description: 'Member name, id, or "me"' },
+        priority: { type: "integer", description: "0 none, 1 urgent, 2 high, 3 medium, 4 low" },
+        schedule: {
+          type: ["object", "null"],
+          description:
+            "When it recurs, in the company's time zone; null stops it. frequency: daily, weekdays, weekly or monthly; time: HH:MM; weekday: 0-6 for weekly; monthDay: 1-31 for monthly.",
+          properties: {
+            frequency: { type: "string", enum: ["daily", "weekdays", "weekly", "monthly"] },
+            time: { type: "string" },
+            weekday: { type: "integer" },
+            monthDay: { type: "integer" },
+          },
+        },
+      },
+    },
+    async run(args, c) {
+      const existing = args.id ? await requireTemplate(c.db, String(args.id)) : null;
+      const data: Record<string, unknown> = { ...(existing?.templateData ?? {}) };
+      if (args.title !== undefined) data.title = str(args.title);
+      if (args.description !== undefined) data.description = str(args.description) ?? null;
+      if (args.priority !== undefined) data.priority = Number(args.priority);
+      if (args.assignee !== undefined)
+        data.assigneeId = args.assignee ? (await resolveUser(c, String(args.assignee))).id : null;
+      const input = {
+        ...(args.name !== undefined ? { name: str(args.name) ?? null } : {}),
+        templateData: data,
+        ...(args.schedule !== undefined ? { schedule: args.schedule } : {}),
+      };
+      const id = existing
+        ? await c.act((s) => updateTemplate(s, existing.id, input))
+        : await c.act(async (s) => {
+            if (!args.team) throw new ToolError("Say which team the template is for");
+            const team = await resolveTeam(c, String(args.team));
+            return createTemplate(s, { ...input, teamId: team.id });
+          });
+      const row = await requireTemplate(c.db, id);
+      return {
+        id: row.id,
+        name: row.name,
+        schedule: row.schedule ? describeSchedule(row.schedule) : null,
+        nextRunAt: iso(row.nextRunAt),
       };
     },
   },

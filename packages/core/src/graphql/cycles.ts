@@ -6,6 +6,7 @@ import { commit } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
 import { changes, event } from "../services/common.js";
 import { activeCycle, requireCycle, updateCycle } from "../services/cycles.js";
+import { rescheduleAll } from "../services/templates.js";
 import { canSeeView, createView, deleteView, requireView, updateView } from "../services/views.js";
 import { isTimeZone } from "../time.js";
 import {
@@ -166,7 +167,7 @@ builder.objectField(Issue, "cycle", (t) =>
 );
 
 builder.objectField(Organization, "timezone", (t) =>
-  t.exposeString("timezone", { description: "IANA time zone for cycles and rituals." }),
+  t.exposeString("timezone", { description: "IANA time zone for cycles and recurring issues." }),
 );
 
 builder.queryFields((t) => ({
@@ -292,6 +293,7 @@ builder.mutationFields((t) => ({
             s.now,
           ),
         ]);
+        if (next.timezone) await rescheduleAll(s.db, next.timezone, s.now);
       });
       const row = await db(ctx).select().from(workspaces).get();
       if (!row) throw createGraphQLError("The company has not been set up yet");

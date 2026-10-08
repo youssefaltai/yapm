@@ -192,3 +192,4 @@ Each phase ends with something usable; one PR per feature-sized slice.
 4. Agents can change the org (teams, hiring, charters) only within grants; you start with nothing "always allowed" except commenting, reacting and editing issues.
 5. Visual design copies Linear's layout, density and shortcuts closely, with our own name and logo (not Linear's branding or assets).
 7. The company starts blank: only the owner and the CEO. No teams, other agents or labels are pre-made; the CEO creates them as the owner's life calls for it.
+8. The hub ships primitives, not cadences. Rituals (morning brief, standups, weekly updates) are recurring issues assigned to an agent, which agents create and change themselves; none are seeded or hardcoded.

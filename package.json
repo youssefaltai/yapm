@@ -1,0 +1,24 @@
+{
+  "name": "life-os",
+  "private": true,
+  "description": "A Linear-style operating system for a life run like a company, with AI agents as employees.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "dev": "turbo run dev --parallel --filter=@life-os/hub-node --filter=@life-os/web",
+    "db:generate": "pnpm --filter @life-os/schema generate",
+    "e2e": "turbo run build --filter=@life-os/hub-node --filter=@life-os/web && pnpm --filter @life-os/e2e e2e"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "turbo": "2.11.7",
+    "typescript": "5.9.3"
+  }
+}

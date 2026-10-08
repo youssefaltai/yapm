@@ -92,7 +92,7 @@ export function RunRows({
           <button
             type="button"
             onClick={() => navigate(paths.run(run.id))}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-raised md:px-6"
+            className="flex w-full animate-fade-in items-center gap-3 px-4 py-2.5 text-left hover:bg-raised md:px-6"
           >
             {showAgent && <Avatar name={run.agent.name} kind={run.agent.kind} size={20} />}
             <div className="min-w-0 flex-1">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { mutate, useQuery } from "../data.js";
+import { mutate, useQuery, type Workspace } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { timeAgo } from "../ui.js";
 
@@ -83,7 +83,7 @@ export function RevisionList({ subject, entityId }: { subject: string; entityId?
   );
 }
 
-interface FeedbackRow {
+export interface FeedbackRow {
   id: string;
   kind: "stop" | "rejection" | "note";
   body: string;
@@ -96,7 +96,65 @@ interface FeedbackRow {
   addressedNote: string | null;
 }
 
-const KIND_LABEL = { stop: "Stopped run", rejection: "Rejected request", note: "Note" };
+export const KIND_LABEL = { stop: "Stopped run", rejection: "Rejected request", note: "Note" };
+
+/** The owner and an agent's manager may give it feedback; the hub checks again. */
+export function canCoach(workspace: Workspace, agentId: string) {
+  const agent = workspace.users.nodes.find((u) => u.id === agentId);
+  if (agent?.kind !== "agent") return false;
+  return workspace.viewer.kind === "owner" || agent.manager?.id === workspace.viewer.id;
+}
+
+/** A one-line note for an agent to learn from, optionally about an issue. */
+export function FeedbackForm({
+  agent,
+  issueId,
+  label = "Feedback",
+  autoFocus,
+  onDone,
+}: {
+  agent: { id: string; name: string };
+  issueId?: string;
+  label?: string;
+  autoFocus?: boolean;
+  onDone?: () => void;
+}) {
+  const [body, setBody] = useState("");
+  return (
+    <form
+      className="flex gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const result = await mutate(
+          "mutation($input: FeedbackCreateInput!) { feedbackCreate(input: $input) { success } }",
+          { input: { agentId: agent.id, body, issueId } },
+        );
+        if (result) {
+          setBody("");
+          onDone?.();
+        }
+      }}
+    >
+      <input
+        aria-label={label}
+        value={body}
+        // biome-ignore lint/a11y/noAutofocus: opened on purpose by a click
+        autoFocus={autoFocus}
+        onChange={(e) => setBody(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && onDone?.()}
+        placeholder={`Tell ${agent.name} what to do differently…`}
+        className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3 py-1.5 outline-none placeholder:text-faint focus:border-faint"
+      />
+      <button
+        type="submit"
+        disabled={!body.trim()}
+        className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
+      >
+        Send
+      </button>
+    </form>
+  );
+}
 
 /** What an agent should learn from, and what it changed because of it. */
 export function FeedbackSection({
@@ -115,7 +173,6 @@ export function FeedbackSection({
     }`,
     { id: agent.id },
   );
-  const [body, setBody] = useState("");
   const rows = data?.feedbacks ?? [];
   const open = rows.filter((f) => !f.addressedAt).length;
   return (
@@ -125,36 +182,13 @@ export function FeedbackSection({
         {open > 0 && <span className="text-[12px] font-normal text-faint">{open} open</span>}
       </h2>
       <p className="mb-2 text-faint">
-        Why you stopped its runs or rejected its requests, and your notes. {agent.name} reads the
-        open ones and turns them into lessons.
+        Why you stopped its runs or rejected its requests, and your notes, here or on its issues.{" "}
+        {agent.name} reads the open ones and turns them into lessons.
       </p>
       {canGive && (
-        <form
-          className="mb-3 flex gap-2"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const result = await mutate(
-              "mutation($input: FeedbackCreateInput!) { feedbackCreate(input: $input) { success } }",
-              { input: { agentId: agent.id, body } },
-            );
-            if (result) setBody("");
-          }}
-        >
-          <input
-            aria-label="Feedback"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder={`Tell ${agent.name} what to do differently…`}
-            className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3 py-1.5 outline-none placeholder:text-faint focus:border-faint"
-          />
-          <button
-            type="submit"
-            disabled={!body.trim()}
-            className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-          >
-            Send
-          </button>
-        </form>
+        <div className="mb-3">
+          <FeedbackForm agent={agent} />
+        </div>
       )}
       {rows.length === 0 ? (
         <p className="text-muted">No feedback yet.</p>

@@ -147,9 +147,9 @@ const clip = (text: string | null | undefined, max: number) => {
   return t.length > max ? `${t.slice(0, max)}… (truncated)` : t;
 };
 
-/** The issue as an agent needs to see it: fields, description and the latest comments. */
+/** The issue as an agent needs to see it: fields, description, feedback and the latest comments. */
 async function issueContext(db: HubDb, issue: IssueRow, commentLimit: number) {
-  const [identifier, state, assignee, recent] = await Promise.all([
+  const [identifier, state, assignee, recent, notes] = await Promise.all([
     identifierOf(db, issue),
     db.select().from(workflowStates).where(eq(workflowStates.id, issue.stateId)).get(),
     issue.assigneeId
@@ -162,8 +162,20 @@ async function issueContext(db: HubDb, issue: IssueRow, commentLimit: number) {
       .orderBy(desc(comments.createdAt))
       .limit(commentLimit)
       .all(),
+    db
+      .select()
+      .from(feedback)
+      .where(eq(feedback.issueId, issue.id))
+      .orderBy(desc(feedback.createdAt))
+      .limit(10)
+      .all(),
   ]);
-  const authorIds = [...new Set(recent.map((c) => c.userId))];
+  const authorIds = [
+    ...new Set([
+      ...recent.map((c) => c.userId),
+      ...notes.flatMap((f) => [f.agentId, f.authorId ?? ""]),
+    ]),
+  ].filter(Boolean);
   const authors = authorIds.length
     ? await db
         .select({ id: users.id, name: users.name })
@@ -177,6 +189,14 @@ async function issueContext(db: HubDb, issue: IssueRow, commentLimit: number) {
     `Status: ${state?.name ?? "?"} · Priority: ${PRIORITY_LABELS[issue.priority]} · Assignee: ${assignee?.name ?? "nobody"}${issue.dueDate ? ` · Due ${issue.dueDate}` : ""}`,
   ];
   if (issue.description) lines.push("", "Description:", clip(issue.description, 4000));
+  if (notes.length) {
+    lines.push("", "Feedback on this issue (oldest first):");
+    for (const f of notes.reverse()) {
+      lines.push(
+        `- ${f.authorId ? nameOf(f.authorId) : "The hub"} to ${nameOf(f.agentId)}${f.addressedAt ? " (addressed)" : ""}: ${clip(f.body, 1000)}`,
+      );
+    }
+  }
   if (recent.length) {
     lines.push("", `Latest comments (oldest first, ${recent.length} shown):`);
     for (const c of recent.reverse()) {

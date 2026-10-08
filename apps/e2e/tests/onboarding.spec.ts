@@ -445,6 +445,24 @@ test.describe
     });
 
     test("coaches an agent with feedback, lessons and the handbook", async () => {
+      // Feedback on the issue where the work happened, from Ada's comment.
+      await page.goto("/issue/PF-1");
+      const comment = page.getByText("@Youssef the bill is paid, receipt attached.", {
+        exact: true,
+      });
+      await comment.hover();
+      await page.getByRole("button", { name: "Give feedback" }).first().click();
+      await page
+        .getByLabel("Feedback for Ada")
+        .fill("Link the receipt, don't just say it's attached");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.getByText("Youssef gave feedback to Ada")).toBeVisible();
+      await expect(page.getByText("Link the receipt, don't just say it's attached")).toBeVisible();
+      const aboutIssue = await mcp("list_feedback", { issue: "PF-1" });
+      expect(aboutIssue.map((f: { body: string }) => f.body)).toContain(
+        "Link the receipt, don't just say it's attached",
+      );
+
       await page.goto("/company");
       await page.getByRole("button", { name: /Ada/ }).first().click();
       await expect(page.getByText("Wait until payday")).toBeVisible();

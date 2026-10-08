@@ -42,6 +42,7 @@ import {
   useHotkeys,
   useStore,
 } from "../ui.js";
+import { canCoach, FeedbackForm } from "./Learning.js";
 import { RunsSection } from "./Runs.js";
 
 interface MiniIssue {
@@ -88,6 +89,21 @@ interface IssueDetail extends Issue {
   subscribers: { nodes: { id: string; isMe: boolean }[] };
 }
 
+interface IssueFeedback {
+  id: string;
+  kind: "stop" | "rejection" | "note";
+  body: string;
+  createdAt: string;
+  agent: { id: string; name: string } | null;
+  author: { id: string; name: string; kind: "owner" | "agent" } | null;
+  addressedAt: string | null;
+  addressedNote: string | null;
+}
+
+const FEEDBACK_QUERY = `query($id: String!) { feedbacks(issueId: $id, first: 200) {
+  id kind body createdAt agent { id name } author { id name kind } addressedAt addressedNote
+} }`;
+
 const MINI = "id identifier title state { type color }";
 const REACTIONS = "reactions { id emoji user { id name isMe } }";
 
@@ -106,6 +122,7 @@ const ISSUE_QUERY = `query($id: String!) { issue(id: $id) {
 
 export function IssuePage({ identifier }: { identifier: string }) {
   const { data, error } = useQuery<{ issue: IssueDetail }>(ISSUE_QUERY, { id: identifier });
+  const feedback = useQuery<{ feedbacks: IssueFeedback[] }>(FEEDBACK_QUERY, { id: identifier });
   const issue = data?.issue;
   const workspace = useStore(workspaceStore);
 
@@ -190,7 +207,11 @@ export function IssuePage({ identifier }: { identifier: string }) {
             <SubIssues issue={issue} />
             <Relations issue={issue} />
             <RunsSection issueId={issue.id} />
-            <Activity issue={issue} workspace={workspace} />
+            <Activity
+              issue={issue}
+              workspace={workspace}
+              feedback={feedback.data?.feedbacks ?? []}
+            />
           </div>
           <aside className="hidden w-72 shrink-0 border-l border-line px-5 py-6 lg:block">
             <Properties issue={issue} workspace={workspace} />
@@ -548,11 +569,20 @@ function Relations({ issue }: { issue: IssueDetail }) {
 
 // Activity: history and comments, oldest first, like Linear ------------------
 
-function Activity({ issue, workspace }: { issue: IssueDetail; workspace: Workspace }) {
+function Activity({
+  issue,
+  workspace,
+  feedback,
+}: {
+  issue: IssueDetail;
+  workspace: Workspace;
+  feedback: IssueFeedback[];
+}) {
   const comments = issue.comments.nodes;
   const items: (
     | { at: string; kind: "event"; entry: HistoryEntry }
     | { at: string; kind: "comment"; comment: Comment }
+    | { at: string; kind: "feedback"; feedback: IssueFeedback }
   )[] = [
     ...issue.history.nodes
       .filter(
@@ -562,6 +592,7 @@ function Activity({ issue, workspace }: { issue: IssueDetail; workspace: Workspa
     ...comments
       .filter((c) => !c.parent)
       .map((comment) => ({ at: comment.createdAt, kind: "comment" as const, comment })),
+    ...feedback.map((f) => ({ at: f.createdAt, kind: "feedback" as const, feedback: f })),
   ].sort((a, b) => a.at.localeCompare(b.at));
 
   return (
@@ -585,19 +616,81 @@ function Activity({ issue, workspace }: { issue: IssueDetail; workspace: Workspa
                 )}
               </span>
             </li>
+          ) : item.kind === "feedback" ? (
+            <li key={item.feedback.id}>
+              <FeedbackEntry feedback={item.feedback} />
+            </li>
           ) : (
             <li key={item.comment.id}>
               <CommentThread
                 comment={item.comment}
                 replies={comments.filter((c) => c.parent?.id === item.comment.id)}
                 issue={issue}
+                workspace={workspace}
               />
             </li>
           ),
         )}
       </ol>
       <CommentComposer issueId={issue.id} />
+      {issue.assignee && canCoach(workspace, issue.assignee.id) && (
+        <AssigneeFeedback issue={issue} agent={issue.assignee} />
+      )}
     </section>
+  );
+}
+
+const FEEDBACK_VERB = {
+  note: "gave feedback to",
+  stop: "stopped a run by",
+  rejection: "rejected a request from",
+};
+
+/** Feedback about this issue, and what the agent changed because of it. */
+function FeedbackEntry({ feedback: f }: { feedback: IssueFeedback }) {
+  return (
+    <div className="rounded-lg border border-accent/40 bg-accent/5 px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        {f.author && <Avatar name={f.author.name} kind={f.author.kind} size={18} />}
+        <span className="min-w-0 flex-1 text-muted">
+          <span className="font-medium text-ink">{f.author?.name ?? "The hub"}</span>{" "}
+          {FEEDBACK_VERB[f.kind]} <span className="text-ink">{f.agent?.name ?? "an agent"}</span>
+          <span className="text-faint"> · {timeAgo(f.createdAt)}</span>
+        </span>
+      </div>
+      <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{f.body}</p>
+      {f.addressedAt ? (
+        <p className="mt-1 text-[12px] text-muted">✓ {f.addressedNote}</p>
+      ) : (
+        <p className="mt-1 text-[12px] text-faint">Not addressed yet</p>
+      )}
+    </div>
+  );
+}
+
+/** Feedback for the agent the issue is assigned to, about how it handled this issue. */
+function AssigneeFeedback({
+  issue,
+  agent,
+}: {
+  issue: IssueDetail;
+  agent: { id: string; name: string };
+}) {
+  const [open, setOpen] = useState(false);
+  return open ? (
+    <div className="mt-3">
+      <FeedbackForm
+        agent={agent}
+        issueId={issue.id}
+        label={`Feedback for ${agent.name}`}
+        autoFocus
+        onDone={() => setOpen(false)}
+      />
+    </div>
+  ) : (
+    <button type="button" onClick={() => setOpen(true)} className="mt-3 text-faint hover:text-ink">
+      Give {agent.name} feedback…
+    </button>
   );
 }
 
@@ -660,18 +753,20 @@ function CommentThread({
   comment,
   replies,
   issue,
+  workspace,
 }: {
   comment: Comment;
   replies: Comment[];
   issue: IssueDetail;
+  workspace: Workspace;
 }) {
   const [replying, setReplying] = useState(false);
   return (
     <div className="rounded-lg border border-line bg-panel">
-      <CommentBody comment={comment} />
+      <CommentBody comment={comment} issueId={issue.id} workspace={workspace} />
       {replies.map((reply) => (
         <div key={reply.id} className="border-t border-line/60">
-          <CommentBody comment={reply} />
+          <CommentBody comment={reply} issueId={issue.id} workspace={workspace} />
         </div>
       ))}
       <div className="border-t border-line/60 px-4 py-2">
@@ -696,8 +791,17 @@ function CommentThread({
   );
 }
 
-function CommentBody({ comment }: { comment: Comment }) {
+function CommentBody({
+  comment,
+  issueId,
+  workspace,
+}: {
+  comment: Comment;
+  issueId: string;
+  workspace: Workspace;
+}) {
   const [editing, setEditing] = useState(false);
+  const [coaching, setCoaching] = useState(false);
   const [text, setText] = useState(comment.body);
   return (
     <div className="group px-4 py-3">
@@ -709,6 +813,15 @@ function CommentBody({ comment }: { comment: Comment }) {
           {comment.editedAt ? " (edited)" : ""}
         </span>
         <span className="ml-auto flex gap-2 opacity-0 group-hover:opacity-100">
+          {canCoach(workspace, comment.user.id) && (
+            <button
+              type="button"
+              onClick={() => setCoaching(true)}
+              className="text-faint hover:text-ink"
+            >
+              Give feedback
+            </button>
+          )}
           {comment.user.isMe && (
             <button
               type="button"
@@ -771,6 +884,17 @@ function CommentBody({ comment }: { comment: Comment }) {
         <p className="mt-1.5 whitespace-pre-wrap leading-relaxed">{comment.body}</p>
       )}
       <Reactions reactions={comment.reactions} target={{ commentId: comment.id }} />
+      {coaching && (
+        <div className="mt-2">
+          <FeedbackForm
+            agent={comment.user}
+            issueId={issueId}
+            label={`Feedback for ${comment.user.name}`}
+            autoFocus
+            onDone={() => setCoaching(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }

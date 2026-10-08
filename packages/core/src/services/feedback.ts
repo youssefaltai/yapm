@@ -12,6 +12,7 @@ import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { forbidden, notFound, ServiceError } from "../errors.js";
 import { type Ctx, cleanText, event } from "./common.js";
+import { requireIssue } from "./issues.js";
 import { authorize } from "./requests.js";
 
 export const LESSONS_MAX = 20_000;
@@ -74,7 +75,7 @@ async function canCoach(db: HubDb, actorId: string, agentId: string) {
   return agent.managerId === actorId;
 }
 
-/** A note for an agent to learn from, from the owner or its manager. */
+/** A note for an agent to learn from, from the owner or its manager, optionally about an issue. */
 export async function createFeedback(
   ctx: Ctx,
   input: { agentId: string; body: string; issueId?: string | null },
@@ -85,10 +86,21 @@ export async function createFeedback(
   if (!(await canCoach(db, ctx.actorId, agent.id)))
     throw forbidden("Only the owner and an agent's manager give it feedback");
   const body = cleanText(input.body, "Feedback", 4000);
+  const issue = input.issueId ? await requireIssue(db, input.issueId) : null;
   const id = newId();
   await commit(db, [
-    feedbackOp(ctx, { agentId: agent.id, kind: "note", body, issueId: input.issueId ?? null }, id),
-    ...audit(db, [event(ctx, "feedback.create", "feedback", id, { agentId: agent.id, body })], now),
+    feedbackOp(ctx, { agentId: agent.id, kind: "note", body, issueId: issue?.id ?? null }, id),
+    ...audit(
+      db,
+      [
+        event(ctx, "feedback.create", "feedback", id, {
+          agentId: agent.id,
+          issueId: issue?.id ?? null,
+          body,
+        }),
+      ],
+      now,
+    ),
   ]);
   return id;
 }
@@ -114,7 +126,7 @@ export async function addressFeedback(ctx: Ctx, id: string, note: string): Promi
 
 export async function listFeedback(
   db: HubDb,
-  filter: { agentId?: string | null; open?: boolean | null },
+  filter: { agentId?: string | null; issueId?: string | null; open?: boolean | null },
   limit = 50,
 ) {
   return db
@@ -123,6 +135,7 @@ export async function listFeedback(
     .where(
       and(
         filter.agentId ? eq(feedback.agentId, filter.agentId) : undefined,
+        filter.issueId ? eq(feedback.issueId, filter.issueId) : undefined,
         filter.open ? isNull(feedback.addressedAt) : undefined,
       ),
     )

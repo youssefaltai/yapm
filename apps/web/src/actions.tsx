@@ -408,6 +408,12 @@ export function commandPalette(): MenuSpec {
       onSelect: () => hireAgentStore.set(true),
     },
     {
+      id: "inbox",
+      label: "Go to Inbox",
+      section: "Navigation",
+      onSelect: () => navigate(paths.inbox()),
+    },
+    {
       id: "my",
       label: "Go to My issues",
       section: "Navigation",

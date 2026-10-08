@@ -49,7 +49,7 @@ test.describe
       await page.getByLabel("Your name").fill("Youssef");
       await page.getByRole("button", { name: "Create passkey and start" }).click();
 
-      await expect(page.getByText("No issues here yet.")).toBeVisible();
+      await expect(page.getByText("You're all caught up.")).toBeVisible();
       await page.getByRole("link", { name: "Company" }).click();
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
       await expect(page.getByText("1 AI employee, no teams yet.")).toBeVisible();
@@ -214,5 +214,28 @@ test.describe
           resource: "rclone copy budget.xlsx drive:",
         }),
       ).toMatchObject({ allowed: true, via: "approval" });
+    });
+
+    test("hears from agents in the Inbox", async () => {
+      await mcp("create_comment", {
+        issueId: "PF-1",
+        body: "@Youssef the bill is paid, receipt attached.",
+      });
+      await page.getByRole("link", { name: /Inbox/ }).click();
+      const list = page.getByRole("list", { name: "Notifications" });
+      const mention = list.getByRole("button", {
+        name: /Pay the electricity bill.*Ada mentioned you/,
+      });
+      await expect(mention).toBeVisible();
+      await expect(list.getByRole("button", { name: /Ada asks for your approval/ })).toBeVisible();
+
+      await mention.click();
+      await expect(page.getByLabel("Issue title")).toHaveValue("Pay the electricity bill");
+      await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
+      await expect(
+        page.getByText("@Youssef the bill is paid, receipt attached.", { exact: true }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Mark all read" }).click();
+      await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(0);
     });
   });

@@ -6,6 +6,7 @@ import { commit } from "../db.js";
 import { badRequest, forbidden, notFound } from "../errors.js";
 import { type Ctx, cleanText, event } from "./common.js";
 import { requireIssue } from "./issues.js";
+import { mentionedUserIds, notify, subscribe, subscribersOf } from "./notifications.js";
 
 export async function createComment(
   ctx: Ctx,
@@ -21,7 +22,28 @@ export async function createComment(
       throw badRequest("Replies can't have replies; reply to the thread's first comment");
   }
   const id = newId();
+  const mentioned = await mentionedUserIds(db, body);
+  const followers = (await subscribersOf(db, [issue.id])).get(issue.id) ?? new Set<string>();
   await commit(db, [
+    ...subscribe(
+      db,
+      [actorId, ...mentioned].map((userId) => ({ issueId: issue.id, userId })),
+      now,
+    ),
+    ...notify(ctx, [
+      ...mentioned.map((userId) => ({
+        userId,
+        type: "issueCommentMention" as const,
+        issueId: issue.id,
+        commentId: id,
+      })),
+      ...[...followers].map((userId) => ({
+        userId,
+        type: "issueNewComment" as const,
+        issueId: issue.id,
+        commentId: id,
+      })),
+    ]),
     db.insert(comments).values({
       id,
       issueId: issue.id,

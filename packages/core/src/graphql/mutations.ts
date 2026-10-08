@@ -45,7 +45,7 @@ function payload<T>(name: string, field: string, type: ObjectRef<Types, T>) {
 }
 
 const TeamPayload = payload("TeamPayload", "team", Team);
-const IssuePayload = payload("IssuePayload", "issue", Issue);
+export const IssuePayload = payload("IssuePayload", "issue", Issue);
 const IssueLabelPayload = payload("IssueLabelPayload", "issueLabel", IssueLabel);
 const CommentPayload = payload("CommentPayload", "comment", Comment);
 const ReactionPayload = payload("ReactionPayload", "reaction", Reaction);

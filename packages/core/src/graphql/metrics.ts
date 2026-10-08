@@ -7,6 +7,8 @@ import {
   emptyCounts,
   type Metrics,
   metricHistory,
+  type RouteStats,
+  routeStats,
   scopeKey,
 } from "../services/metrics.js";
 import { builder, db, now, requireViewer } from "./builder.js";
@@ -38,6 +40,30 @@ const MetricsRef = builder.objectRef<Metrics>("Metrics").implement({
     }),
     tokens: t.exposeFloat("tokens", { description: "Model tokens used by runs." }),
     tokensPerCompletedIssue: t.exposeFloat("tokensPerCompletedIssue", { nullable: true }),
+    costUsd: t.exposeFloat("costUsd", {
+      description: "What runs would cost at API prices, as the Agent SDK reports it.",
+    }),
+    costPerCompletedIssue: t.exposeFloat("costPerCompletedIssue", { nullable: true }),
+  }),
+});
+
+const RouteMetrics = builder.objectRef<RouteStats>("RouteMetrics").implement({
+  description:
+    "How runs on one model route did: one kind, tier, model, effort and routing rule. Compare routes by success rate and cost per completed run before changing the routing.",
+  fields: (t) => ({
+    kind: t.exposeString("kind"),
+    modelTier: t.exposeString("modelTier"),
+    model: t.exposeString("model", { nullable: true }),
+    effort: t.exposeString("effort", { nullable: true }),
+    routeRule: t.exposeString("routeRule", { nullable: true }),
+    runs: t.exposeInt("runs"),
+    completed: t.exposeInt("completed"),
+    failed: t.exposeInt("failed"),
+    stopped: t.exposeInt("stopped"),
+    tokens: t.exposeFloat("tokens"),
+    costUsd: t.exposeFloat("costUsd"),
+    successRate: t.exposeFloat("successRate", { nullable: true }),
+    costPerCompletedRun: t.exposeFloat("costPerCompletedRun", { nullable: true }),
   }),
 });
 
@@ -74,6 +100,7 @@ const Insights = builder
     company: Metrics;
     teams: { teamId: string; metrics: Metrics }[];
     users: { userId: string; metrics: Metrics }[];
+    routes: RouteStats[];
   }>("Insights")
   .implement({
     description: "The company's metrics over a period, overall and per team and member.",
@@ -83,6 +110,11 @@ const Insights = builder
       company: t.field({ type: MetricsRef, resolve: (i) => i.company }),
       teams: t.field({ type: [TeamMetrics], resolve: (i) => i.teams }),
       users: t.field({ type: [UserMetrics], resolve: (i) => i.users }),
+      routes: t.field({
+        type: [RouteMetrics],
+        description: "Runs grouped by model route, most expensive first.",
+        resolve: (i) => i.routes,
+      }),
     }),
   });
 
@@ -119,7 +151,10 @@ builder.queryFields((t) => ({
       const to = now(ctx);
       const days = Math.min(Math.max(args.days ?? 7, 1), 365);
       const from = to - days * DAY;
-      const all = await countAll(db(ctx), from, to);
+      const [all, routes] = await Promise.all([
+        countAll(db(ctx), from, to),
+        routeStats(db(ctx), from, to),
+      ]);
       const teams: { teamId: string; metrics: Metrics }[] = [];
       const users: { userId: string; metrics: Metrics }[] = [];
       for (const [key, counts] of all) {
@@ -133,6 +168,7 @@ builder.queryFields((t) => ({
         company: deriveMetrics(all.get(scopeKey("company")) ?? emptyCounts()),
         teams,
         users,
+        routes,
       };
     },
   }),

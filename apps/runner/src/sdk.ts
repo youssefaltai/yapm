@@ -57,6 +57,7 @@ export const sdkEngine: Engine = async (run) => {
   const options: Options = {
     systemPrompt: run.input.systemPrompt,
     model: run.model,
+    ...(run.effort ? { effort: run.effort } : {}),
     // A decision answers in one go; the structured output may take a turn of its own.
     maxTurns: run.input.tools ? run.input.maxTurns : 3,
     outputFormat: { type: "json_schema", schema: run.input.outputSchema },
@@ -104,6 +105,7 @@ export const sdkEngine: Engine = async (run) => {
             (message.usage.cache_creation_input_tokens ?? 0),
           outputTokens: message.usage.output_tokens,
           numTurns: message.num_turns,
+          costUsd: message.total_cost_usd,
         };
         if (message.subtype === "success") result.output = message.structured_output ?? null;
         else result.error = `The session ended early (${message.subtype.replace(/_/g, " ")})`;

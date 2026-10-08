@@ -4,6 +4,7 @@ import { createGraphQLError } from "graphql-yoga";
 import { audit } from "../audit.js";
 import { commit } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
+import { cleanRouting, loadRouting } from "../runs/routing.js";
 import { changes, event } from "../services/common.js";
 import { activeCycle, requireCycle, updateCycle } from "../services/cycles.js";
 import { updateHandbook } from "../services/feedback.js";
@@ -267,6 +268,12 @@ const OrganizationUpdateInput = builder.inputType("OrganizationUpdateInput", {
     name: t.string({ required: false }),
     timezone: t.string({ required: false, description: "IANA name, e.g. Europe/Berlin." }),
     handbook: t.string({ required: false, description: "Markdown; an empty string clears it." }),
+    modelRouting: t.field({
+      type: "JSONObject",
+      required: false,
+      description:
+        'Each tier\'s model and effort, and labels that route issues to a tier: `{ tiers: { small: { model, effort }, standard, top }, labels: { research: "top" } }`.',
+    }),
   }),
 });
 
@@ -284,7 +291,8 @@ builder.mutationFields((t) => ({
   }),
   organizationUpdate: t.field({
     type: OrganizationPayload,
-    description: "Renames the company, sets its time zone or rewrites its handbook. Owner only.",
+    description:
+      "Renames the company, sets its time zone, rewrites its handbook or changes how runs pick a model. Owner only.",
     args: { input: t.arg({ type: OrganizationUpdateInput, required: true }) },
     resolve: async (_root, args, ctx) => {
       requireOwner(ctx);
@@ -302,6 +310,11 @@ builder.mutationFields((t) => ({
           next.timezone = args.input.timezone;
         }
         if (args.input.handbook != null) await updateHandbook(s, args.input.handbook);
+        if (args.input.modelRouting != null) {
+          const routing = cleanRouting(args.input.modelRouting);
+          if (JSON.stringify(routing) !== JSON.stringify(await loadRouting(s.db)))
+            next.modelRouting = routing;
+        }
         const diff = changes(company, next);
         if (!diff) return;
         await commit(s.db, [

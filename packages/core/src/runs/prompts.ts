@@ -2,6 +2,8 @@ import {
   comments,
   feedback,
   type issues,
+  MODEL_TIERS,
+  type ModelTier,
   PRIORITY_LABELS,
   requests,
   teams,
@@ -25,8 +27,7 @@ export const DECISION_ACTIONS = [
   "escalate",
 ] as const;
 export type DecisionAction = (typeof DECISION_ACTIONS)[number];
-export const MODEL_TIERS = ["small", "standard", "top"] as const;
-export type ModelTier = (typeof MODEL_TIERS)[number];
+export { MODEL_TIERS, type ModelTier };
 
 /** Structured output for a decision step: strict JSON the hub validates before applying. */
 export const DECISION_SCHEMA = {
@@ -329,7 +330,7 @@ export async function decisionInput(
     "- work: start a work session with tools when it needs real effort; give a clear goal.",
     "- delegate: hand the issue to a teammate whose charter fits better.",
     "- escalate: bring in your manager when you can't or shouldn't decide.",
-    "Pick modelTier small or standard for work unless it is genuinely hard; top is costly.",
+    "For work, modelTier is a request: standard suits most work, small suits quick routine work, and top is for genuinely hard problems. The hub decides the final tier.",
   ].join("\n");
   const prompt = [
     "What happened:",

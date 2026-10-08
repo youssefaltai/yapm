@@ -18,6 +18,7 @@ import {
 } from "@life-os/schema";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
+import { DEFAULT_ROUTING } from "../runs/routing.js";
 import { builder, connection, db, type GraphQLContext, pageArgs, paginate } from "./builder.js";
 import { issueArgs, queryIssues } from "./filters.js";
 
@@ -82,6 +83,12 @@ Organization.implement({
     handbook: t.exposeString("handbook", {
       nullable: true,
       description: "How the company works, in markdown. Every agent reads it.",
+    }),
+    modelRouting: t.field({
+      type: "JSONObject",
+      description:
+        "How runs pick a model: each tier's pinned model and effort, and labels that route issues to a tier.",
+      resolve: (o) => (o.modelRouting ?? DEFAULT_ROUTING) as unknown as Record<string, unknown>,
     }),
     createdAt: t.field({ type: "DateTime", resolve: (o) => o.createdAt }),
   }),

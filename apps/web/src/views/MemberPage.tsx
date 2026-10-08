@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { workspaceStore } from "../actions.js";
-import { confirmDialog, promptDialog } from "../controls.js";
+import { confirmDialog, promptDialog, Select } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
@@ -18,6 +18,13 @@ interface Token {
   revokedAt: string | null;
 }
 
+type Tier = "small" | "standard" | "top";
+const TIERS: { value: Tier; label: string }[] = [
+  { value: "small", label: "Small" },
+  { value: "standard", label: "Standard" },
+  { value: "top", label: "Top" },
+];
+
 interface MemberDetail {
   id: string;
   name: string;
@@ -34,11 +41,15 @@ interface MemberDetail {
   };
   apiTokens: Token[];
   runnerTags: string[];
+  modelFloor: Tier;
+  modelCeiling: Tier;
+  topRunsPerWeek: number;
   assignedIssues: { nodes: { id: string }[] };
 }
 
 const MEMBER_QUERY = `query($id: String!) { user(id: $id) {
   id name kind title charter lessons active isMe createdAt runnerTags
+  modelFloor modelCeiling topRunsPerWeek
   manager { id name }
   directReports { nodes { id name kind title } }
   apiTokens { id name prefix createdAt lastUsedAt revokedAt }
@@ -189,6 +200,41 @@ export function MemberPage({ id }: { id: string }) {
                         .filter(Boolean),
                     })
                   }
+                  className="text-muted"
+                />
+              </dd>
+              <dt className="text-faint">Model tiers</dt>
+              <dd className="flex items-center gap-2 text-muted">
+                {canEdit && member.active ? (
+                  <>
+                    <Select
+                      aria-label="Cheapest tier"
+                      value={member.modelFloor}
+                      options={TIERS}
+                      onChange={(modelFloor) => update({ modelFloor })}
+                    />
+                    <span className="text-faint">to</span>
+                    <Select
+                      aria-label="Dearest tier"
+                      value={member.modelCeiling}
+                      options={TIERS}
+                      onChange={(modelCeiling) => update({ modelCeiling })}
+                    />
+                  </>
+                ) : (
+                  `${member.modelFloor} to ${member.modelCeiling}`
+                )}
+              </dd>
+              <dt className="text-faint">Top runs a week</dt>
+              <dd>
+                <EditableLine
+                  label="Top runs a week"
+                  value={String(member.topRunsPerWeek)}
+                  disabled={!canEdit || !member.active}
+                  onSave={(value) => {
+                    const n = Number(value);
+                    if (Number.isInteger(n) && n >= 0) update({ topRunsPerWeek: n });
+                  }}
                   className="text-muted"
                 />
               </dd>

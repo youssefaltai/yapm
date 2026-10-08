@@ -4,8 +4,10 @@ import type { ToolDecision } from "./permissions.js";
 /** One agent session, as the daemon asks for it. */
 export interface EngineRun {
   input: RunInput;
-  /** A model alias: haiku, sonnet or opus. */
+  /** A model id the hub chose, or an alias from an older hub. */
   model: string;
+  /** How hard the model works; left out, the model's default applies. */
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** The hub's MCP server, reached with the run's token. */
   hubMcp: { url: string; token: string };
   /** The machine's own MCP servers, passed through as configured. */
@@ -30,4 +32,5 @@ export interface EngineResult {
 
 export type Engine = (run: EngineRun) => Promise<EngineResult>;
 
+/** Aliases for hubs that don't choose a model yet. */
 export const MODELS = { small: "haiku", standard: "sonnet", top: "opus" } as const;

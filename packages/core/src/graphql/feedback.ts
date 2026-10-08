@@ -13,6 +13,7 @@ import {
   listFeedback,
   listRevisions,
 } from "../services/feedback.js";
+import { findIssue } from "../services/issues.js";
 import { act, builder, db, notFoundError, requireViewer } from "./builder.js";
 import { payload } from "./mutations.js";
 import { Issue, User } from "./types.js";
@@ -81,12 +82,15 @@ builder.queryFields((t) => ({
     description: "Feedback for agents, newest first.",
     args: {
       agentId: t.arg.string({ required: false }),
+      issueId: t.arg.string({ required: false, description: "Only feedback about this issue." }),
       open: t.arg.boolean({ required: false, description: "Only feedback not yet addressed." }),
       first: t.arg.int({ required: false }),
     },
-    resolve: (_root, args, ctx) => {
+    resolve: async (_root, args, ctx) => {
       requireViewer(ctx);
-      return listFeedback(db(ctx), args, args.first ?? 50);
+      const issueId = args.issueId ? (await findIssue(db(ctx), args.issueId))?.id : null;
+      if (args.issueId && !issueId) throw notFoundError("Issue");
+      return listFeedback(db(ctx), { ...args, issueId }, args.first ?? 50);
     },
   }),
   revisions: t.field({
@@ -129,14 +133,18 @@ const FeedbackCreateInput = builder.inputType("FeedbackCreateInput", {
   fields: (t) => ({
     agentId: t.string({ required: true }),
     body: t.string({ required: true }),
-    issueId: t.string({ required: false }),
+    issueId: t.string({
+      required: false,
+      description: "The issue it is about, by id or identifier.",
+    }),
   }),
 });
 
 builder.mutationFields((t) => ({
   feedbackCreate: t.field({
     type: FeedbackPayload,
-    description: "Leaves an agent a note to learn from. The owner and its manager can.",
+    description:
+      "Leaves an agent a note to learn from, optionally about an issue. The owner and its manager can.",
     args: { input: t.arg({ type: FeedbackCreateInput, required: true }) },
     resolve: async (_root, args, ctx) => ({
       entity: await requireFeedback(ctx, await act(ctx, (s) => createFeedback(s, args.input))),

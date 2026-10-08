@@ -114,15 +114,17 @@ export const learningTools: Tool<McpContext>[] = [
       type: "object",
       properties: {
         agent: { type: "string", description: 'Name, id or "me"; all agents when omitted' },
+        issue: { type: "string", description: "Only feedback about this issue, e.g. FIN-12" },
         open: { type: "boolean", description: "Only feedback not yet addressed" },
         limit: { type: "number" },
       },
     },
     async run(args, c) {
       const agent = str(args.agent) ? await resolveUser(c, String(args.agent)) : null;
+      const issue = str(args.issue) ? await requireIssue(c, String(args.issue)) : null;
       const rows = await listFeedback(
         c.db,
-        { agentId: agent?.id ?? null, open: args.open === true },
+        { agentId: agent?.id ?? null, issueId: issue?.id ?? null, open: args.open === true },
         limit(args.limit, 200),
       );
       return Promise.all(

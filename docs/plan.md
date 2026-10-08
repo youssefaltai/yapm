@@ -169,7 +169,7 @@ Subscription limits replace dollar budgets. Max has usage windows rather than a 
 
 Each phase ends with something usable; one PR per feature-sized slice.
 
-**Phase 0: Foundations.** Monorepo, SQLite schema and migrations, hub core with both Cloudflare and Node adapters, owner passkey login, CI that deploys and tests both targets, seed script (CEO agent, a few teams and agents), audit log from the first mutation.
+**Phase 0: Foundations.** Monorepo, SQLite schema and migrations, hub core with both Cloudflare and Node adapters, owner passkey login, CI that deploys and tests both targets, first-run setup that creates a blank company (just the owner and the CEO agent), audit log from the first mutation.
 
 **Phase 1: Linear's core for the owner.** Teams, states, issues, labels, sub-issues, relations, comments, reactions, activity; app shell, list and board, issue page and peek, filters, Cmd+K, shortcuts, bulk edit, My Issues; realtime; GraphQL API. *Done when you can run a team by hand the way you use Linear at work.*
 
@@ -191,3 +191,4 @@ Each phase ends with something usable; one PR per feature-sized slice.
 3. The CEO agent sits at the top of the org and is the default assignee for anything unassigned.
 4. Agents can change the org (teams, hiring, charters) only within grants; you start with nothing "always allowed" except commenting, reacting and editing issues.
 5. Visual design copies Linear's layout, density and shortcuts closely, with our own name and logo (not Linear's branding or assets).
+7. The company starts blank: only the owner and the CEO. No teams, other agents or labels are pre-made; the CEO creates them as the owner's life calls for it.

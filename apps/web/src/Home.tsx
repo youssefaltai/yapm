@@ -53,6 +53,7 @@ export function Home({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => v
         </nav>
         <p className="mt-6 px-2 text-[11px] font-medium text-faint uppercase">Teams</p>
         <nav className="mt-1 space-y-0.5">
+          {data?.teams.nodes.length === 0 && <p className="px-2 py-1.5 text-faint">None yet</p>}
           {data?.teams.nodes.map((team) => (
             <NavItem key={team.id} label={team.name} badge={team.key} />
           ))}
@@ -97,16 +98,18 @@ function Company({ data }: { data: CompanyData }) {
   return (
     <>
       <h1 className="text-lg font-medium">{data.organization.name}</h1>
-      <p className="mt-1 text-muted">
-        {members.filter((m) => m.kind === "agent").length} AI employees across{" "}
-        {data.teams.nodes.length} teams.
-      </p>
+      <p className="mt-1 text-muted">{summary(members, data.teams.nodes.length)}</p>
 
       <h2 className="mt-8 mb-3 text-[12px] font-medium text-faint uppercase">Organization</h2>
       {owner && <OrgNode member={owner} members={members} />}
 
       <h2 className="mt-8 mb-3 text-[12px] font-medium text-faint uppercase">Teams</h2>
-      <div className="divide-y divide-line rounded-lg border border-line">
+      {data.teams.nodes.length === 0 && (
+        <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-muted">
+          No teams yet. Your CEO creates them as your life's work takes shape.
+        </p>
+      )}
+      <div className="divide-y divide-line rounded-lg border border-line empty:hidden">
         {data.teams.nodes.map((team) => (
           <div key={team.id} className="flex items-start gap-3 px-4 py-3">
             <span className="mt-0.5 w-10 shrink-0 text-[11px] font-medium text-faint">
@@ -125,6 +128,13 @@ function Company({ data }: { data: CompanyData }) {
       </div>
     </>
   );
+}
+
+function summary(members: Member[], teamCount: number): string {
+  const agents = members.filter((m) => m.kind === "agent").length;
+  const people = agents === 1 ? "1 AI employee" : `${agents} AI employees`;
+  if (teamCount === 0) return `${people}, no teams yet.`;
+  return `${people} across ${teamCount === 1 ? "1 team" : `${teamCount} teams`}.`;
 }
 
 function OrgNode({ member, members }: { member: Member; members: Member[] }) {

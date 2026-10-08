@@ -26,9 +26,9 @@ test("owner starts a company with a passkey, signs out and back in", async ({ pa
   await page.getByRole("button", { name: "Create passkey and start" }).click();
 
   await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
-  await expect(page.getByText("2 AI employees across 7 teams.")).toBeVisible();
+  await expect(page.getByText("1 AI employee, no teams yet.")).toBeVisible();
   await expect(page.getByText("Chief Executive Officer")).toBeVisible();
-  await expect(page.getByText("Runs the company: triage, routing")).toBeVisible();
+  await expect(page.getByText("No teams yet. Your CEO creates them")).toBeVisible();
 
   await page.getByRole("button", { name: "Sign out" }).first().click();
   await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();

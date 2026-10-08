@@ -2073,5 +2073,54 @@ export function hubContract(
       expect(versions.handbook[0]?.content).toBe("Agents never pay without a receipt.");
       expect(versions.user.lessons).toBe("- Lead money updates with the total.");
     });
+    it("measures the company's work for insights and retros", async () => {
+      const result = await client.graphql<{
+        insights: {
+          company: { created: number; completed: number; runs: number; stopRate: number | null };
+          users: {
+            user: { name: string };
+            metrics: { requestsAnswered: number; rejectionRate: number | null };
+          }[];
+          teams: { team: { id: string }; metrics: { created: number } }[];
+        };
+        metricHistory: unknown[];
+      }>(
+        `{
+          insights(days: 7) {
+            company { created completed runs stopRate }
+            users { user { name } metrics { requestsAnswered rejectionRate } }
+            teams { team { id } metrics { created } }
+          }
+          metricHistory(days: 30) { date }
+        }`,
+      );
+      expect(result.errors).toBeUndefined();
+      const insights = result.data?.insights;
+      expect(insights?.company.created).toBeGreaterThan(0);
+      expect(insights?.company.runs).toBeGreaterThan(0);
+      expect(insights?.company.stopRate).toBeGreaterThan(0);
+      const ceo = insights?.users.find((u) => u.user.name === "CEO");
+      expect(ceo?.metrics.requestsAnswered).toBeGreaterThan(0);
+      expect(ceo?.metrics.rejectionRate).toBeGreaterThan(0);
+      expect(insights?.teams.find((t) => t.team.id === teamId)?.metrics.created).toBeGreaterThan(0);
+      expect(result.data?.metricHistory).toEqual([]);
+
+      const response = await client.request("/mcp", {
+        method: "POST",
+        json: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "get_metrics", arguments: { member: "me", days: 7 } },
+        },
+        token: ceoToken,
+        headers: { accept: "application/json, text/event-stream" },
+      });
+      const body = (await response.json()) as { result: { content: { text: string }[] } };
+      const metrics = JSON.parse(body.result.content[0]?.text ?? "{}");
+      expect(metrics.scope).toBe("CEO");
+      expect(metrics.current.requestsAnswered).toBeGreaterThan(0);
+      expect(metrics.previous.requestsAnswered).toBe(0);
+    });
   });
 }

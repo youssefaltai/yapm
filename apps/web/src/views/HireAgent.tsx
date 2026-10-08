@@ -1,6 +1,8 @@
 import { type FormEvent, useCallback, useState } from "react";
 import { hireAgentStore, workspaceStore } from "../actions.js";
+import { Select } from "../controls.js";
 import { mutate } from "../data.js";
+import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import { Modal, useStore } from "../ui.js";
 
@@ -71,31 +73,31 @@ function HireAgent({ onClose }: { onClose: () => void }) {
             className={input}
           />
         </label>
-        <label className="mb-3 block">
+        <div className="mb-3 block">
           <span className="mb-1.5 block text-muted">Reports to</span>
-          <select
+          <Select
+            aria-label="Reports to"
             value={managerId}
-            onChange={(e) => setManagerId(e.target.value)}
-            className={input}
-          >
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-                {m.title && m.title !== m.name ? `, ${m.title}` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="mb-4 block">
-          <span className="mb-1.5 block text-muted">Charter</span>
-          <textarea
-            value={charter}
-            onChange={(e) => setCharter(e.target.value)}
-            rows={4}
-            placeholder="What this agent is responsible for, and how it should work."
+            onChange={setManagerId}
+            options={members.map((m) => ({
+              value: m.id,
+              label: m.title && m.title !== m.name ? `${m.name}, ${m.title}` : m.name,
+            }))}
             className={input}
           />
-        </label>
+        </div>
+        <div className="mb-4 block">
+          <span className="mb-1.5 block text-muted">Charter</span>
+          <div className="rounded-md border border-line bg-panel px-2.5 py-1.5 focus-within:border-faint">
+            <RichEditor
+              label="Charter"
+              value=""
+              onChange={setCharter}
+              placeholder="What this agent is responsible for, and how it should work."
+              className="min-h-20"
+            />
+          </div>
+        </div>
         <div className="flex justify-end gap-2">
           <button
             type="button"

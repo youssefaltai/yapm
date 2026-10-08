@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { workspaceStore } from "../actions.js";
+import { confirmDialog, promptDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
+import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import { Avatar, openMenu, timeAgo, useStore } from "../ui.js";
 import { FeedbackSection, Prose, RevisionList } from "./Learning.js";
@@ -99,11 +101,14 @@ export function MemberPage({ id }: { id: string }) {
           {canEdit && member.kind === "agent" && member.active && (
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (
-                  window.confirm(
-                    `Retire ${member.name}? Its tokens stop working and its reports move to its manager.`,
-                  )
+                  await confirmDialog({
+                    title: `Retire ${member.name}?`,
+                    body: "Its tokens stop working and its reports move to its manager.",
+                    confirmLabel: "Retire",
+                    destructive: true,
+                  })
                 ) {
                   void mutate("mutation($id: String!) { agentRetire(id: $id) { success } }", {
                     id: member.id,
@@ -241,10 +246,13 @@ export function MemberPage({ id }: { id: string }) {
                 <button
                   type="button"
                   onClick={async () => {
-                    const name = window.prompt(
-                      "Name this token, e.g. the machine it runs on:",
-                      "Claude Code",
-                    );
+                    const name = await promptDialog({
+                      title: "New API token",
+                      label: "Token name",
+                      placeholder: "The machine it runs on",
+                      initial: "Claude Code",
+                      confirmLabel: "Create token",
+                    });
                     if (!name) return;
                     const result = await mutate<{ apiTokenCreate: { token: string } }>(
                       "mutation($name: String!, $userId: String) { apiTokenCreate(name: $name, userId: $userId) { token } }",
@@ -327,6 +335,7 @@ function EditableLine(props: {
 function GiveWork({ agent }: { agent: { id: string; name: string } }) {
   const [open, setOpen] = useState(false);
   const [goal, setGoal] = useState("");
+  const form = useRef<HTMLFormElement>(null);
   const [issue, setIssue] = useState("");
   if (!open)
     return (
@@ -340,6 +349,7 @@ function GiveWork({ agent }: { agent: { id: string; name: string } }) {
     );
   return (
     <form
+      ref={form}
       className="mt-4 rounded-lg border border-line p-4"
       onSubmit={async (e) => {
         e.preventDefault();
@@ -350,18 +360,19 @@ function GiveWork({ agent }: { agent: { id: string; name: string } }) {
         if (result) navigate(paths.run(result.runCreate.run.id));
       }}
     >
-      <label className="block">
+      <div className="block">
         <span className="mb-1.5 block text-muted">What should {agent.name} get done?</span>
-        <textarea
-          // biome-ignore lint/a11y/noAutofocus: the goal is the first thing to type
-          autoFocus
-          aria-label="Goal"
-          value={goal}
-          onChange={(e) => setGoal(e.target.value)}
-          rows={3}
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 outline-none focus:border-faint"
-        />
-      </label>
+        <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
+          <RichEditor
+            label="Goal"
+            autoFocus
+            value=""
+            onChange={setGoal}
+            onSubmit={() => goal.trim() && form.current?.requestSubmit()}
+            className="min-h-14"
+          />
+        </div>
+      </div>
       <label className="mt-3 flex items-center gap-2">
         <span className="text-muted">On issue</span>
         <input

@@ -12,6 +12,7 @@ import {
   targetStore,
   workspaceStore,
 } from "../actions.js";
+import { promptDialog } from "../controls.js";
 import {
   ISSUE_FIELDS,
   type Issue,
@@ -395,7 +396,12 @@ function groupIssues(
 
 /** Saves the current filters as a view everyone can open from the sidebar. */
 async function saveView(filter: Record<string, unknown>, source: IssueSource) {
-  const name = window.prompt("Name this view")?.trim();
+  const name = await promptDialog({
+    title: "Save as view",
+    label: "View name",
+    placeholder: "e.g. Urgent bugs",
+    confirmLabel: "Save view",
+  });
   if (!name) return;
   const team = teamOf(source);
   const scoped =
@@ -479,7 +485,7 @@ function IssueRow({
         else navigate(paths.issue(issue.identifier));
       }}
       onKeyDown={() => undefined}
-      className={`group flex h-10 cursor-default items-center gap-2.5 border-b border-line/60 px-4 md:px-6 ${
+      className={`group flex h-10 animate-fade-in cursor-default items-center gap-2.5 border-b border-line/60 px-4 md:px-6 ${
         selected ? "bg-accent/10" : focused ? "bg-raised" : ""
       }`}
     >
@@ -576,7 +582,7 @@ function Board({
           }}
           onDragLeave={() => setOver((o) => (o === group.key ? null : o))}
           onDrop={(e) => drop(group, e.dataTransfer.getData("text/issue-id"))}
-          className={`flex w-72 shrink-0 flex-col rounded-lg ${over === group.key ? "bg-raised" : ""}`}
+          className={`flex w-72 shrink-0 flex-col rounded-lg transition-colors duration-150 ${over === group.key ? "bg-raised" : ""}`}
         >
           <div className="flex items-center gap-2 px-2 py-2">
             <StatusIcon type={group.type} color={group.color} />
@@ -631,6 +637,7 @@ function BoardCard({
   onToggle: () => void;
 }) {
   const due = issue.dueDate ? dueLabel(issue.dueDate) : null;
+  const [dragging, setDragging] = useState(false);
   return (
     <button
       type="button"
@@ -639,15 +646,17 @@ function BoardCard({
       onDragStart={(e) => {
         e.dataTransfer.setData("text/issue-id", issue.id);
         e.dataTransfer.effectAllowed = "move";
+        setDragging(true);
       }}
+      onDragEnd={() => setDragging(false)}
       onMouseEnter={onFocus}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) onToggle();
         else navigate(paths.issue(issue.identifier));
       }}
-      className={`block w-full rounded-lg border bg-panel p-3 text-left ${
+      className={`block w-full animate-fade-in rounded-lg border bg-panel p-3 text-left ${
         selected ? "border-accent" : focused ? "border-faint" : "border-line"
-      }`}
+      } ${dragging ? "opacity-40" : ""}`}
     >
       <div className="flex items-center justify-between text-faint">
         <span>{issue.identifier}</span>
@@ -688,7 +697,7 @@ function BulkBar({ issues, onClear }: { issues: Issue[]; onClear: () => void }) 
   ];
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-3">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-line bg-panel px-2 py-1.5 shadow-2xl">
+      <div className="pointer-events-auto flex animate-rise-in items-center gap-1 rounded-xl border border-line bg-panel px-2 py-1.5 shadow-2xl">
         <span className="px-2 font-medium">{issues.length} selected</span>
         {actions.map(([label, key, action]) => (
           <button
@@ -725,7 +734,7 @@ function BulkBar({ issues, onClear }: { issues: Issue[]; onClear: () => void }) 
 
 function EmptyState({ filtered, onCreate }: { filtered: boolean; onCreate: () => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+    <div className="flex flex-1 animate-fade-in flex-col items-center justify-center gap-3 px-6 py-16 text-center">
       <p className="text-muted">
         {filtered ? "No issues match these filters." : "No issues here yet."}
       </p>

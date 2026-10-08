@@ -16,6 +16,12 @@ async function addPasskeyAuthenticator(page: Page) {
   });
 }
 
+/** Picks an option from one of the app's dropdowns, which replace native selects. */
+async function choose(page: Page, trigger: ReturnType<Page["getByLabel"]>, option: string) {
+  await trigger.click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
 // One owner, one passkey, one browser session: the tests build on each other like a real day.
 test.describe
   .serial("the owner's day", () => {
@@ -174,12 +180,14 @@ test.describe
       await dialog.getByRole("button", { name: "Hire" }).click();
 
       await expect(page.getByLabel("Name")).toHaveValue("Ada");
-      await expect(page.getByLabel("Charter")).toHaveValue(
+      await expect(page.getByLabel("Charter")).toHaveText(
         "Owns the household budget and the bills.",
       );
 
-      page.once("dialog", (prompt) => prompt.accept("Laptop"));
       await page.getByRole("button", { name: "+ New token" }).click();
+      const tokenDialog = page.getByRole("dialog", { name: "New API token" });
+      await tokenDialog.getByLabel("Token name").fill("Laptop");
+      await tokenDialog.getByRole("button", { name: "Create token" }).click();
       await expect(page.getByText("Copy this token now.")).toBeVisible();
       await expect(page.getByText(/claude mcp add --transport http life-os/)).toBeVisible();
       agentToken = (await page.locator("code").first().textContent()) ?? "";
@@ -233,9 +241,11 @@ test.describe
       await mention.click();
       await expect(page.getByLabel("Issue title")).toHaveValue("Pay the electricity bill");
       await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
-      await expect(
-        page.getByText("@Youssef the bill is paid, receipt attached.", { exact: true }),
-      ).toBeVisible();
+      // The agent's `@Youssef` shows as a mention chip, as in Linear.
+      const agentComment = page.locator(".rich", {
+        hasText: "the bill is paid, receipt attached.",
+      });
+      await expect(agentComment.locator("[data-mention=user]")).toHaveText(/Youssef/);
       await page.getByRole("button", { name: "Mark all read" }).click();
       await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(0);
     });
@@ -305,11 +315,15 @@ test.describe
       const dialog = page.getByRole("dialog", { name: "New project" });
       await dialog.getByLabel("Name").fill("Pay off the car");
       await dialog.getByLabel("Summary").fill("Owe nothing on the car by spring");
-      await dialog.getByLabel("Lead").selectOption({ label: "Ada" });
+      await choose(page, dialog.getByLabel("Lead"), "Ada");
       await dialog.getByRole("button", { name: "Create project" }).click();
       await expect(page.getByLabel("Project name")).toHaveValue("Pay off the car");
 
       await page.getByLabel("New milestone").fill("Half paid");
+      await page.getByLabel("Milestone date").click();
+      await page.getByLabel("Type a date").fill("2030-01-15");
+      await page.keyboard.press("Enter");
+      await expect(page.getByLabel("Milestone date")).toHaveText(/Jan 15, 2030/);
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.getByText("Half paid")).toBeVisible();
 
@@ -325,10 +339,13 @@ test.describe
 
       await page.getByRole("button", { name: "+ New document" }).click();
       await page.getByLabel("Document title").fill("Payment plan");
-      await page.getByLabel("Content").fill("# Plan\n- Pay **200** extra a month");
-      await page.getByRole("button", { name: "Done" }).click();
+      // Markdown shortcuts turn into formatting as you type, like Linear.
+      await page.getByLabel("Content").click();
+      await page.keyboard.type("# Plan");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("- Pay **200** extra a month");
       await expect(page.getByRole("heading", { name: "Plan" })).toBeVisible();
-      await expect(page.locator(".markdown strong")).toHaveText("200");
+      await expect(page.getByLabel("Content").locator("li strong")).toHaveText("200");
       await page.waitForTimeout(1000);
       const doc = await mcp("list_documents", { query: "payment" });
       expect(doc.documents[0]).toMatchObject({ title: "Payment plan", project: "Pay off the car" });
@@ -348,7 +365,7 @@ test.describe
         "true",
       );
       await page.getByRole("switch", { name: "Cycles" }).click();
-      await page.getByLabel("Cycle length").selectOption({ label: "2 weeks" });
+      await choose(page, page.getByLabel("Cycle length"), "2 weeks");
 
       await page.getByRole("link", { name: "Cycles", exact: true }).click();
       await expect(page.getByRole("button", { name: /Cycle 1.*Current/ })).toBeVisible();
@@ -381,8 +398,10 @@ test.describe
       await page.getByRole("option", { name: "Todo" }).click();
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
-      page.once("dialog", (prompt) => prompt.accept("Ready to start"));
       await page.getByRole("button", { name: "Save view" }).click();
+      const viewDialog = page.getByRole("dialog", { name: "Save as view" });
+      await viewDialog.getByLabel("View name").fill("Ready to start");
+      await viewDialog.getByRole("button", { name: "Save view" }).click();
       await expect(page).toHaveURL(/\/view\//);
       await expect(page.getByRole("link", { name: "Ready to start" })).toBeVisible();
       await expect(
@@ -396,9 +415,11 @@ test.describe
       await page.getByRole("button", { name: "New recurring issue" }).click();
       const editor = page.getByRole("dialog", { name: "Recurring issue" });
       await editor.getByLabel("Issue title").fill("Review the budget {date}");
-      await editor.getByLabel("Repeats").selectOption({ label: "Weekly" });
-      await editor.getByLabel("On day").selectOption({ label: "Mon" });
-      await editor.getByLabel("Time of day").fill("18:30");
+      await choose(page, editor.getByLabel("Repeats"), "Weekly");
+      await choose(page, editor.getByLabel("On day"), "Mon");
+      await editor.getByLabel("Time of day").click();
+      await page.getByLabel("Filter", { exact: true }).fill("18:30");
+      await page.keyboard.press("Enter");
       await editor.getByRole("button", { name: "Save" }).click();
       await expect(page.getByText("Mondays at 18:30")).toBeVisible();
 
@@ -414,14 +435,14 @@ test.describe
       await page.getByRole("button", { name: "Use template" }).click();
       await page.getByRole("option", { name: "Bill to pay" }).click();
       await expect(page.getByLabel("Issue title")).toHaveValue("Pay the ___ bill");
-      await expect(page.getByLabel("Issue description")).toHaveValue("Amount:\nDue:");
+      await expect(page.getByLabel("Issue description")).toHaveText(/Amount:\s*Due:/);
       await page.keyboard.press("Escape");
     });
 
     test("holds urgent issues to an SLA, searches everything and shows the roadmap", async () => {
       await page.getByRole("link", { name: /Personal Finance/ }).click();
       await page.getByRole("link", { name: "Settings" }).click();
-      await page.getByLabel("Urgent SLA").selectOption({ label: "1 day" });
+      await choose(page, page.getByLabel("Urgent SLA"), "1 day");
       await expect(page.getByRole("status")).toContainText("Team settings saved");
 
       await page.getByRole("link", { name: "Personal Finance" }).first().click();
@@ -475,7 +496,9 @@ test.describe
       const note = open.find((f: { body: string }) => f.body.startsWith("Attach the receipt"));
       await mcp("update_user", { user: "me", lessons: "- Attach receipts to bills." });
       await mcp("address_feedback", { id: note.id, note: "Added a lesson about receipts" });
-      await expect(page.getByLabel("Lessons")).toHaveValue("- Attach receipts to bills.");
+      await expect(page.getByLabel("Lessons").locator("li")).toHaveText(
+        "Attach receipts to bills.",
+      );
       await expect(page.getByText("✓ Added a lesson about receipts")).toBeVisible();
 
       await page.getByRole("button", { name: "Company" }).click();
@@ -548,8 +571,11 @@ test.describe
       );
       expect(await back.text()).toContain("Connected slack-acme");
 
-      page.once("dialog", (dialog) => dialog.accept());
       await servers.getByRole("button", { name: "Remove slack-acme" }).click();
+      await page
+        .getByRole("dialog", { name: "Remove slack-acme?" })
+        .getByRole("button", { name: "Remove" })
+        .click();
       await expect(servers.getByText("None yet.")).toBeVisible();
     });
 
@@ -649,5 +675,82 @@ test.describe
         options: { body: "Push the budget sheet" },
       });
       expect(result.opened).toEqual([`${new URL(scope).origin}/request/r1`]);
+    });
+    test("writes like Linear: shortcuts, slash commands, mentions, checklists and code", async () => {
+      await page.goto("/issue/PF-2");
+      const description = page.getByLabel("Issue description");
+      await description.click();
+      await page.keyboard.type("## Options");
+      await page.keyboard.press("Enter");
+
+      // `/` opens the block menu.
+      await page.keyboard.type("/check");
+      await expect(page.getByRole("option", { name: "Checklist" })).toBeVisible();
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-slash.png` });
+      await page.getByRole("option", { name: "Checklist" }).click();
+      await page.keyboard.type("Call the bank");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("Compare tariffs");
+      await page.keyboard.press("Enter");
+      await page.keyboard.press("Enter");
+
+      // `@` mentions people and issues, shown as chips.
+      await page.keyboard.type("Ask @Yous");
+      await expect(page.getByRole("option", { name: "Youssef" })).toBeVisible();
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-mention.png` });
+      await page.getByRole("option", { name: "Youssef" }).click();
+      await page.keyboard.type("about @electricity");
+      await page.getByRole("option", { name: /PF-1 Pay the electricity bill/ }).click();
+      await expect(description.locator("[data-mention=user]")).toHaveText(/Youssef/);
+      await expect(description.locator("[data-mention=issue]")).toContainText("PF-1");
+
+      // Checklist boxes tick in place.
+      await description.locator('li[data-type="taskItem"] input').first().check();
+
+      // Selecting text shows the formatting toolbar.
+      await description.getByText("Compare tariffs", { exact: true }).click();
+      await page.keyboard.press("End");
+      for (let i = 0; i < "tariffs".length; i++) await page.keyboard.press("Shift+ArrowLeft");
+      const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+      await expect(toolbar).toBeVisible();
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-toolbar.png` });
+      await toolbar.getByLabel("Bold").click();
+      await expect(description.locator("strong")).toHaveText("tariffs");
+
+      await page.getByLabel("Issue title").click();
+      await expect
+        .poll(async () => (await mcp("get_issue", { id: "PF-2" })).description as string)
+        .toContain("- [x] Call the bank");
+      const saved = (await mcp("get_issue", { id: "PF-2" })).description as string;
+      expect(saved).toContain("## Options");
+      expect(saved).toContain("- [ ] Compare **tariffs**");
+      expect(saved).toContain("Ask @Youssef about PF-1");
+
+      // A fenced code block in a comment, highlighted once posted.
+      await page.getByLabel("Leave a comment").click();
+      await page.keyboard.type("```ts");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("const total = 42;");
+      await page.keyboard.press("ControlOrMeta+Enter");
+      const posted = page.locator("li .rich pre").last();
+      await expect(posted).toHaveText("const total = 42;");
+      await expect(posted.locator(".hljs-keyword")).toHaveText("const");
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-code.png` });
+      // Agents write Markdown through MCP; it reads like Linear's: tables, collapsible sections.
+      await mcp("create_comment", {
+        issueId: "PF-2",
+        body: "| Tariff | Price |\n| --- | --- |\n| Green | 31p |\n\n+++ Workings\nUnit rate *times* usage.\n+++",
+      });
+      const agentReply = page.locator("li .rich", { hasText: "Workings" });
+      await expect(agentReply.locator("td").first()).toHaveText("Green");
+      await expect(agentReply.getByText("Unit rate")).toBeHidden();
+      await agentReply.getByRole("button", { name: "Expand section" }).click();
+      await expect(agentReply.locator("em")).toHaveText("times");
+      const comments = await mcp("list_comments", { issueId: "PF-2" });
+      expect(JSON.stringify(comments)).toContain("```ts\\nconst total = 42;\\n```");
     });
   });

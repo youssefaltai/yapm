@@ -16,6 +16,12 @@ async function addPasskeyAuthenticator(page: Page) {
   });
 }
 
+/** Picks an option from one of the app's dropdowns, which replace native selects. */
+async function choose(page: Page, trigger: ReturnType<Page["getByLabel"]>, option: string) {
+  await trigger.click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
 // One owner, one passkey, one browser session: the tests build on each other like a real day.
 test.describe
   .serial("the owner's day", () => {
@@ -178,8 +184,10 @@ test.describe
         "Owns the household budget and the bills.",
       );
 
-      page.once("dialog", (prompt) => prompt.accept("Laptop"));
       await page.getByRole("button", { name: "+ New token" }).click();
+      const tokenDialog = page.getByRole("dialog", { name: "New API token" });
+      await tokenDialog.getByLabel("Token name").fill("Laptop");
+      await tokenDialog.getByRole("button", { name: "Create token" }).click();
       await expect(page.getByText("Copy this token now.")).toBeVisible();
       await expect(page.getByText(/claude mcp add --transport http life-os/)).toBeVisible();
       agentToken = (await page.locator("code").first().textContent()) ?? "";
@@ -307,11 +315,15 @@ test.describe
       const dialog = page.getByRole("dialog", { name: "New project" });
       await dialog.getByLabel("Name").fill("Pay off the car");
       await dialog.getByLabel("Summary").fill("Owe nothing on the car by spring");
-      await dialog.getByLabel("Lead").selectOption({ label: "Ada" });
+      await choose(page, dialog.getByLabel("Lead"), "Ada");
       await dialog.getByRole("button", { name: "Create project" }).click();
       await expect(page.getByLabel("Project name")).toHaveValue("Pay off the car");
 
       await page.getByLabel("New milestone").fill("Half paid");
+      await page.getByLabel("Milestone date").click();
+      await page.getByLabel("Type a date").fill("2030-01-15");
+      await page.keyboard.press("Enter");
+      await expect(page.getByLabel("Milestone date")).toHaveText(/Jan 15, 2030/);
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.getByText("Half paid")).toBeVisible();
 
@@ -353,7 +365,7 @@ test.describe
         "true",
       );
       await page.getByRole("switch", { name: "Cycles" }).click();
-      await page.getByLabel("Cycle length").selectOption({ label: "2 weeks" });
+      await choose(page, page.getByLabel("Cycle length"), "2 weeks");
 
       await page.getByRole("link", { name: "Cycles", exact: true }).click();
       await expect(page.getByRole("button", { name: /Cycle 1.*Current/ })).toBeVisible();
@@ -386,8 +398,10 @@ test.describe
       await page.getByRole("option", { name: "Todo" }).click();
       await page.keyboard.press("Escape");
       await page.keyboard.press("Escape");
-      page.once("dialog", (prompt) => prompt.accept("Ready to start"));
       await page.getByRole("button", { name: "Save view" }).click();
+      const viewDialog = page.getByRole("dialog", { name: "Save as view" });
+      await viewDialog.getByLabel("View name").fill("Ready to start");
+      await viewDialog.getByRole("button", { name: "Save view" }).click();
       await expect(page).toHaveURL(/\/view\//);
       await expect(page.getByRole("link", { name: "Ready to start" })).toBeVisible();
       await expect(
@@ -401,9 +415,11 @@ test.describe
       await page.getByRole("button", { name: "New recurring issue" }).click();
       const editor = page.getByRole("dialog", { name: "Recurring issue" });
       await editor.getByLabel("Issue title").fill("Review the budget {date}");
-      await editor.getByLabel("Repeats").selectOption({ label: "Weekly" });
-      await editor.getByLabel("On day").selectOption({ label: "Mon" });
-      await editor.getByLabel("Time of day").fill("18:30");
+      await choose(page, editor.getByLabel("Repeats"), "Weekly");
+      await choose(page, editor.getByLabel("On day"), "Mon");
+      await editor.getByLabel("Time of day").click();
+      await page.getByLabel("Filter", { exact: true }).fill("18:30");
+      await page.keyboard.press("Enter");
       await editor.getByRole("button", { name: "Save" }).click();
       await expect(page.getByText("Mondays at 18:30")).toBeVisible();
 
@@ -426,7 +442,7 @@ test.describe
     test("holds urgent issues to an SLA, searches everything and shows the roadmap", async () => {
       await page.getByRole("link", { name: /Personal Finance/ }).click();
       await page.getByRole("link", { name: "Settings" }).click();
-      await page.getByLabel("Urgent SLA").selectOption({ label: "1 day" });
+      await choose(page, page.getByLabel("Urgent SLA"), "1 day");
       await expect(page.getByRole("status")).toContainText("Team settings saved");
 
       await page.getByRole("link", { name: "Personal Finance" }).first().click();
@@ -537,8 +553,11 @@ test.describe
       );
       expect(await back.text()).toContain("Connected slack-acme");
 
-      page.once("dialog", (dialog) => dialog.accept());
       await servers.getByRole("button", { name: "Remove slack-acme" }).click();
+      await page
+        .getByRole("dialog", { name: "Remove slack-acme?" })
+        .getByRole("button", { name: "Remove" })
+        .click();
       await expect(servers.getByText("None yet.")).toBeVisible();
     });
 

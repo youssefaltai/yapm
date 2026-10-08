@@ -1,5 +1,6 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { createDocument, createProjectStore, workspaceStore } from "../actions.js";
+import { confirmDialog, DatePicker, Select } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
@@ -217,37 +218,46 @@ function CreateProject({ onClose }: { onClose: () => void }) {
           />
         </label>
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block">
+          <div className="block">
             <span className="mb-1.5 block text-muted">Lead</span>
-            <select value={leadId} onChange={(e) => setLeadId(e.target.value)} className={input}>
-              <option value="">No lead</option>
-              {workspace?.users.nodes.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-muted">Team</span>
-            <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={input}>
-              <option value="">No team</option>
-              {workspace?.teams.nodes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-muted">Target date</span>
-            <input
-              type="date"
-              value={targetDate}
-              onChange={(e) => setTargetDate(e.target.value)}
-              className={`${input} [color-scheme:dark]`}
+            <Select
+              aria-label="Lead"
+              value={leadId}
+              onChange={setLeadId}
+              options={[
+                { value: "", label: "No lead" },
+                ...(workspace?.users.nodes.map((u) => ({
+                  value: u.id,
+                  label: u.name,
+                  icon: <Avatar name={u.name} size={16} />,
+                })) ?? []),
+              ]}
+              className={input}
             />
-          </label>
+          </div>
+          <div className="block">
+            <span className="mb-1.5 block text-muted">Team</span>
+            <Select
+              aria-label="Team"
+              value={teamId}
+              onChange={setTeamId}
+              options={[
+                { value: "", label: "No team" },
+                ...(workspace?.teams.nodes.map((t) => ({ value: t.id, label: t.name })) ?? []),
+              ]}
+              className={input}
+            />
+          </div>
+          <div className="block">
+            <span className="mb-1.5 block text-muted">Target date</span>
+            <DatePicker
+              aria-label="Target date"
+              value={targetDate || null}
+              onChange={(d) => setTargetDate(d ?? "")}
+              placeholder="No date"
+              className={input}
+            />
+          </div>
         </div>
         <div className="flex justify-end gap-2">
           <button
@@ -502,17 +512,20 @@ function Milestones({ project: p }: { project: ProjectDetail }) {
             <button
               type="button"
               aria-label={`Delete ${m.name}`}
-              onClick={() =>
-                window.confirm(
-                  `Delete the milestone "${m.name}"? Its issues stay in the project.`,
-                ) &&
-                void mutate(
-                  "mutation($id: String!) { projectMilestoneDelete(id: $id) { success } }",
-                  {
-                    id: m.id,
-                  },
+              onClick={async () => {
+                if (
+                  await confirmDialog({
+                    title: `Delete the milestone “${m.name}”?`,
+                    body: "Its issues stay in the project.",
+                    confirmLabel: "Delete",
+                    destructive: true,
+                  })
                 )
-              }
+                  void mutate(
+                    "mutation($id: String!) { projectMilestoneDelete(id: $id) { success } }",
+                    { id: m.id },
+                  );
+              }}
               className="text-faint hover:text-red-400"
             >
               ×
@@ -541,12 +554,12 @@ function Milestones({ project: p }: { project: ProjectDetail }) {
           placeholder="Add a milestone"
           className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3 py-1.5 outline-none placeholder:text-faint focus:border-faint"
         />
-        <input
-          type="date"
+        <DatePicker
           aria-label="Milestone date"
-          value={targetDate}
-          onChange={(e) => setTargetDate(e.target.value)}
-          className="w-36 rounded-md border border-line bg-panel px-2 py-1.5 outline-none [color-scheme:dark]"
+          value={targetDate || null}
+          onChange={(d) => setTargetDate(d ?? "")}
+          placeholder="Target date"
+          className="w-36 rounded-md border border-line bg-panel px-2 py-1.5 outline-none hover:bg-raised"
         />
         <button
           type="submit"
@@ -779,7 +792,13 @@ function ProjectProperties({ project: p }: { project: ProjectDetail }) {
       <button
         type="button"
         onClick={async () => {
-          if (!window.confirm(`Archive ${p.name}?`)) return;
+          if (
+            !(await confirmDialog({
+              title: `Archive ${p.name}?`,
+              confirmLabel: "Archive",
+            }))
+          )
+            return;
           if (
             await mutate("mutation($id: String!) { projectArchive(id: $id) { success } }", {
               id: p.id,
@@ -805,14 +824,12 @@ function DateField({
   onChange: (value: string | null) => void;
 }) {
   return (
-    <label className="flex items-center rounded-md px-2 py-1 hover:bg-raised">
-      <input
-        type="date"
-        aria-label={label}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value || null)}
-        className={`w-full bg-transparent outline-none [color-scheme:dark] ${value ? "" : "text-faint"}`}
-      />
-    </label>
+    <DatePicker
+      aria-label={label}
+      value={value}
+      onChange={onChange}
+      placeholder="Set date"
+      className="w-full rounded-md px-2 py-1 outline-none hover:bg-raised"
+    />
   );
 }

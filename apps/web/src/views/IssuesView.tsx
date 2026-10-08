@@ -12,6 +12,7 @@ import {
   targetStore,
   workspaceStore,
 } from "../actions.js";
+import { promptDialog } from "../controls.js";
 import {
   ISSUE_FIELDS,
   type Issue,
@@ -395,7 +396,12 @@ function groupIssues(
 
 /** Saves the current filters as a view everyone can open from the sidebar. */
 async function saveView(filter: Record<string, unknown>, source: IssueSource) {
-  const name = window.prompt("Name this view")?.trim();
+  const name = await promptDialog({
+    title: "Save as view",
+    label: "View name",
+    placeholder: "e.g. Urgent bugs",
+    confirmLabel: "Save view",
+  });
   if (!name) return;
   const team = teamOf(source);
   const scoped =

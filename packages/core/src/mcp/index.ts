@@ -8,11 +8,12 @@ import { CLIENT_ID_HEADER } from "../realtime.js";
 import { dispatch } from "../runs/service.js";
 import type { Ctx } from "../services/common.js";
 import { learningTools } from "./learning.js";
+import { machineTools } from "./machines.js";
 import { planningTools } from "./planning.js";
 import { handleMessage } from "./protocol.js";
 import { tools as coreTools, type McpContext } from "./tools.js";
 
-const tools = [...coreTools, ...planningTools, ...learningTools];
+const tools = [...coreTools, ...planningTools, ...learningTools, ...machineTools];
 
 const INSTRUCTIONS = `This is the company's issue tracker, shaped like Linear. You are one of its members.
 Work happens in issues: read them with get_issue and list_my_issues, report progress with create_comment,

@@ -420,6 +420,7 @@ export const NOTIFICATION_TYPES = [
   "requestAnswered",
   "projectUpdateCreated",
   "issueSlaBreached",
+  "mcpServerNeedsAuth",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -857,4 +858,42 @@ export const metricSnapshots = sqliteTable(
     createdAt: integer("created_at", { mode: "number" }).notNull(),
   },
   (t) => [uniqueIndex("metric_snapshots_day_idx").on(t.scope, t.scopeId, t.date)],
+);
+
+export const MCP_TRANSPORTS = ["http", "stdio"] as const;
+export const MCP_SERVER_STATUSES = ["installing", "needs_auth", "ready", "failed"] as const;
+export type McpServerStatus = (typeof MCP_SERVER_STATUSES)[number];
+
+/**
+ * An MCP server the hub asked a machine to run for some agents, e.g. an employer's Slack on
+ * that employer's Mac. Only the address lives here: sign-ins and tokens stay on the machine.
+ */
+export const mcpServers = sqliteTable(
+  "mcp_servers",
+  {
+    id: text("id").primaryKey(),
+    machineId: text("machine_id").notNull(),
+    /** How agents see its tools: `mcp__<name>__<tool>`. */
+    name: text("name").notNull(),
+    transport: text("transport", { enum: MCP_TRANSPORTS }).notNull(),
+    url: text("url"),
+    command: text("command"),
+    args: text("args", { mode: "json" }).$type<string[]>(),
+    /** Agents that get it in their runs; null for every agent on the machine. */
+    agentIds: text("agent_ids", { mode: "json" }).$type<string[]>(),
+    status: text("status", { enum: MCP_SERVER_STATUSES }).notNull().default("installing"),
+    statusDetail: text("status_detail"),
+    /** Where the owner signs in, while it needs authorization. */
+    authUrl: text("auth_url"),
+    /** OAuth `state` the hub's callback matches; the runner keeps the PKCE verifier. */
+    authState: text("auth_state"),
+    /** The code from the callback, held until the runner exchanges it. */
+    authCode: text("auth_code"),
+    createdById: text("created_by_id"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("mcp_servers_machine_name_idx").on(t.machineId, t.name),
+    index("mcp_servers_state_idx").on(t.authState),
+  ],
 );

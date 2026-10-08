@@ -66,7 +66,10 @@ function requireActive(machine: Machine) {
 
 runnerRoutes.post("/heartbeat", async (c) => {
   const info = await body<Parameters<typeof heartbeat>[2]>(c);
-  const result = await heartbeat(c.var.deps.db, c.var.machine, info, at(c));
+  const now = at(c);
+  const { notified, ...result } = await heartbeat(c.var.deps.db, c.var.machine, info, now);
+  // A server waiting for a sign-in tells the owner's phone.
+  if (notified) background(waitUntilOf(c), deliverPush(c.var.deps, now, relyingParty(c).origin));
   return c.json({ status: c.var.machine.status, ...result });
 });
 

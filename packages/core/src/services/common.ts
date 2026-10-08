@@ -10,6 +10,8 @@ export interface Ctx {
   /** Why the change was made; agents should always say. */
   reason?: string;
   runId?: string;
+  /** Set when the change created notifications, so the caller can send them as push. */
+  notified?: boolean;
 }
 
 export function cleanText(value: string, label: string, max: number): string {

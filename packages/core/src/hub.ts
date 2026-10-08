@@ -6,6 +6,7 @@ import type { HubDeps, HubEnv } from "./context.js";
 import { type GraphQLContext, schema } from "./graphql/schema.js";
 import { createLoaders } from "./loaders.js";
 import { mcpHandler } from "./mcp/index.js";
+import { waitUntilOf } from "./push.js";
 import { CLIENT_ID_HEADER } from "./realtime.js";
 
 /**
@@ -59,6 +60,8 @@ export function createHub(deps: HubDeps) {
       viewer: c.var.viewer,
       loaders: createLoaders(deps.db),
       clientId: c.req.header(CLIENT_ID_HEADER) ?? null,
+      origin: relyingParty(c).origin,
+      waitUntil: waitUntilOf(c),
     }),
   );
 

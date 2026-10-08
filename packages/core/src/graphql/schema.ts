@@ -4,6 +4,7 @@ import "./queries.js";
 import "./mutations.js";
 import "./requests.js";
 import "./inbox.js";
+import "./push.js";
 
 export type { GraphQLContext } from "./builder.js";
 

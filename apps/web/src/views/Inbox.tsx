@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { mutate, useQuery } from "../data.js";
+import { usePushState } from "../push.js";
 import { navigate, paths } from "../router.js";
 import { Avatar, timeAgo } from "../ui.js";
 import { IssuePage } from "./IssuePage.js";
@@ -112,6 +113,7 @@ export function InboxView() {
           )}
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
+          <PushBanner />
           {error && <p className="p-6 text-red-400">{error}</p>}
           {data && items.length === 0 && (
             <p className="px-6 py-16 text-center text-muted">
@@ -184,6 +186,33 @@ export function InboxView() {
           <p className="px-6 py-16 text-center text-faint">Select a notification</p>
         )}
       </section>
+    </div>
+  );
+}
+
+/** Offers push notifications, or explains how to get them on an iPhone. */
+function PushBanner() {
+  const [state, turnOn] = usePushState();
+  if (state === "install-first")
+    return (
+      <p className="m-3 rounded-lg border border-line bg-panel px-3 py-2.5 text-[13px] text-muted">
+        To get notifications on your iPhone, tap Share, then <b>Add to Home Screen</b>, and open
+        Life OS from there.
+      </p>
+    );
+  if (state !== "off") return null;
+  return (
+    <div className="m-3 flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2.5">
+      <p className="flex-1 text-[13px] text-muted">
+        Get a notification when an agent needs your approval.
+      </p>
+      <button
+        type="button"
+        onClick={() => void turnOn()}
+        className="shrink-0 rounded-md bg-accent px-2.5 py-1 font-medium text-white"
+      >
+        Turn on
+      </button>
     </div>
   );
 }

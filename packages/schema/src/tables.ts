@@ -399,6 +399,8 @@ export const notifications = sqliteTable(
     readAt: integer("read_at", { mode: "number" }),
     snoozedUntilAt: integer("snoozed_until_at", { mode: "number" }),
     archivedAt: integer("archived_at", { mode: "number" }),
+    /** When it was sent as a push notification, if the member has push turned on. */
+    pushedAt: integer("pushed_at", { mode: "number" }),
     ...timestamps,
   },
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
@@ -417,3 +419,30 @@ export const issueSubscriptions = sqliteTable(
     index("issue_subscriptions_user_idx").on(t.userId),
   ],
 );
+
+/** Browsers and phones that receive a member's notifications as Web Push. */
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    endpoint: text("endpoint").notNull(),
+    /** The browser's P-256 public key and auth secret, base64url, for encrypting payloads. */
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+    lastUsedAt: integer("last_used_at", { mode: "number" }),
+  },
+  (t) => [
+    uniqueIndex("push_subscriptions_endpoint_idx").on(t.endpoint),
+    index("push_subscriptions_user_idx").on(t.userId),
+  ],
+);
+
+/** Values the hub generates for itself once, like its Web Push (VAPID) key pair. */
+export const hubSettings = sqliteTable("hub_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+});

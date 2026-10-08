@@ -25,6 +25,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
   claude mcp add --transport http life-os https://your-hub.example/mcp \
     --header "Authorization: Bearer los_…"
   ```
+- Requests and grants. Org changes by agents (`team.create`, `agent.hire`, `agent.retire`, `user.update`, `charter.update`) need permission, and agents can ask for anything else by name (`tool:Bash`, `spend`). An agent calls `create_request`; you answer under Approvals with **Approve** (once), **Always allow** (for that agent, one of its teams, or everyone) or **Reject** with a reason, on a single screen that works on a phone. Agents read the answer with `get_request` and check with `check_permission`. Every grant shows how often it was used and can be revoked.
 
 ## Repository layout
 

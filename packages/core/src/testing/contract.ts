@@ -607,7 +607,7 @@ export function hubContract(
       socket.close();
     });
 
-    it("hires, re-charters and retires agents, owner only for now", async () => {
+    it("hires, re-charters and retires agents; agents need a grant", async () => {
       const hire = await client.graphql<{
         agentHire: { user: { id: string; name: string; kind: string; manager: { name: string } } };
       }>(
@@ -770,6 +770,158 @@ export function hubContract(
       });
       expect(anonymous.status).toBe(401);
       expect(anonymous.headers.get("www-authenticate")).toContain("Bearer");
+    });
+
+    it("lets agents ask, and the owner approve once, always allow or reject", async () => {
+      const asCeo = <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+      ) => client.graphql<T>(query, variables, ceoToken);
+      const permission = (action: string) =>
+        asCeo<{
+          permission: { allowed: boolean; via: string | null; pendingRequestId: string | null };
+        }>("query($a: String!) { permission(action: $a) { allowed via pendingRequestId } }", {
+          a: action,
+        }).then((r) => r.data?.permission);
+      const createTeam = () =>
+        asCeo('mutation { teamCreate(input: { name: "Health" }) { team { key } } }');
+
+      expect(await permission("team.create")).toEqual({
+        allowed: false,
+        via: null,
+        pendingRequestId: null,
+      });
+      const refused = await createTeam();
+      expect(refused.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect(refused.errors?.[0]?.message).toContain("requestCreate");
+
+      const ask = () =>
+        asCeo<{
+          requestCreate: { request: { id: string; status: string; requester: { name: string } } };
+        }>(
+          'mutation { requestCreate(input: { title: "Start a Health team", action: "team.create", reason: "Your sleep and training need an owner." }) { request { id status requester { name } } } }',
+        );
+      const first = await ask();
+      expect(first.data?.requestCreate.request).toMatchObject({
+        status: "pending",
+        requester: { name: "CEO" },
+      });
+      const requestId = first.data?.requestCreate.request.id ?? "";
+      expect((await ask()).data?.requestCreate.request.id).toBe(requestId);
+      expect((await permission("team.create"))?.pendingRequestId).toBe(requestId);
+
+      const selfApprove = await asCeo(
+        "mutation($id: String!) { requestApprove(id: $id) { success } }",
+        {
+          id: requestId,
+        },
+      );
+      expect(selfApprove.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      const pending = await client.graphql<{ requests: { nodes: { id: string }[] } }>(
+        "{ requests(filter: { status: [pending] }) { nodes { id } } }",
+      );
+      expect(pending.data?.requests.nodes.map((r) => r.id)).toEqual([requestId]);
+
+      // Approve once: the agent may do it one time.
+      const approved = await client.graphql<{ requestApprove: { request: { status: string } } }>(
+        'mutation($id: String!) { requestApprove(id: $id, note: "Go ahead") { request { status } } }',
+        { id: requestId },
+      );
+      expect(approved.data?.requestApprove.request.status).toBe("approved");
+      expect(await permission("team.create")).toMatchObject({ allowed: true, via: "approval" });
+      expect((await createTeam()).errors).toBeUndefined();
+      expect((await permission("team.create"))?.allowed).toBe(false);
+      const used = await client.graphql<{ request: { used: boolean; answer: string } }>(
+        "query($id: String!) { request(id: $id) { used answer } }",
+        { id: requestId },
+      );
+      expect(used.data?.request).toEqual({ used: true, answer: "Go ahead" });
+
+      // Over MCP: ask, get rejected with a reason, ask again, get a standing grant.
+      const call = async (name: string, args: Record<string, unknown>) => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+          token: ceoToken,
+        });
+        const { result } = (await response.json()) as {
+          result: { isError?: boolean; content: { text: string }[] };
+        };
+        const text = result.content[0]?.text ?? "";
+        return { isError: result.isError === true, text, json: () => JSON.parse(text) };
+      };
+      const hireAsk = {
+        title: "Hire a coach",
+        action: "agent.hire",
+        reason: "Training plans need an owner.",
+      };
+      const asked = (await call("create_request", hireAsk)).json();
+      expect(asked).toMatchObject({
+        status: "pending",
+        requester: "CEO",
+        url: expect.stringContaining("/request/"),
+      });
+      const noReason = await client.graphql(
+        'mutation($id: String!) { requestReject(id: $id, reason: " ") { success } }',
+        { id: asked.id },
+      );
+      expect(noReason.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      await client.graphql(
+        'mutation($id: String!) { requestReject(id: $id, reason: "Not this month.") { success } }',
+        {
+          id: asked.id,
+        },
+      );
+      expect((await call("get_request", { id: asked.id })).json()).toMatchObject({
+        status: "rejected",
+        answer: "Not this month.",
+      });
+
+      const again = (await call("create_request", hireAsk)).json();
+      expect(again.id).not.toBe(asked.id);
+      const always = await client.graphql<{
+        requestApprove: { request: { grant: { scope: string; user: { name: string } } } };
+      }>(
+        "mutation($id: String!) { requestApprove(id: $id, alwaysAllow: { scope: user }) { request { grant { scope user { name } } } } }",
+        { id: again.id },
+      );
+      expect(always.data?.requestApprove.request.grant).toEqual({
+        scope: "user",
+        user: { name: "CEO" },
+      });
+      for (const name of ["Coach", "Chef"]) {
+        const hired = await call("hire_agent", { name, charter: `${name} things.`, manager: "me" });
+        expect(hired.isError).toBe(false);
+      }
+      const grantList = await client.graphql<{
+        grants: { nodes: { id: string; action: string; useCount: number }[] };
+      }>("{ grants { nodes { id action useCount } } }");
+      const grant = grantList.data?.grants.nodes[0];
+      expect(grant).toMatchObject({ action: "agent.hire", useCount: 2 });
+      expect((await call("list_grants", {})).json().grants[0]).toMatchObject({
+        for: "CEO",
+        useCount: 2,
+      });
+
+      await client.graphql("mutation($id: String!) { grantRevoke(id: $id) { success } }", {
+        id: grant?.id,
+      });
+      const afterRevoke = await call("hire_agent", { name: "Tutor", charter: "Lessons." });
+      expect(afterRevoke.isError).toBe(true);
+      expect(afterRevoke.text).toContain("needs approval");
+
+      const history = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "{ auditEntries(first: 20) { nodes { action } } }",
+      );
+      expect(history.data?.auditEntries.nodes.map((e) => e.action)).toEqual(
+        expect.arrayContaining([
+          "request.create",
+          "request.approve",
+          "request.reject",
+          "grant.create",
+          "grant.revoke",
+        ]),
+      );
     });
 
     it("archives issues out of lists and back", async () => {

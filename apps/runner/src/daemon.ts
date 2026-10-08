@@ -1,0 +1,245 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { type Engine, MODELS } from "./engine.js";
+import { type Claim, type Completion, type HubClient, HubError, type Usage } from "./hub.js";
+import { decideTool } from "./permissions.js";
+
+export interface RunnerOptions {
+  hub: HubClient;
+  /** The machine's secret (`lrn_…`). */
+  token: string;
+  engine: Engine;
+  capacity: number;
+  version: string;
+  /** Names of the machine's own MCP servers, and their configs. */
+  mcpServers: Record<string, unknown>;
+  /** Where agents work; each gets its own folder, so resumed sessions find their files. */
+  workDir: string;
+  pollMs?: number;
+  heartbeatMs?: number;
+  logFlushMs?: number;
+  log?: (line: string) => void;
+}
+
+interface Active {
+  claim: Claim;
+  abort: AbortController;
+  stopReason: string | null;
+  done: Promise<void>;
+}
+
+const slug = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "agent";
+
+/**
+ * The runner daemon: checks in, claims what this machine may run, runs it, streams the
+ * transcript, and reports the result. The hub decides everything else.
+ */
+export class Runner {
+  private readonly active = new Map<string, Active>();
+  private stopped = false;
+  private waitingNoted = false;
+  private readonly pollMs: number;
+  private readonly heartbeatMs: number;
+  private readonly logFlushMs: number;
+  private readonly log: (line: string) => void;
+
+  constructor(private readonly options: RunnerOptions) {
+    this.pollMs = options.pollMs ?? 5000;
+    this.heartbeatMs = options.heartbeatMs ?? 30_000;
+    this.logFlushMs = options.logFlushMs ?? 2000;
+    this.log = options.log ?? ((line) => console.log(line));
+  }
+
+  get running() {
+    return [...this.active.keys()];
+  }
+
+  /** One check-in: stops what the hub wants stopped, then claims up to capacity. */
+  async heartbeat() {
+    const { hub, token } = this.options;
+    const answer = await hub.heartbeat(token, {
+      mcps: Object.keys(this.options.mcpServers),
+      capacity: this.options.capacity,
+      version: this.options.version,
+      runIds: this.running,
+    });
+    for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
+    return answer?.status ?? "active";
+  }
+
+  /** Claims and starts runs while there is room. Returns how many started. */
+  async claim() {
+    let started = 0;
+    while (!this.stopped && this.active.size < this.options.capacity) {
+      let claim: Claim | null;
+      try {
+        claim = await this.options.hub.claim(this.options.token);
+      } catch (error) {
+        if (error instanceof HubError && error.status === 403) {
+          if (!this.waitingNoted) this.log("Waiting for the owner to approve this machine…");
+          this.waitingNoted = true;
+          return started;
+        }
+        throw error;
+      }
+      if (!claim) break;
+      if (this.waitingNoted) this.log("Approved. Taking work.");
+      this.waitingNoted = false;
+      this.start(claim);
+      started++;
+    }
+    return started;
+  }
+
+  stop(runId: string, reason: string | null) {
+    const run = this.active.get(runId);
+    if (!run || run.abort.signal.aborted) return;
+    run.stopReason = reason ?? "Stopped";
+    this.log(`Stopping ${run.claim.agent.name}'s run: ${run.stopReason}`);
+    run.abort.abort();
+  }
+
+  /** Waits for every run in progress to end. */
+  async idle() {
+    await Promise.all([...this.active.values()].map((a) => a.done));
+  }
+
+  private start(claim: Claim) {
+    const abort = new AbortController();
+    const entry: Active = { claim, abort, stopReason: null, done: Promise.resolve() };
+    this.active.set(claim.run.id, entry);
+    entry.done = this.execute(entry)
+      .catch((error) => this.log(`Run ${claim.run.id} crashed: ${String(error)}`))
+      .finally(() => this.active.delete(claim.run.id));
+  }
+
+  private async execute(entry: Active) {
+    const { claim, abort } = entry;
+    const { hub, token } = this.options;
+    const label = `${claim.agent.name} · ${claim.run.kind}${claim.run.issue ? ` on ${claim.run.issue}` : ""}`;
+    this.log(`Starting ${label}`);
+
+    let seq = 0;
+    const buffer: Record<string, unknown>[] = [];
+    let sessionId = claim.run.sessionId;
+    let usage: Usage = {};
+    let flushing: Promise<void> = Promise.resolve();
+    const flush = () => {
+      flushing = flushing.then(async () => {
+        if (!buffer.length) return;
+        const events = buffer.splice(0, 500);
+        const answer = await hub
+          .logs(token, claim.run.id, { seq: seq++, events, sessionId, usage })
+          .catch((error) => {
+            this.log(`Couldn't upload the transcript: ${String(error)}`);
+            buffer.unshift(...events);
+            seq--;
+            return null;
+          });
+        if (answer?.stop) this.stop(claim.run.id, answer.stopReason);
+      });
+      return flushing;
+    };
+    const timer = setInterval(flush, this.logFlushMs);
+    const onEvent = (event: Record<string, unknown>) => {
+      buffer.push({ at: Date.now(), ...event });
+      if (buffer.length >= 50) void flush();
+    };
+
+    const cwd = join(this.options.workDir, slug(claim.agent.name));
+    await mkdir(cwd, { recursive: true });
+    let completion: Completion;
+    try {
+      const result = await this.options.engine({
+        input: claim.input,
+        model: MODELS[claim.run.modelTier] ?? MODELS.standard,
+        hubMcp: { url: claim.mcpUrl, token: claim.token },
+        mcpServers: this.options.mcpServers,
+        resume: claim.run.sessionId,
+        cwd,
+        signal: abort.signal,
+        canUseTool: (tool, input) =>
+          decideTool(
+            {
+              hub,
+              token: claim.token,
+              agent: claim.agent.name,
+              issue: claim.run.issue,
+              issueId: claim.run.issueId,
+              pollMs: this.pollMs,
+              signal: abort.signal,
+              onEvent,
+            },
+            tool,
+            input,
+          ),
+        onEvent,
+        onSession: (id) => {
+          sessionId = id;
+        },
+      });
+      sessionId = result.sessionId ?? sessionId;
+      usage = result.usage;
+      if (abort.signal.aborted) {
+        completion = { status: "stopped", error: entry.stopReason ?? "Stopped" };
+      } else if (result.error || result.output == null) {
+        completion = {
+          status: "failed",
+          error: result.error ?? "The session ended without a result",
+        };
+      } else {
+        completion = { status: "completed", result: result.output };
+      }
+    } catch (error) {
+      completion = {
+        status: abort.signal.aborted ? "stopped" : "failed",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    clearInterval(timer);
+    await flush();
+    await flush();
+    const answer = await hub.complete(token, claim.run.id, { ...completion, sessionId, usage });
+    const status = answer?.status ?? completion.status;
+    this.log(
+      `Finished ${label}: ${status}${completion.error && status !== "completed" ? ` (${completion.error})` : ""}`,
+    );
+  }
+
+  /** Runs until `shutdown()`: heartbeats on a timer, claims on every poll. */
+  async run() {
+    let lastBeat = 0;
+    while (!this.stopped) {
+      try {
+        if (Date.now() - lastBeat >= this.heartbeatMs) {
+          const status = await this.heartbeat();
+          lastBeat = Date.now();
+          if (status === "revoked") {
+            this.log("The owner removed this machine. Enrol again to rejoin.");
+            break;
+          }
+        }
+        await this.claim();
+      } catch (error) {
+        if (error instanceof HubError && error.status === 401) {
+          this.log("The hub doesn't know this machine any more. Enrol again to rejoin.");
+          break;
+        }
+        this.log(`Hub unreachable: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, this.pollMs));
+    }
+    await this.idle();
+  }
+
+  /** Stops claiming; runs in progress are stopped and reported. */
+  async shutdown(reason = "The machine is shutting down") {
+    this.stopped = true;
+    for (const id of this.running) this.stop(id, reason);
+    await this.idle();
+  }
+}

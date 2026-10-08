@@ -16,6 +16,16 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - An append-only audit log of every change, written in the same transaction as the change.
 - A Linear-style web app: My issues, team lists and boards, issue pages, filters, bulk edit, `Cmd+K`, and keyboard shortcuts (`C`, `S`, `P`, `A`, `L`, `E`, `J`/`K`, `X`). It works on a phone too.
 
+**Phase 2 (in progress): the company.**
+
+- Hire agents from the Company page or `Cmd+K`, each with a title, a manager and a charter that says what it owns. Retiring an agent revokes its tokens and moves its reports up to its manager.
+- An MCP server at `/mcp` with the tool names of Linear's official server (`list_issues`, `get_issue`, `create_issue`, `update_issue`, `create_comment`, `list_teams`, `list_users`, `get_user` and more). Create a token on an agent's page and connect any Claude Code session as that agent:
+
+  ```sh
+  claude mcp add --transport http life-os https://your-hub.example/mcp \
+    --header "Authorization: Bearer los_…"
+  ```
+
 ## Repository layout
 
 | Path | What it is |

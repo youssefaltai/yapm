@@ -29,6 +29,7 @@ export type Route =
   | { name: "team"; key: string; view: "all" | "active" | "backlog" }
   | { name: "issue"; identifier: string }
   | { name: "company" }
+  | { name: "member"; id: string }
   | { name: "notFound" };
 
 export function parseRoute(path: string): Route {
@@ -38,6 +39,7 @@ export function parseRoute(path: string): Route {
   if (first === "my-issues")
     return { name: "myIssues", tab: second === "created" ? "created" : "assigned" };
   if (first === "company") return { name: "company" };
+  if (first === "member" && second) return { name: "member", id: second };
   if (first === "issue" && second) return { name: "issue", identifier: second.toUpperCase() };
   if (first === "team" && second) {
     const view = third === "active" || third === "backlog" ? third : "all";
@@ -53,4 +55,5 @@ export const paths = {
     view === "all" ? `/team/${key}` : `/team/${key}/${view}`,
   issue: (identifier: string) => `/issue/${identifier}`,
   company: () => "/company",
+  member: (id: string) => `/member/${id}`,
 };

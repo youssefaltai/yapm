@@ -32,6 +32,7 @@ export interface CreateIssueDefaults {
 
 export const createIssueStore = createStore<CreateIssueDefaults | null>(null);
 export const createTeamStore = createStore(false);
+export const hireAgentStore = createStore(false);
 
 /** The issues the next shortcut or command applies to: the open issue, or the list's selection. */
 export const targetStore = createStore<Issue[]>([]);
@@ -399,6 +400,12 @@ export function commandPalette(): MenuSpec {
       label: "Create new team",
       section: "Create",
       onSelect: () => createTeamStore.set(true),
+    },
+    {
+      id: "hire",
+      label: "Hire an agent",
+      section: "Create",
+      onSelect: () => hireAgentStore.set(true),
     },
     {
       id: "my",

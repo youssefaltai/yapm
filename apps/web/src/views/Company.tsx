@@ -1,4 +1,4 @@
-import { createTeamStore } from "../actions.js";
+import { createTeamStore, hireAgentStore } from "../actions.js";
 import type { Member, Workspace } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { Avatar } from "../ui.js";
@@ -16,7 +16,18 @@ export function Company({ workspace }: { workspace: Workspace }) {
         <h1 className="text-lg font-medium">{workspace.organization.name}</h1>
         <p className="mt-1 text-muted">{summary(members, teams.length)}</p>
 
-        <h2 className="mt-8 mb-3 text-[12px] font-medium text-faint uppercase">Organization</h2>
+        <div className="mt-8 mb-3 flex items-center">
+          <h2 className="text-[12px] font-medium text-faint uppercase">Organization</h2>
+          {workspace.viewer.kind === "owner" && (
+            <button
+              type="button"
+              onClick={() => hireAgentStore.set(true)}
+              className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+            >
+              + Hire agent
+            </button>
+          )}
+        </div>
         {owner && <OrgNode member={owner} members={members} />}
 
         <div className="mt-8 mb-3 flex items-center">
@@ -72,13 +83,17 @@ function OrgNode({ member, members }: { member: Member; members: Member[] }) {
   const reports = members.filter((m) => m.manager?.id === member.id);
   return (
     <div>
-      <div className="inline-flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2">
+      <button
+        type="button"
+        onClick={() => navigate(paths.member(member.id))}
+        className="inline-flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-left hover:bg-raised"
+      >
         <Avatar name={member.name} kind={member.kind} size={24} />
         <span className="font-medium">{member.name}</span>
         {member.title && member.title !== member.name && (
           <span className="text-muted">{member.title}</span>
         )}
-      </div>
+      </button>
       {reports.length > 0 && (
         <div className="mt-2 ml-3 space-y-2 border-l border-line pl-5">
           {reports.map((report) => (

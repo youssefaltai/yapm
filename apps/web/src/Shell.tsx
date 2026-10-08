@@ -8,8 +8,10 @@ import { Kbd, MenuHost, openMenu, useHotkeys } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
+import { HireAgentHost } from "./views/HireAgent.js";
 import { IssuePage } from "./views/IssuePage.js";
 import { IssuesView } from "./views/IssuesView.js";
+import { MemberPage } from "./views/MemberPage.js";
 
 export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => void }) {
   const { data: workspace, error } = useQuery<Workspace>(WORKSPACE_QUERY);
@@ -76,6 +78,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       </main>
       <CreateIssueHost />
       <CreateTeamHost />
+      <HireAgentHost />
       <MenuHost />
       <ToastHost />
     </div>
@@ -130,6 +133,8 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <IssuePage key={route.identifier} identifier={route.identifier} />;
     case "company":
       return <Company workspace={workspace} />;
+    case "member":
+      return <MemberPage key={route.id} id={route.id} />;
     case "notFound":
       return <NotFound what="Page" />;
   }

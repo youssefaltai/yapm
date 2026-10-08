@@ -92,6 +92,7 @@ export function hubContract(
 ) {
   describe(`hub contract (${platform})`, () => {
     let client: TestClient;
+    let send: FetchLike;
     const authenticator = new SoftwareAuthenticator();
     // Shared across the issue tests, which build on each other like a real session.
     let ceoToken = "";
@@ -101,7 +102,8 @@ export function hubContract(
     let childId = "";
 
     beforeAll(async () => {
-      client = new TestClient(await makeFetch());
+      send = await makeFetch();
+      client = new TestClient(send);
     });
 
     it("reports health and platform", async () => {
@@ -605,6 +607,171 @@ export function hubContract(
       socket.close();
     });
 
+    it("hires, re-charters and retires agents, owner only for now", async () => {
+      const hire = await client.graphql<{
+        agentHire: { user: { id: string; name: string; kind: string; manager: { name: string } } };
+      }>(
+        'mutation { agentHire(input: { name: "Finance Lead", title: "Head of Finance", charter: "Own the bills." }) { user { id name kind manager { name } } } }',
+      );
+      expect(hire.errors).toBeUndefined();
+      expect(hire.data?.agentHire.user).toMatchObject({
+        name: "Finance Lead",
+        kind: "agent",
+        manager: { name: "Youssef" },
+      });
+      const agentId = hire.data?.agentHire.user.id ?? "";
+
+      const dup = await client.graphql(
+        'mutation { agentHire(input: { name: "finance lead" }) { success } }',
+      );
+      expect(dup.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+      const byAgent = await client.graphql(
+        'mutation { agentHire(input: { name: "Rogue" }) { success } }',
+        undefined,
+        ceoToken,
+      );
+      expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+
+      const recharter = await client.graphql(
+        'mutation($id: String!) { userUpdate(id: $id, input: { charter: "Own the bills and the budget." }) { success } }',
+        { id: agentId },
+      );
+      expect(recharter.errors).toBeUndefined();
+      const history = await client.graphql<{
+        auditEntries: { nodes: { action: string; data: { to: string } }[] };
+      }>("query($id: String) { auditEntries(entityId: $id) { nodes { action data } } }", {
+        id: agentId,
+      });
+      expect(history.data?.auditEntries.nodes[0]).toMatchObject({
+        action: "charter.update",
+        data: { to: "Own the bills and the budget." },
+      });
+
+      const token = await client.graphql<{ apiTokenCreate: { token: string } }>(
+        'mutation($userId: String) { apiTokenCreate(name: "runner", userId: $userId) { token } }',
+        { userId: agentId },
+      );
+      const agentToken = token.data?.apiTokenCreate.token ?? "";
+      expect(
+        (await client.graphql("{ viewer { id } }", undefined, agentToken)).errors,
+      ).toBeUndefined();
+
+      const retire = await client.graphql<{ agentRetire: { user: { active: boolean } } }>(
+        "mutation($id: String!) { agentRetire(id: $id) { user { active } } }",
+        { id: agentId },
+      );
+      expect(retire.data?.agentRetire.user.active).toBe(false);
+      const after = await client.request("/graphql", {
+        method: "POST",
+        json: { query: "{ viewer { id } }" },
+        token: agentToken,
+      });
+      expect(after.status).toBe(401);
+    });
+
+    it("serves Linear's MCP tools to agents with a token", async () => {
+      const rpc = async (method: string, params?: Record<string, unknown>) => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: { jsonrpc: "2.0", id: 1, method, params },
+          token: ceoToken,
+          headers: { accept: "application/json, text/event-stream" },
+        });
+        expect(response.status).toBe(200);
+        return (await response.json()) as {
+          result?: Record<string, unknown>;
+          error?: { message: string };
+        };
+      };
+      const call = async (name: string, args: Record<string, unknown>) => {
+        const { result } = await rpc("tools/call", { name, arguments: args });
+        const text = (result?.content as { text: string }[] | undefined)?.[0]?.text ?? "";
+        return { isError: result?.isError === true, text, json: () => JSON.parse(text) };
+      };
+
+      const init = await rpc("initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      });
+      expect(init.result).toMatchObject({
+        protocolVersion: "2025-06-18",
+        serverInfo: { name: "life-os" },
+      });
+      const note = await client.request("/mcp", {
+        method: "POST",
+        json: { jsonrpc: "2.0", method: "notifications/initialized" },
+        token: ceoToken,
+      });
+      expect(note.status).toBe(202);
+      const list = await rpc("tools/list");
+      const names = ((list.result?.tools ?? []) as { name: string }[]).map((t) => t.name);
+      expect(names).toEqual(
+        expect.arrayContaining([
+          "list_issues",
+          "get_issue",
+          "create_issue",
+          "update_issue",
+          "create_comment",
+          "list_teams",
+        ]),
+      );
+
+      const created = (
+        await call("create_issue", {
+          title: "Compare insurance quotes",
+          team: "Personal Finance",
+          assignee: "me",
+          priority: "High",
+        })
+      ).json();
+      expect(created).toMatchObject({
+        identifier: "PF-3",
+        assignee: "CEO",
+        priority: "High",
+        status: "Backlog",
+      });
+      const updated = (
+        await call("update_issue", { id: "PF-3", state: "In Progress", labels: ["Bills"] })
+      ).json();
+      expect(updated).toMatchObject({ status: "In Progress", labels: ["Bills"] });
+      expect(
+        (
+          await call("create_comment", {
+            issueId: "PF-3",
+            body: "Two quotes in, waiting on a third.",
+          })
+        ).isError,
+      ).toBe(false);
+
+      const mine = (await call("list_my_issues", {})).json() as { identifier: string }[];
+      expect(mine.map((i) => i.identifier)).toEqual(["PF-3"]);
+      const detail = (await call("get_issue", { id: "PF-3" })).json();
+      expect(detail).toMatchObject({
+        creator: "CEO",
+        commentCount: 1,
+        url: expect.stringContaining("/issue/PF-3"),
+      });
+      const comments = (await call("list_comments", { issueId: "PF-3" })).json();
+      expect(comments[0]).toMatchObject({
+        author: "CEO",
+        body: "Two quotes in, waiting on a third.",
+      });
+
+      const bad = await call("update_issue", { id: "PF-3", state: "Nowhere" });
+      expect(bad.isError).toBe(true);
+      expect(bad.text).toContain("Options:");
+      const unknown = await rpc("tools/call", { name: "nope", arguments: {} });
+      expect(unknown.error?.message).toContain("Unknown tool");
+
+      const anonymous = await new TestClient(send).request("/mcp", {
+        method: "POST",
+        json: { jsonrpc: "2.0", id: 1, method: "ping" },
+      });
+      expect(anonymous.status).toBe(401);
+      expect(anonymous.headers.get("www-authenticate")).toContain("Bearer");
+    });
+
     it("archives issues out of lists and back", async () => {
       const archive = await client.graphql<{
         issueArchive: { entity: { archivedAt: string | null } };
@@ -613,11 +780,11 @@ export function hubContract(
       const list = await client.graphql<{ team: { issues: { nodes: { identifier: string }[] } } }>(
         '{ team(id: "PF") { issues { nodes { identifier } } } }',
       );
-      expect(list.data?.team.issues.nodes.map((n) => n.identifier)).toEqual(["PF-1"]);
+      expect(list.data?.team.issues.nodes.map((n) => n.identifier)).toEqual(["PF-3", "PF-1"]);
       const all = await client.graphql<{ issues: { nodes: unknown[] } }>(
         "{ issues(includeArchived: true) { nodes { id } } }",
       );
-      expect(all.data?.issues.nodes).toHaveLength(2);
+      expect(all.data?.issues.nodes).toHaveLength(3);
       await client.graphql('mutation { issueUnarchive(id: "PF-2") { success } }');
       const mine = await client.graphql<{ viewer: { createdIssues: { nodes: unknown[] } } }>(
         "{ viewer { createdIssues { nodes { id } } } }",

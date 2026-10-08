@@ -52,16 +52,23 @@ ORIGIN=https://life.example.com docker compose up -d
 
 Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Passkeys are bound to the domain in `ORIGIN`, so set it to the public URL you'll use; data lives in the `life-os-data` volume as one SQLite file.
 
-### Cloudflare (free plan)
+### Cloudflare (free plan), from GitHub
+
+1. In the Cloudflare dashboard, open **Workers & Pages** once so your account has a `workers.dev` subdomain.
+2. Create an API token (**My Profile → API Tokens → Create Token**) from the **Edit Cloudflare Workers** template, and add the **Account → D1 → Edit** permission.
+3. In this repository's **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (shown on the dashboard's Workers & Pages overview).
+4. Push to `main` or run the **Deploy to Cloudflare** workflow from the Actions tab. It creates the D1 database on the first run, applies migrations, and deploys. The log prints the URL (`https://life-os.<your-subdomain>.workers.dev`).
+
+Open the URL and complete setup. Passkeys are bound to that hostname, so pick your final domain before creating your passkey.
+
+### Cloudflare, from your machine
 
 ```sh
 cd apps/hub-cloudflare
 npx wrangler login
-npx wrangler d1 create life-os      # paste the printed database_id into wrangler.jsonc
+node scripts/ensure-d1.mjs          # creates the D1 database and points wrangler.jsonc at it
 pnpm run deploy                     # builds the web app, applies migrations, deploys the Worker
 ```
-
-Then open the Worker's URL (or attach a custom domain) and complete setup.
 
 ### Configuration
 

@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useState } from "react";
 import { hireAgentStore, workspaceStore } from "../actions.js";
+import { Select } from "../controls.js";
 import { mutate } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
@@ -72,21 +73,19 @@ function HireAgent({ onClose }: { onClose: () => void }) {
             className={input}
           />
         </label>
-        <label className="mb-3 block">
+        <div className="mb-3 block">
           <span className="mb-1.5 block text-muted">Reports to</span>
-          <select
+          <Select
+            aria-label="Reports to"
             value={managerId}
-            onChange={(e) => setManagerId(e.target.value)}
+            onChange={setManagerId}
+            options={members.map((m) => ({
+              value: m.id,
+              label: m.title && m.title !== m.name ? `${m.name}, ${m.title}` : m.name,
+            }))}
             className={input}
-          >
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-                {m.title && m.title !== m.name ? `, ${m.title}` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
         <div className="mb-4 block">
           <span className="mb-1.5 block text-muted">Charter</span>
           <div className="rounded-md border border-line bg-panel px-2.5 py-1.5 focus-within:border-faint">

@@ -227,8 +227,34 @@ export function Kbd({ children }: { children: ReactNode }) {
 
 // Modals --------------------------------------------------------------------
 
-let openModals = 0;
-const modalOpen = () => openModals > 0;
+/**
+ * Modals, dialogs and popovers stack as layers: Escape closes only the top one,
+ * and single-key shortcuts pause while any is open.
+ */
+const layers: { escape: () => void }[] = [];
+const modalOpen = () => layers.length > 0;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.defaultPrevented || menuStore.get()) return;
+    const top = layers[layers.length - 1];
+    if (!top) return;
+    event.preventDefault();
+    top.escape();
+  });
+}
+
+export function useLayer(onEscape: () => void) {
+  const ref = useRef(onEscape);
+  ref.current = onEscape;
+  useEffect(() => {
+    const layer = { escape: () => ref.current() };
+    layers.push(layer);
+    return () => {
+      layers.splice(layers.indexOf(layer), 1);
+    };
+  }, []);
+}
 
 export function Modal({
   onClose,
@@ -241,17 +267,7 @@ export function Modal({
   label: string;
   wide?: boolean;
 }) {
-  useEffect(() => {
-    openModals++;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !menuStore.get()) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      openModals--;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
+  useLayer(onClose);
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 px-3 pt-[12vh]">
       <button

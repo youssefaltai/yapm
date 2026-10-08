@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { workspaceStore } from "../actions.js";
+import { confirmDialog } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { openMenu, timeAgo, useStore } from "../ui.js";
@@ -179,11 +180,14 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
         <div className="mt-2 flex justify-end">
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               if (
-                window.confirm(
-                  `Remove ${m.name}? Its secret stops working and it can't run agents any more.`,
-                )
+                await confirmDialog({
+                  title: `Remove ${m.name}?`,
+                  body: "Its secret stops working and it can't run agents any more.",
+                  confirmLabel: "Remove",
+                  destructive: true,
+                })
               )
                 void mutate("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
                   id: m.id,
@@ -310,8 +314,15 @@ function McpServers({ machine, canEdit }: { machine: Machine; canEdit: boolean }
               <button
                 type="button"
                 aria-label={`Remove ${server.name}`}
-                onClick={() => {
-                  if (window.confirm(`Remove ${server.name} from ${machine.name}?`))
+                onClick={async () => {
+                  if (
+                    await confirmDialog({
+                      title: `Remove ${server.name}?`,
+                      body: `It's removed from ${machine.name}.`,
+                      confirmLabel: "Remove",
+                      destructive: true,
+                    })
+                  )
                     void mutate("mutation($id: String!) { mcpServerDelete(id: $id) { success } }", {
                       id: server.id,
                     });

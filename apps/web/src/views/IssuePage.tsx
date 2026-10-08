@@ -15,6 +15,7 @@ import {
   targetStore,
   workspaceStore,
 } from "../actions.js";
+import { confirmDialog, DatePicker } from "../controls.js";
 import {
   ISSUE_FIELDS,
   type Issue,
@@ -350,15 +351,13 @@ function Properties({
         )}
       </PropertyButton>
       <PropertyLabel>Due date</PropertyLabel>
-      <label className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-raised">
-        <input
-          type="date"
-          aria-label="Due date"
-          value={issue.dueDate ?? ""}
-          onChange={(e) => void updateIssues([issue.id], { dueDate: e.target.value || null })}
-          className={`w-full bg-transparent outline-none [color-scheme:dark] ${due?.overdue ? "text-red-400" : issue.dueDate ? "" : "text-faint"}`}
-        />
-      </label>
+      <DatePicker
+        aria-label="Due date"
+        value={issue.dueDate}
+        onChange={(dueDate) => void updateIssues([issue.id], { dueDate })}
+        placeholder="Set due date"
+        className={`w-full rounded-md px-2 py-1 outline-none hover:bg-raised ${due?.overdue ? "text-red-400" : ""}`}
+      />
       <PropertyLabel>Project</PropertyLabel>
       <PropertyButton onClick={() => void projectMenu([issue]).then(openMenu)} hint="Shift+P">
         {issue.project ? (
@@ -740,8 +739,15 @@ function CommentBody({ comment }: { comment: Comment }) {
           )}
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm("Delete this comment and its replies?")) {
+            onClick={async () => {
+              if (
+                await confirmDialog({
+                  title: "Delete this comment?",
+                  body: "Its replies are deleted too.",
+                  confirmLabel: "Delete",
+                  destructive: true,
+                })
+              ) {
                 void mutate("mutation($id: String!) { commentDelete(id: $id) { success } }", {
                   id: comment.id,
                 });

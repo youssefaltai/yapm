@@ -7,6 +7,7 @@ import {
 } from "@tiptap/react";
 import { common, createLowlight } from "lowlight";
 import { useState } from "react";
+import { Select } from "../controls.js";
 import { icons } from "./icons.js";
 
 const lowlight = createLowlight(common);
@@ -52,18 +53,15 @@ function CodeBlockView({ node, editor, updateAttributes }: ReactNodeViewProps) {
     <NodeViewWrapper className="code-block">
       <div className="code-block-bar" contentEditable={false}>
         {editor.isEditable ? (
-          <select
+          <Select
             aria-label="Code language"
             value={language}
-            onChange={(e) => updateAttributes({ language: e.target.value || null })}
-          >
-            {!known && <option value={language}>{language}</option>}
-            {LANGUAGES.map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </select>
+            options={[
+              ...(known ? [] : [{ value: language, label: languageName(language) }]),
+              ...LANGUAGES.map(([id, name]) => ({ value: id, label: name })),
+            ]}
+            onChange={(next) => updateAttributes({ language: next || null })}
+          />
         ) : (
           <span>{languageName(language)}</span>
         )}

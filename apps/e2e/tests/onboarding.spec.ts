@@ -535,6 +535,16 @@ test.describe
       await expect(servers.getByText("None yet.")).toBeVisible();
     });
 
+    test("exports the company", async () => {
+      await page.goto("/company");
+      await expect(page.getByLabel("Linear API key")).toBeVisible();
+      const href = await page.getByRole("link", { name: "Export CSV" }).getAttribute("href");
+      const csv = await page.request.get(href ?? "");
+      expect(await csv.text()).toContain("Report the stolen card");
+      const json = await (await page.request.get("/api/export")).json();
+      expect(json.organization[0].handbook).toBe("Money moves only with a receipt on the issue.");
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

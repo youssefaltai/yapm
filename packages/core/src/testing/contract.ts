@@ -2246,5 +2246,29 @@ export function hubContract(
         id: machine.id,
       });
     });
+    it("exports the company without secrets and checks Linear imports", async () => {
+      const dump = await client.request("/api/export");
+      expect(dump.status).toBe(200);
+      expect(dump.headers.get("content-disposition")).toContain("attachment");
+      const text = await dump.text();
+      const data = JSON.parse(text) as { format: string; issues: unknown[]; users: unknown[] };
+      expect(data.format).toBe("life-os-export");
+      expect(data.issues.length).toBeGreaterThan(0);
+      expect(text).not.toContain("tokenHash");
+      expect(text).not.toContain("credentialId");
+      const csv = await client.request("/api/export?format=csv");
+      expect(csv.headers.get("content-type")).toContain("text/csv");
+      expect((await csv.text()).startsWith("ID,Team,Title,Description,Status")).toBe(true);
+      expect((await client.request("/api/export", { token: ceoToken })).status).toBe(403);
+
+      const empty = await client.graphql('mutation { linearImport(apiKey: " ") { success } }');
+      expect(empty.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const byAgent = await client.graphql(
+        'mutation { linearImport(apiKey: "lin_api_x") { success } }',
+        undefined,
+        ceoToken,
+      );
+      expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+    });
   });
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { mutate, useQuery } from "../data.js";
+import { plainText } from "../editor/plain.js";
 import { usePushState } from "../push.js";
 import { navigate, paths } from "../router.js";
 import { Avatar, timeAgo } from "../ui.js";
@@ -81,7 +82,7 @@ function describe(n: Notification): string {
 }
 
 function snippet(body: string | undefined) {
-  const text = (body ?? "").replace(/\s+/g, " ").trim();
+  const text = plainText(body);
   return text.length > 120 ? `${text.slice(0, 119)}…` : text;
 }
 

@@ -1,0 +1,447 @@
+/* Linear's rich text: the same look while reading and while editing. */
+
+.rich {
+  outline: none;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  caret-color: var(--color-ink);
+}
+
+.rich > * + * {
+  margin-top: 0.6em;
+}
+
+.rich p {
+  min-height: 1.6em;
+}
+
+.rich h1,
+.rich h2,
+.rich h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.rich h1 {
+  font-size: 1.6em;
+  margin-top: 1.1em;
+}
+.rich h2 {
+  font-size: 1.3em;
+  margin-top: 1em;
+}
+.rich h3 {
+  font-size: 1.1em;
+  margin-top: 0.9em;
+}
+.rich > :first-child {
+  margin-top: 0;
+}
+
+.rich strong {
+  font-weight: 600;
+}
+.rich s {
+  color: var(--color-muted);
+}
+
+.rich a {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent-hover) 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.rich a:hover {
+  text-decoration-color: currentColor;
+}
+
+.rich ul,
+.rich ol {
+  padding-left: 1.5em;
+}
+.rich li + li,
+.rich li > :where(ul, ol) {
+  margin-top: 0.2em;
+}
+.rich ul {
+  list-style: disc;
+}
+.rich ul ul {
+  list-style: circle;
+}
+.rich ul ul ul {
+  list-style: square;
+}
+.rich ol {
+  list-style: decimal;
+}
+.rich li::marker {
+  color: var(--color-muted);
+}
+.rich li > p {
+  min-height: 0;
+}
+
+/* Checklists: Linear's rounded boxes, with done items faded. */
+.rich ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.1em;
+}
+.rich ul[data-type="taskList"] ul[data-type="taskList"] {
+  padding-left: 1.5em;
+}
+.rich li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.rich li[data-type="taskItem"] > label {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 1.6em;
+  user-select: none;
+}
+.rich li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+.rich li[data-type="taskItem"] input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1.5px solid var(--color-faint);
+  border-radius: 4px;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+}
+.rich li[data-type="taskItem"] input[type="checkbox"]:hover {
+  border-color: var(--color-muted);
+}
+.rich li[data-type="taskItem"] input[type="checkbox"]:checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.rich li[data-type="taskItem"] input[type="checkbox"]:checked::after {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border: solid white;
+  border-width: 0 0 1.5px 1.5px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+.rich:not([contenteditable="true"]) li[data-type="taskItem"] input[type="checkbox"] {
+  cursor: default;
+}
+.rich li[data-type="taskItem"][data-checked="true"] > div {
+  color: var(--color-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--color-faint);
+}
+
+.rich blockquote {
+  border-left: 2px solid var(--color-line);
+  padding-left: 1em;
+  color: var(--color-muted);
+}
+
+.rich hr {
+  border: none;
+  border-top: 1px solid var(--color-line);
+  margin: 1.2em 0;
+}
+.rich hr.ProseMirror-selectednode {
+  border-top-color: var(--color-accent);
+}
+
+.rich code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--color-raised);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+/* Code blocks, with a language picker and a copy button. */
+.rich .code-block {
+  position: relative;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-panel);
+}
+.rich .code-block-bar {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-faint);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.rich .code-block:hover .code-block-bar,
+.rich .code-block:focus-within .code-block-bar {
+  opacity: 1;
+}
+.rich .code-block-bar select,
+.rich .code-block-bar button {
+  background: var(--color-raised);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--color-muted);
+  outline: none;
+  cursor: pointer;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+.rich .code-block-bar button:hover,
+.rich .code-block-bar select:hover {
+  color: var(--color-ink);
+}
+.rich pre {
+  margin: 0;
+  padding: 0.85em 1em;
+  overflow-x: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+.rich pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  white-space: pre;
+}
+
+/* Syntax colours, close to Linear's. */
+.rich .hljs-comment,
+.rich .hljs-quote {
+  color: var(--color-faint);
+  font-style: italic;
+}
+.rich .hljs-keyword,
+.rich .hljs-selector-tag,
+.rich .hljs-built_in,
+.rich .hljs-doctag {
+  color: #c792ea;
+}
+.rich .hljs-string,
+.rich .hljs-regexp,
+.rich .hljs-addition,
+.rich .hljs-attribute {
+  color: #a5d6a7;
+}
+.rich .hljs-number,
+.rich .hljs-literal,
+.rich .hljs-symbol,
+.rich .hljs-bullet {
+  color: #f78c6c;
+}
+.rich .hljs-title,
+.rich .hljs-section,
+.rich .hljs-name,
+.rich .hljs-selector-id,
+.rich .hljs-selector-class {
+  color: #82aaff;
+}
+.rich .hljs-type,
+.rich .hljs-template-tag,
+.rich .hljs-variable,
+.rich .hljs-params {
+  color: #ffcb6b;
+}
+.rich .hljs-attr,
+.rich .hljs-property,
+.rich .hljs-meta {
+  color: #89ddff;
+}
+.rich .hljs-deletion {
+  color: #f07178;
+}
+:root[data-theme="light"] .rich .hljs-keyword,
+:root[data-theme="light"] .rich .hljs-selector-tag,
+:root[data-theme="light"] .rich .hljs-built_in {
+  color: #7c3aed;
+}
+:root[data-theme="light"] .rich .hljs-string,
+:root[data-theme="light"] .rich .hljs-regexp,
+:root[data-theme="light"] .rich .hljs-addition,
+:root[data-theme="light"] .rich .hljs-attribute {
+  color: #15803d;
+}
+:root[data-theme="light"] .rich .hljs-number,
+:root[data-theme="light"] .rich .hljs-literal,
+:root[data-theme="light"] .rich .hljs-symbol {
+  color: #c2410c;
+}
+:root[data-theme="light"] .rich .hljs-title,
+:root[data-theme="light"] .rich .hljs-section,
+:root[data-theme="light"] .rich .hljs-name {
+  color: #1d4ed8;
+}
+:root[data-theme="light"] .rich .hljs-type,
+:root[data-theme="light"] .rich .hljs-variable,
+:root[data-theme="light"] .rich .hljs-params {
+  color: #a16207;
+}
+:root[data-theme="light"] .rich .hljs-attr,
+:root[data-theme="light"] .rich .hljs-property,
+:root[data-theme="light"] .rich .hljs-meta {
+  color: #0e7490;
+}
+
+.rich table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  overflow: hidden;
+  font-size: 0.95em;
+}
+.rich .tableWrapper {
+  overflow-x: auto;
+}
+.rich th,
+.rich td {
+  border: 1px solid var(--color-line);
+  padding: 0.35em 0.6em;
+  vertical-align: top;
+  text-align: left;
+  min-width: 4em;
+  position: relative;
+}
+.rich th {
+  font-weight: 600;
+  background: var(--color-panel);
+}
+.rich th > p,
+.rich td > p {
+  min-height: 0;
+}
+.rich .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  pointer-events: none;
+}
+
+.rich img {
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--color-line);
+}
+.rich img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent);
+}
+
+/* Collapsible sections (`+++ Title`). */
+.rich .collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  margin-left: -0.15em;
+}
+.rich .collapsible-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: 4px;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.rich .collapsible-toggle:hover {
+  background: var(--color-raised);
+  color: var(--color-ink);
+}
+.rich .collapsible[data-open] .collapsible-toggle {
+  transform: rotate(90deg);
+}
+.rich .collapsible-title {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  outline: none;
+  font-weight: 500;
+  text-align: left;
+  cursor: text;
+}
+.rich button.collapsible-title {
+  cursor: pointer;
+}
+.rich .collapsible-title::placeholder {
+  color: var(--color-faint);
+}
+.rich .collapsible-content {
+  padding-left: 1.45em;
+  margin-top: 0.3em;
+}
+.rich .collapsible-content[hidden] {
+  display: none;
+}
+.rich .collapsible-content > div > * + * {
+  margin-top: 0.6em;
+}
+
+/* Mentions of people and issues. */
+.rich .mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  max-width: 100%;
+  vertical-align: bottom;
+  padding: 0 0.35em 0 0.25em;
+  border-radius: 4px;
+  background: var(--color-raised);
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rich .mention:hover {
+  background: var(--color-line);
+}
+.rich .mention.is-selected {
+  outline: 2px solid var(--color-accent);
+}
+.rich .mention-id {
+  color: var(--color-muted);
+}
+.rich .mention-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 28ch;
+}
+
+/* The placeholder for an empty editor or a fresh heading. */
+.rich .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--color-faint);
+  pointer-events: none;
+}
+
+.rich .ProseMirror-gapcursor::after {
+  border-top-color: var(--color-ink);
+}
+
+.rich .slash-query,
+.rich .suggestion {
+  color: var(--color-muted);
+}

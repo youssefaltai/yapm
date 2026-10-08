@@ -6,6 +6,7 @@ import {
   workspaceStore,
 } from "../actions.js";
 import { type IssueTemplate, mutate, PRIORITIES, type Schedule, toast } from "../data.js";
+import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import {
   Avatar,
@@ -265,20 +266,15 @@ function CreateIssue({
           placeholder={templateMode ? "Issue title (use {date} for the day)" : "Issue title"}
           className="w-full bg-transparent text-lg font-medium outline-none placeholder:text-faint"
         />
-        <textarea
-          aria-label="Issue description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              void submit();
-            }
-          }}
-          placeholder="Add description…"
-          rows={4}
-          className="mt-2 w-full resize-none bg-transparent outline-none placeholder:text-faint"
-        />
+        <div className="mt-2 max-h-[50vh] min-h-20 overflow-y-auto">
+          <RichEditor
+            label="Issue description"
+            value={description}
+            onChange={setDescription}
+            onSubmit={() => void submit()}
+            placeholder="Add description…"
+          />
+        </div>
       </div>
       <div className="flex flex-wrap gap-1.5 px-4 pb-3">
         <Chip

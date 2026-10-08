@@ -174,7 +174,7 @@ test.describe
       await dialog.getByRole("button", { name: "Hire" }).click();
 
       await expect(page.getByLabel("Name")).toHaveValue("Ada");
-      await expect(page.getByLabel("Charter")).toHaveValue(
+      await expect(page.getByLabel("Charter")).toHaveText(
         "Owns the household budget and the bills.",
       );
 
@@ -233,9 +233,11 @@ test.describe
       await mention.click();
       await expect(page.getByLabel("Issue title")).toHaveValue("Pay the electricity bill");
       await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
-      await expect(
-        page.getByText("@Youssef the bill is paid, receipt attached.", { exact: true }),
-      ).toBeVisible();
+      // The agent's `@Youssef` shows as a mention chip, as in Linear.
+      const agentComment = page.locator(".rich", {
+        hasText: "the bill is paid, receipt attached.",
+      });
+      await expect(agentComment.locator("[data-mention=user]")).toHaveText(/Youssef/);
       await page.getByRole("button", { name: "Mark all read" }).click();
       await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(0);
     });
@@ -325,10 +327,13 @@ test.describe
 
       await page.getByRole("button", { name: "+ New document" }).click();
       await page.getByLabel("Document title").fill("Payment plan");
-      await page.getByLabel("Content").fill("# Plan\n- Pay **200** extra a month");
-      await page.getByRole("button", { name: "Done" }).click();
+      // Markdown shortcuts turn into formatting as you type, like Linear.
+      await page.getByLabel("Content").click();
+      await page.keyboard.type("# Plan");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("- Pay **200** extra a month");
       await expect(page.getByRole("heading", { name: "Plan" })).toBeVisible();
-      await expect(page.locator(".markdown strong")).toHaveText("200");
+      await expect(page.getByLabel("Content").locator("li strong")).toHaveText("200");
       await page.waitForTimeout(1000);
       const doc = await mcp("list_documents", { query: "payment" });
       expect(doc.documents[0]).toMatchObject({ title: "Payment plan", project: "Pay off the car" });
@@ -414,7 +419,7 @@ test.describe
       await page.getByRole("button", { name: "Use template" }).click();
       await page.getByRole("option", { name: "Bill to pay" }).click();
       await expect(page.getByLabel("Issue title")).toHaveValue("Pay the ___ bill");
-      await expect(page.getByLabel("Issue description")).toHaveValue("Amount:\nDue:");
+      await expect(page.getByLabel("Issue description")).toHaveText(/Amount:\s*Due:/);
       await page.keyboard.press("Escape");
     });
 
@@ -457,7 +462,9 @@ test.describe
       const note = open.find((f: { body: string }) => f.body.startsWith("Attach the receipt"));
       await mcp("update_user", { user: "me", lessons: "- Attach receipts to bills." });
       await mcp("address_feedback", { id: note.id, note: "Added a lesson about receipts" });
-      await expect(page.getByLabel("Lessons")).toHaveValue("- Attach receipts to bills.");
+      await expect(page.getByLabel("Lessons").locator("li")).toHaveText(
+        "Attach receipts to bills.",
+      );
       await expect(page.getByText("✓ Added a lesson about receipts")).toBeVisible();
 
       await page.getByRole("button", { name: "Company" }).click();
@@ -631,5 +638,82 @@ test.describe
         options: { body: "Push the budget sheet" },
       });
       expect(result.opened).toEqual([`${new URL(scope).origin}/request/r1`]);
+    });
+    test("writes like Linear: shortcuts, slash commands, mentions, checklists and code", async () => {
+      await page.goto("/issue/PF-2");
+      const description = page.getByLabel("Issue description");
+      await description.click();
+      await page.keyboard.type("## Options");
+      await page.keyboard.press("Enter");
+
+      // `/` opens the block menu.
+      await page.keyboard.type("/check");
+      await expect(page.getByRole("option", { name: "Checklist" })).toBeVisible();
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-slash.png` });
+      await page.getByRole("option", { name: "Checklist" }).click();
+      await page.keyboard.type("Call the bank");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("Compare tariffs");
+      await page.keyboard.press("Enter");
+      await page.keyboard.press("Enter");
+
+      // `@` mentions people and issues, shown as chips.
+      await page.keyboard.type("Ask @Yous");
+      await expect(page.getByRole("option", { name: "Youssef" })).toBeVisible();
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-mention.png` });
+      await page.getByRole("option", { name: "Youssef" }).click();
+      await page.keyboard.type("about @electricity");
+      await page.getByRole("option", { name: /PF-1 Pay the electricity bill/ }).click();
+      await expect(description.locator("[data-mention=user]")).toHaveText(/Youssef/);
+      await expect(description.locator("[data-mention=issue]")).toContainText("PF-1");
+
+      // Checklist boxes tick in place.
+      await description.locator('li[data-type="taskItem"] input').first().check();
+
+      // Selecting text shows the formatting toolbar.
+      await description.getByText("Compare tariffs", { exact: true }).click();
+      await page.keyboard.press("End");
+      for (let i = 0; i < "tariffs".length; i++) await page.keyboard.press("Shift+ArrowLeft");
+      const toolbar = page.getByRole("toolbar", { name: "Formatting" });
+      await expect(toolbar).toBeVisible();
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-toolbar.png` });
+      await toolbar.getByLabel("Bold").click();
+      await expect(description.locator("strong")).toHaveText("tariffs");
+
+      await page.getByLabel("Issue title").click();
+      await expect
+        .poll(async () => (await mcp("get_issue", { id: "PF-2" })).description as string)
+        .toContain("- [x] Call the bank");
+      const saved = (await mcp("get_issue", { id: "PF-2" })).description as string;
+      expect(saved).toContain("## Options");
+      expect(saved).toContain("- [ ] Compare **tariffs**");
+      expect(saved).toContain("Ask @Youssef about PF-1");
+
+      // A fenced code block in a comment, highlighted once posted.
+      await page.getByLabel("Leave a comment").click();
+      await page.keyboard.type("```ts");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("const total = 42;");
+      await page.keyboard.press("ControlOrMeta+Enter");
+      const posted = page.locator("li .rich pre").last();
+      await expect(posted).toHaveText("const total = 42;");
+      await expect(posted.locator(".hljs-keyword")).toHaveText("const");
+      if (process.env.SCREENSHOTS)
+        await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-code.png` });
+      // Agents write Markdown through MCP; it reads like Linear's: tables, collapsible sections.
+      await mcp("create_comment", {
+        issueId: "PF-2",
+        body: "| Tariff | Price |\n| --- | --- |\n| Green | 31p |\n\n+++ Workings\nUnit rate *times* usage.\n+++",
+      });
+      const agentReply = page.locator("li .rich", { hasText: "Workings" });
+      await expect(agentReply.locator("td").first()).toHaveText("Green");
+      await expect(agentReply.getByText("Unit rate")).toBeHidden();
+      await agentReply.getByRole("button", { name: "Expand section" }).click();
+      await expect(agentReply.locator("em")).toHaveText("times");
+      const comments = await mcp("list_comments", { issueId: "PF-2" });
+      expect(JSON.stringify(comments)).toContain("```ts\\nconst total = 42;\\n```");
     });
   });

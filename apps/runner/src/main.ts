@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
+import { McpManager } from "./mcp.js";
 import { sdkEngine } from "./sdk.js";
 
 const VERSION = "0.1.0";
@@ -47,7 +48,9 @@ const USAGE = `life-os-runner: runs your company's agents on this machine.
         Shows this machine as the hub sees it.
 
 Agents use this machine's Claude sign-in (run \`claude\` once and log in with your Max plan).
-Settings live in ${configPath}; add your own MCP servers under "mcpServers".`;
+Settings live in ${configPath}; add your own MCP servers under "mcpServers".
+Servers the hub adds (approved in the app) sign in through your browser; their tokens stay
+in ${join(home, "mcp-auth.json")}.`;
 
 async function main() {
   const { positionals, values } = parseArgs({
@@ -112,6 +115,12 @@ async function main() {
       capacity: config.capacity,
       version: VERSION,
       mcpServers: config.mcpServers ?? {},
+      mcp: new McpManager({
+        hubUrl: config.hub,
+        machineName: config.name,
+        file: join(home, "mcp-auth.json"),
+        log: (line) => console.log(`${new Date().toISOString()} ${line}`),
+      }),
       workDir: join(home, "work"),
       log: (line) => console.log(`${new Date().toISOString()} ${line}`),
     });

@@ -200,6 +200,14 @@ async function message(db: HubDb, n: NotificationRow): Promise<PushMessage> {
       tag: n.projectUpdateId ?? n.id,
     };
   }
+  if (n.type === "mcpServerNeedsAuth") {
+    return {
+      title: `Connect ${String(n.data?.name ?? "an MCP server")}`,
+      body: `Sign in so agents on ${String(n.data?.machine ?? "your machine")} can use it`,
+      url: "/machines",
+      tag: String(n.data?.serverId ?? n.id),
+    };
+  }
   const issue = n.issueId ? await findIssue(db, n.issueId) : null;
   const identifier = issue ? await identifierOf(db, issue.teamId, issue.number) : "";
   const title = issue ? `${identifier} ${issue.title}` : "Life OS";
@@ -215,6 +223,7 @@ async function message(db: HubDb, n: NotificationRow): Promise<PushMessage> {
     requestAnswered: `${who} answered your request`,
     projectUpdateCreated: `${who} posted a project update`,
     issueSlaBreached: "Missed its SLA",
+    mcpServerNeedsAuth: "Needs a sign-in",
   };
   return { title, body: body[n.type], url, tag: n.issueId ?? n.id };
 }

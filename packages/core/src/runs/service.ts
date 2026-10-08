@@ -30,6 +30,7 @@ import {
   serverSpec,
   serversForAgent,
 } from "../services/mcpServers.js";
+import { cleanAccount, cleanPlanUsage, runUsageSet } from "../services/usage.js";
 import {
   type Decision,
   decisionInput,
@@ -403,6 +404,7 @@ export async function appendLogs(
         .onConflictDoNothing(),
     );
   }
+  const usage = await runUsageSet(db, run, upload.usage, upload.sessionId);
   ops.push(
     db
       .update(runs)
@@ -411,25 +413,12 @@ export async function appendLogs(
         updatedAt: at,
         logCount: sql`${runs.logCount} + ${upload.events.length}`,
         ...(upload.sessionId ? { sessionId: upload.sessionId } : {}),
-        ...usageSet(upload.usage),
+        ...usage,
       })
       .where(eq(runs.id, runId)),
   );
   await commit(db, ops);
   return { stop: run.stopRequestedAt !== null, stopReason: run.stopReason };
-}
-
-function usageSet(usage: LogUpload["usage"]) {
-  if (!usage) return {};
-  const n = (v: unknown) => (typeof v === "number" && v >= 0 ? Math.floor(v) : undefined);
-  return {
-    ...(n(usage.inputTokens) !== undefined ? { inputTokens: n(usage.inputTokens) } : {}),
-    ...(n(usage.outputTokens) !== undefined ? { outputTokens: n(usage.outputTokens) } : {}),
-    ...(n(usage.numTurns) !== undefined ? { numTurns: n(usage.numTurns) } : {}),
-    ...(typeof usage.costUsd === "number" && usage.costUsd >= 0 && usage.costUsd < 10_000
-      ? { costUsd: usage.costUsd }
-      : {}),
-  };
 }
 
 export interface RunCompletion {
@@ -495,7 +484,7 @@ export async function completeRun(
         endedAt: at,
         updatedAt: at,
         ...(body.sessionId ? { sessionId: body.sessionId } : {}),
-        ...usageSet(body.usage),
+        ...(await runUsageSet(db, run, body.usage, body.sessionId)),
       })
       .where(eq(runs.id, runId)),
     // The run's hub token dies with it.
@@ -730,11 +719,17 @@ export async function heartbeat(
     runIds?: string[];
     /** How each hub-managed MCP server is doing on the machine. */
     mcpServers?: McpServerReport[];
+    /** The Claude login agents use there. */
+    claudeAccount?: unknown;
+    /** The plan's limits as the machine last read them. */
+    planUsage?: unknown;
   },
   at: number,
 ) {
   const runIds = Array.isArray(info.runIds) ? info.runIds.slice(0, 50).map(String) : [];
   const ops: WriteOp[] = [];
+  const account = cleanAccount(info.claudeAccount);
+  const plan = cleanPlanUsage(info.planUsage, at);
   // Owners set tags in the app once approved; until then the machine's own list counts.
   ops.push(
     db
@@ -747,6 +742,11 @@ export async function heartbeat(
           : {}),
         ...(info.version ? { version: String(info.version).slice(0, 40) } : {}),
         ...(machine.status === "pending" && info.tags ? { tags: cleanTags(info.tags) } : {}),
+        ...(account ? { claudeAccount: account } : {}),
+        // Readings can arrive out of order; keep the newest.
+        ...(plan && plan.observedAt >= (machine.planUsage?.observedAt ?? 0)
+          ? { planUsage: plan }
+          : {}),
       })
       .where(eq(machines.id, machine.id)),
   );

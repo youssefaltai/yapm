@@ -517,6 +517,51 @@ export const MACHINE_STATUSES = ["pending", "active", "revoked"] as const;
 export type MachineStatus = (typeof MACHINE_STATUSES)[number];
 
 /** A computer running the runner daemon. Enrolled with a pairing code the owner confirms. */
+export interface ClaudeAccount {
+  email: string | null;
+  organization: string | null;
+  /** pro, max, team or enterprise; null when the machine signs in with an API key. */
+  subscriptionType: string | null;
+  /** firstParty for a Claude login; bedrock, vertex and others have no plan limits. */
+  apiProvider: string | null;
+}
+
+/** One of the plan's usage windows, such as the 5-hour session or the week. */
+export interface PlanLimit {
+  /** five_hour, seven_day, seven_day_opus, seven_day_sonnet, or `model:<name>`. */
+  kind: string;
+  label: string;
+  /** Percent of the window used, 0–100; null when Claude Code didn't say. */
+  utilization: number | null;
+  resetsAt: number | null;
+  /** allowed, allowed_warning or rejected, when a rate-limit event said so. */
+  status: string | null;
+}
+
+export interface PlanUsage {
+  /** When the machine read these numbers. */
+  observedAt: number;
+  /** usage: a full reading of /usage; rate_limit: what a run's rate-limit events said. */
+  source: "usage" | "rate_limit";
+  /** False when plan limits don't apply (an API key, Bedrock or Vertex). */
+  available: boolean;
+  limits: PlanLimit[];
+  extraUsage: {
+    enabled: boolean;
+    /** Minor units of `currency` (cents for USD). */
+    monthlyLimit: number | null;
+    usedCredits: number | null;
+    utilization: number | null;
+    currency: string | null;
+  } | null;
+}
+
+export interface ReportedUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+}
+
 export const machines = sqliteTable(
   "machines",
   {
@@ -535,6 +580,10 @@ export const machines = sqliteTable(
     version: text("version"),
     lastSeenAt: integer("last_seen_at", { mode: "number" }),
     approvedAt: integer("approved_at", { mode: "number" }),
+    /** The Claude login agents use on this machine, as Claude Code reports it. */
+    claudeAccount: text("claude_account", { mode: "json" }).$type<ClaudeAccount>(),
+    /** The subscription's limits as this machine last saw them; see `PlanUsage`. */
+    planUsage: text("plan_usage", { mode: "json" }).$type<PlanUsage>(),
     ...timestamps,
   },
   (t) => [uniqueIndex("machines_token_idx").on(t.tokenHash)],
@@ -596,6 +645,11 @@ export const runs = sqliteTable(
     routeRule: text("route_rule"),
     /** What the session would cost at API prices, as the Agent SDK reports it. */
     costUsd: real("cost_usd").notNull().default(0),
+    /**
+     * The usage totals exactly as the SDK reported them. A resumed session reports totals that
+     * carry on from the run it resumed, so this run's own usage is the difference.
+     */
+    reportedUsage: text("reported_usage", { mode: "json" }).$type<ReportedUsage>(),
     /** Not before this time (a `wait_until` decision). */
     notBefore: integer("not_before", { mode: "number" }),
     machineId: text("machine_id"),

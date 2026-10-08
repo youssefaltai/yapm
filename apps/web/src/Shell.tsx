@@ -36,6 +36,7 @@ import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
 import { deleteView, renameView, ViewPage } from "./views/SavedView.js";
 import { ShortcutsHost } from "./views/Shortcuts.js";
 import { TeamSettings } from "./views/TeamSettings.js";
+import { UsageView } from "./views/Usage.js";
 
 export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => void }) {
   const { data: workspace, error } = useQuery<Workspace>(WORKSPACE_QUERY);
@@ -246,6 +247,8 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <Handbook />;
     case "insights":
       return <Insights />;
+    case "usage":
+      return <UsageView />;
     case "documents":
       return <DocumentsView />;
     case "document":
@@ -367,6 +370,9 @@ function Sidebar({
         </NavLink>
         <NavLink to={paths.insights()} active={route.name === "insights"}>
           Insights
+        </NavLink>
+        <NavLink to={paths.usage()} active={route.name === "usage"}>
+          Usage
         </NavLink>
         <NavLink
           to={paths.company()}

@@ -20,6 +20,17 @@ async function addPasskeyAuthenticator(page: Page) {
 test.describe
   .serial("the owner's day", () => {
     let page: Page;
+    let agentToken = "";
+
+    /** Calls a tool on the hub's MCP server as the agent, like Claude Code would. */
+    async function mcp(name: string, args: Record<string, unknown>) {
+      const response = await page.request.post("/mcp", {
+        headers: { authorization: `Bearer ${agentToken}`, "content-type": "application/json" },
+        data: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+      });
+      const body = await response.json();
+      return JSON.parse(body.result.content[0].text);
+    }
 
     test.beforeAll(async ({ browser }: { browser: Browser }) => {
       page = await (await browser.newContext()).newPage();
@@ -170,21 +181,38 @@ test.describe
       await page.getByRole("button", { name: "+ New token" }).click();
       await expect(page.getByText("Copy this token now.")).toBeVisible();
       await expect(page.getByText(/claude mcp add --transport http life-os/)).toBeVisible();
-      const token = (await page.locator("code").first().textContent()) ?? "";
-
-      const response = await page.request.post("/mcp", {
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        data: {
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "get_user", arguments: { query: "me" } },
-        },
-      });
-      const body = await response.json();
-      expect(JSON.parse(body.result.content[0].text)).toMatchObject({
+      agentToken = (await page.locator("code").first().textContent()) ?? "";
+      expect(await mcp("get_user", { query: "me" })).toMatchObject({
         name: "Ada",
         title: "Head of Finance",
       });
+    });
+
+    test("approves an agent's request from the phone", async () => {
+      const asked = await mcp("create_request", {
+        title: "Push the budget sheet to the shared drive",
+        action: "tool:Bash",
+        resource: "rclone copy budget.xlsx drive:",
+        reason: "The monthly budget is ready and you asked for it in the drive.",
+        issue: "PF-1",
+      });
+      expect(asked.status).toBe("pending");
+      await expect(page.getByRole("link", { name: /Approvals\s*1/ })).toBeVisible();
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(new URL(asked.url).pathname);
+      await expect(page.getByRole("heading", { name: asked.title })).toBeVisible();
+      await expect(page.getByText("rclone copy budget.xlsx drive:")).toBeVisible();
+      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await expect(page.getByText("Approved once by Youssef")).toBeVisible();
+      await page.setViewportSize({ width: 1280, height: 720 });
+
+      expect(await mcp("get_request", { id: asked.id })).toMatchObject({ status: "approved" });
+      expect(
+        await mcp("check_permission", {
+          action: "tool:Bash",
+          resource: "rclone copy budget.xlsx drive:",
+        }),
+      ).toMatchObject({ allowed: true, via: "approval" });
     });
   });

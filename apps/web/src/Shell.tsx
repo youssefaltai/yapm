@@ -12,6 +12,7 @@ import { HireAgentHost } from "./views/HireAgent.js";
 import { IssuePage } from "./views/IssuePage.js";
 import { IssuesView } from "./views/IssuesView.js";
 import { MemberPage } from "./views/MemberPage.js";
+import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
 
 export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => void }) {
   const { data: workspace, error } = useQuery<Workspace>(WORKSPACE_QUERY);
@@ -135,6 +136,10 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <Company workspace={workspace} />;
     case "member":
       return <MemberPage key={route.id} id={route.id} />;
+    case "requests":
+      return <RequestsView key={route.tab} tab={route.tab} />;
+    case "request":
+      return <RequestPage key={route.id} id={route.id} />;
     case "notFound":
       return <NotFound what="Page" />;
   }
@@ -172,6 +177,7 @@ function Sidebar({
   route: Route;
   onSignOut: () => void;
 }) {
+  const pending = usePendingCount();
   return (
     <>
       <div className="flex items-center gap-2 px-2 py-1.5">
@@ -202,6 +208,19 @@ function Sidebar({
       <nav className="mt-4 space-y-0.5">
         <NavLink to={paths.myIssues()} active={route.name === "myIssues"}>
           My issues
+        </NavLink>
+        <NavLink
+          to={paths.requests()}
+          active={route.name === "requests" || route.name === "request"}
+        >
+          <span className="flex w-full items-center justify-between">
+            Approvals
+            {pending > 0 && (
+              <span className="rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">
+                {pending}
+              </span>
+            )}
+          </span>
         </NavLink>
         <NavLink to={paths.company()} active={route.name === "company"}>
           Company

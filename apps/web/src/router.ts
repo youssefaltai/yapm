@@ -24,12 +24,16 @@ export function usePath(): string {
   return useSyncExternalStore(subscribe, () => window.location.pathname);
 }
 
+export type RequestsTab = "pending" | "answered" | "grants";
+
 export type Route =
   | { name: "myIssues"; tab: "assigned" | "created" }
   | { name: "team"; key: string; view: "all" | "active" | "backlog" }
   | { name: "issue"; identifier: string }
   | { name: "company" }
   | { name: "member"; id: string }
+  | { name: "requests"; tab: RequestsTab }
+  | { name: "request"; id: string }
   | { name: "notFound" };
 
 export function parseRoute(path: string): Route {
@@ -40,6 +44,12 @@ export function parseRoute(path: string): Route {
     return { name: "myIssues", tab: second === "created" ? "created" : "assigned" };
   if (first === "company") return { name: "company" };
   if (first === "member" && second) return { name: "member", id: second };
+  if (first === "approvals")
+    return {
+      name: "requests",
+      tab: second === "answered" || second === "grants" ? second : "pending",
+    };
+  if (first === "request" && second) return { name: "request", id: second };
   if (first === "issue" && second) return { name: "issue", identifier: second.toUpperCase() };
   if (first === "team" && second) {
     const view = third === "active" || third === "backlog" ? third : "all";
@@ -56,4 +66,7 @@ export const paths = {
   issue: (identifier: string) => `/issue/${identifier}`,
   company: () => "/company",
   member: (id: string) => `/member/${id}`,
+  requests: (tab: RequestsTab = "pending") =>
+    tab === "pending" ? "/approvals" : `/approvals/${tab}`,
+  request: (id: string) => `/request/${id}`,
 };

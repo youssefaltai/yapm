@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { createIssueStore } from "../actions.js";
+import { confirmDialog, Select as Dropdown } from "../controls.js";
 import { mutate, type Team, toast } from "../data.js";
 import { navigate, paths } from "../router.js";
 
@@ -79,18 +80,13 @@ function Select({
   onChange: (value: number) => void;
 }) {
   return (
-    <select
+    <Dropdown
       aria-label={label}
       value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="rounded-md border border-line bg-panel px-2 py-1 outline-none focus:border-accent"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      options={options}
+      onChange={onChange}
+      className="min-w-32 rounded-md border border-line bg-panel px-2 py-1 outline-none hover:bg-raised focus-visible:border-accent"
+    />
   );
 }
 
@@ -219,7 +215,14 @@ export function TeamSettings({ team }: { team: Team }) {
 
 function Templates({ team }: { team: Team }) {
   const remove = async (id: string, name: string) => {
-    if (!window.confirm(`Delete the template “${name}”?`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Delete the template “${name}”?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     await mutate("mutation($id: String!) { templateDelete(id: $id) { success } }", { id });
   };
   const button = "rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-ink";

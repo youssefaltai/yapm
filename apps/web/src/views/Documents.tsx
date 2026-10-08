@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createDocument } from "../actions.js";
+import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
@@ -151,7 +152,15 @@ export function DocumentPage({ id }: { id: string }) {
         <button
           type="button"
           onClick={async () => {
-            if (!window.confirm(`Delete "${doc.title}"?`)) return;
+            if (
+              !(await confirmDialog({
+                title: `Delete “${doc.title || "Untitled"}”?`,
+                body: "The document is deleted for everyone.",
+                confirmLabel: "Delete",
+                destructive: true,
+              }))
+            )
+              return;
             if (
               await mutate("mutation($id: String!) { documentDelete(id: $id) { success } }", { id })
             )

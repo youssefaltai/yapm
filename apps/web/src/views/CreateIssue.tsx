@@ -5,6 +5,7 @@ import {
   createTeamStore,
   workspaceStore,
 } from "../actions.js";
+import { Select, TimeSelect } from "../controls.js";
 import { type IssueTemplate, mutate, PRIORITIES, type Schedule, toast } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
@@ -394,7 +395,15 @@ const FREQUENCIES: { value: Schedule["frequency"] | "none"; label: string }[] = 
 ];
 
 const field =
-  "rounded-md border border-line bg-panel px-2 py-1 outline-none focus:border-accent [color-scheme:dark]";
+  "rounded-md border border-line bg-panel px-2 py-1 outline-none hover:bg-raised focus-visible:border-accent";
+
+const ordinal = (n: number) =>
+  `${n}${n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th"}`;
+const MONTH_DAYS = Array.from({ length: 31 }, (_, i) => ({
+  value: i + 1,
+  label: `On the ${ordinal(i + 1)}`,
+  keywords: String(i + 1),
+}));
 
 /** When a recurring issue repeats, in the company's time zone. */
 function ScheduleFields({
@@ -407,11 +416,11 @@ function ScheduleFields({
   const set = (patch: Partial<Schedule>) => schedule && onChange({ ...schedule, ...patch });
   return (
     <span className="flex flex-wrap items-center gap-2">
-      <select
+      <Select
         aria-label="Repeats"
         value={schedule?.frequency ?? "none"}
-        onChange={(e) => {
-          const value = e.target.value as Schedule["frequency"] | "none";
+        options={FREQUENCIES}
+        onChange={(value) => {
           onChange(
             value === "none"
               ? null
@@ -424,44 +433,30 @@ function ScheduleFields({
           );
         }}
         className={field}
-      >
-        {FREQUENCIES.map((f) => (
-          <option key={f.value} value={f.value}>
-            {f.label}
-          </option>
-        ))}
-      </select>
+      />
       {schedule?.frequency === "weekly" && (
-        <select
+        <Select
           aria-label="On day"
           value={schedule.weekday ?? 1}
-          onChange={(e) => set({ weekday: Number(e.target.value) })}
+          options={DAYS.map((d, i) => ({ value: i, label: d }))}
+          onChange={(weekday) => set({ weekday })}
           className={field}
-        >
-          {DAYS.map((d, i) => (
-            <option key={d} value={i}>
-              {d}
-            </option>
-          ))}
-        </select>
+        />
       )}
       {schedule?.frequency === "monthly" && (
-        <input
-          type="number"
+        <Select
           aria-label="Day of the month"
-          min={1}
-          max={31}
           value={schedule.monthDay ?? 1}
-          onChange={(e) => set({ monthDay: Number(e.target.value) || 1 })}
-          className={`${field} w-16`}
+          options={MONTH_DAYS}
+          onChange={(monthDay) => set({ monthDay })}
+          className={field}
         />
       )}
       {schedule && (
-        <input
-          type="time"
+        <TimeSelect
           aria-label="Time of day"
           value={schedule.time}
-          onChange={(e) => set({ time: e.target.value || "09:00" })}
+          onChange={(time) => set({ time })}
           className={field}
         />
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { workspaceStore } from "../actions.js";
+import { confirmDialog, promptDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
@@ -100,11 +101,14 @@ export function MemberPage({ id }: { id: string }) {
           {canEdit && member.kind === "agent" && member.active && (
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (
-                  window.confirm(
-                    `Retire ${member.name}? Its tokens stop working and its reports move to its manager.`,
-                  )
+                  await confirmDialog({
+                    title: `Retire ${member.name}?`,
+                    body: "Its tokens stop working and its reports move to its manager.",
+                    confirmLabel: "Retire",
+                    destructive: true,
+                  })
                 ) {
                   void mutate("mutation($id: String!) { agentRetire(id: $id) { success } }", {
                     id: member.id,
@@ -242,10 +246,13 @@ export function MemberPage({ id }: { id: string }) {
                 <button
                   type="button"
                   onClick={async () => {
-                    const name = window.prompt(
-                      "Name this token, e.g. the machine it runs on:",
-                      "Claude Code",
-                    );
+                    const name = await promptDialog({
+                      title: "New API token",
+                      label: "Token name",
+                      placeholder: "The machine it runs on",
+                      initial: "Claude Code",
+                      confirmLabel: "Create token",
+                    });
                     if (!name) return;
                     const result = await mutate<{ apiTokenCreate: { token: string } }>(
                       "mutation($name: String!, $userId: String) { apiTokenCreate(name: $name, userId: $userId) { token } }",

@@ -189,10 +189,10 @@
   transition: opacity 0.1s;
 }
 .rich .code-block:hover .code-block-bar,
-.rich .code-block:focus-within .code-block-bar {
+.rich .code-block:focus-within .code-block-bar,
+.rich .code-block:has([aria-expanded="true"]) .code-block-bar {
   opacity: 1;
 }
-.rich .code-block-bar select,
 .rich .code-block-bar button {
   background: var(--color-raised);
   border: 1px solid var(--color-line);
@@ -205,8 +205,7 @@
   display: flex;
   align-items: center;
 }
-.rich .code-block-bar button:hover,
-.rich .code-block-bar select:hover {
+.rich .code-block-bar button:hover {
   color: var(--color-ink);
 }
 .rich pre {

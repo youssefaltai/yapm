@@ -4,6 +4,7 @@ import {
   ISSUE_RELATION_TYPES,
   issues,
   labels,
+  notifications,
   PRIORITY_LABELS,
   requests,
   teams,
@@ -25,6 +26,7 @@ import {
   updateIssue,
 } from "../services/issues.js";
 import { createLabel } from "../services/labels.js";
+import { archiveNotification, inInbox, updateNotification } from "../services/notifications.js";
 import { cancelRequest, checkPermission, createRequest } from "../services/requests.js";
 import { createTeam } from "../services/teams.js";
 import { hireAgent, retireAgent, updateUser } from "../services/users.js";
@@ -925,6 +927,78 @@ export const tools: Tool<McpContext>[] = [
           })),
         ),
       };
+    },
+  },
+  {
+    name: "list_notifications",
+    title: "List notifications",
+    description:
+      "Your Inbox, newest first: assignments, mentions, comments and status changes on issues you follow, and answers to your requests.",
+    readOnly: true,
+    inputSchema: {
+      type: "object",
+      properties: {
+        unreadOnly: { type: "boolean", description: "Default true" },
+        limit: { type: "number" },
+      },
+    },
+    async run(args, c) {
+      const rows = await c.db
+        .select()
+        .from(notifications)
+        .where(
+          and(
+            inInbox(c.viewer.id, Date.now()),
+            args.unreadOnly === false ? undefined : isNull(notifications.readAt),
+          ),
+        )
+        .orderBy(desc(notifications.createdAt))
+        .limit(Math.min(Math.max(num(args.limit) ?? 25, 1), 100))
+        .all();
+      return {
+        notifications: await Promise.all(
+          rows.map(async (n) => {
+            const issue = n.issueId ? await c.loaders.issue.load(n.issueId) : null;
+            return {
+              id: n.id,
+              type: n.type,
+              actor: n.actorId ? ((await c.loaders.user.load(n.actorId))?.name ?? null) : null,
+              issue: issue ? (await issueSummary(c, issue)).identifier : null,
+              commentId: n.commentId,
+              requestId: n.requestId,
+              data: n.data,
+              read: n.readAt !== null,
+              createdAt: new Date(n.createdAt).toISOString(),
+            };
+          }),
+        ),
+      };
+    },
+  },
+  {
+    name: "update_notification",
+    title: "Update notification",
+    description: "Mark a notification read or unread, or archive it once handled.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        read: { type: "boolean" },
+        archived: { type: "boolean" },
+      },
+      required: ["id"],
+    },
+    async run(args, c) {
+      const id = String(args.id);
+      if (typeof args.read === "boolean") {
+        const read = args.read;
+        await c.act((s) => updateNotification(s, id, { readAt: read ? s.now : null }));
+      }
+      if (typeof args.archived === "boolean") {
+        const archived = args.archived;
+        await c.act((s) => archiveNotification(s, id, archived));
+      }
+      return { id };
     },
   },
 ];

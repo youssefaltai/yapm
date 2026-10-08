@@ -370,3 +370,50 @@ export const grants = sqliteTable(
   },
   (t) => [index("grants_action_idx").on(t.action)],
 );
+
+export const NOTIFICATION_TYPES = [
+  "issueAssignedToYou",
+  "issueUnassignedFromYou",
+  "issueMention",
+  "issueCommentMention",
+  "issueNewComment",
+  "issueStatusChanged",
+  "requestCreated",
+  "requestAnswered",
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/** A member's Inbox, like Linear's notifications. Agents get them too; they're how agents wake up. */
+export const notifications = sqliteTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    type: text("type", { enum: NOTIFICATION_TYPES }).notNull(),
+    actorId: text("actor_id"),
+    issueId: text("issue_id"),
+    commentId: text("comment_id"),
+    requestId: text("request_id"),
+    /** Details for the line in the Inbox, e.g. `{ from, to }` for a status change. */
+    data: text("data", { mode: "json" }).$type<Record<string, unknown>>(),
+    readAt: integer("read_at", { mode: "number" }),
+    snoozedUntilAt: integer("snoozed_until_at", { mode: "number" }),
+    archivedAt: integer("archived_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
+);
+
+/** Who follows an issue: they're notified of its comments and status changes. */
+export const issueSubscriptions = sqliteTable(
+  "issue_subscriptions",
+  {
+    issueId: text("issue_id").notNull(),
+    userId: text("user_id").notNull(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.issueId, t.userId] }),
+    index("issue_subscriptions_user_idx").on(t.userId),
+  ],
+);

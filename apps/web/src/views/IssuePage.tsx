@@ -79,12 +79,14 @@ interface IssueDetail extends Issue {
   comments: { nodes: Comment[] };
   reactions: Reaction[];
   history: { nodes: HistoryEntry[] };
+  subscribers: { nodes: { id: string; isMe: boolean }[] };
 }
 
 const MINI = "id identifier title state { type color }";
 const REACTIONS = "reactions { id emoji user { id name isMe } }";
 
 const ISSUE_QUERY = `query($id: String!) { issue(id: $id) {
+  subscribers { nodes { id isMe } }
   ...IssueFields
   description
   creator { id name kind }
@@ -145,6 +147,7 @@ export function IssuePage({ identifier }: { identifier: string }) {
           <span className="rounded bg-raised px-1.5 text-[12px] text-muted">Archived</span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          <SubscribeButton issue={issue} />
           {issue.archivedAt ? (
             <ToolbarButton
               onClick={() =>
@@ -849,5 +852,22 @@ function CommentComposer({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Follow an issue to hear about its comments and status changes in your Inbox. */
+function SubscribeButton({ issue }: { issue: IssueDetail }) {
+  const following = issue.subscribers.nodes.some((u) => u.isMe);
+  return (
+    <ToolbarButton
+      onClick={() =>
+        void mutate(
+          `mutation($id: String!) { ${following ? "issueUnsubscribe" : "issueSubscribe"}(id: $id) { success } }`,
+          { id: issue.id },
+        )
+      }
+    >
+      {following ? "Unsubscribe" : "Subscribe"}
+    </ToolbarButton>
   );
 }

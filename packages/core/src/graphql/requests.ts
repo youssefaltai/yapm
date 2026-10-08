@@ -8,6 +8,7 @@ import {
   createRequest,
   rejectRequest,
   revokeGrant,
+  usePermission,
 } from "../services/requests.js";
 import {
   act,
@@ -306,6 +307,18 @@ const GrantCreateInput = builder.inputType("GrantCreateInput", {
 });
 
 builder.mutationFields((t) => ({
+  permissionUse: t.field({
+    type: Permission,
+    description:
+      "Uses a permission now if you have it: counts a grant's use or uses up a one-time approval. Doesn't throw when you lack it.",
+    args: { action: t.arg.string({ required: true }), resource: t.arg.string({ required: false }) },
+    resolve: async (_root, args, ctx) => {
+      const p = await act(ctx, (s) => usePermission(s, args.action, args.resource ?? null));
+      return p.allowed
+        ? { allowed: true, via: p.via, pendingRequestId: null }
+        : { allowed: false, via: null, pendingRequestId: p.pendingRequestId };
+    },
+  }),
   requestCreate: t.field({
     type: RequestPayload,
     description: "Asks the owner for permission. Asking again while one is pending returns it.",

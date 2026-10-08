@@ -1181,5 +1181,333 @@ export function hubContract(
       );
       expect(devices.data?.pushSubscriptions).toEqual([]);
     });
+
+    it("runs agents on enrolled machines: decide, work, pause for input, resume, stop", async () => {
+      const runner = async <T = Record<string, unknown>>(
+        path: string,
+        token: string,
+        json?: unknown,
+      ) => {
+        const response = await client.request(`/api/runner${path}`, {
+          method: json === undefined && path === "/me" ? "GET" : "POST",
+          ...(json !== undefined ? { json } : {}),
+          token,
+        });
+        const text = await response.text();
+        return { status: response.status, body: (text ? JSON.parse(text) : null) as T };
+      };
+      const gql = <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+        token?: string,
+      ) => client.graphql<T>(query, variables, token);
+
+      // Enrolment: the machine shows a code; the owner types it in to approve.
+      const enrol = await runner<{ id: string; token: string; pairingCode: string }>("/enrol", "", {
+        name: "Youssef's MacBook",
+        tags: ["personal"],
+        mcps: ["slack"],
+        capacity: 2,
+      });
+      expect(enrol.status).toBe(201);
+      const machine = enrol.body;
+      expect(machine.pairingCode).toMatch(/^\d{6}$/);
+      expect((await runner("/claim", machine.token, {})).status).toBe(403);
+      const listed = await gql<{ machines: { id: string; status: string; tags: string[] }[] }>(
+        "{ machines { id status tags } }",
+      );
+      expect(listed.data?.machines).toEqual([
+        { id: machine.id, status: "pending", tags: ["personal"] },
+      ]);
+      const wrong = await gql(
+        'mutation($id: String!) { machineApprove(id: $id, pairingCode: "000000x") { success } }',
+        {
+          id: machine.id,
+        },
+      );
+      expect(wrong.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const approved = await gql<{
+        machineApprove: { machine: { status: string; online: boolean } };
+      }>(
+        "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { machine { status online } } }",
+        { id: machine.id, code: machine.pairingCode },
+      );
+      expect(approved.data?.machineApprove.machine).toEqual({ status: "active", online: true });
+      // Earlier tests woke agents with mentions and assignments; clear that queue first.
+      const queued = await gql<{ runs: { nodes: { id: string; agent: { name: string } }[] } }>(
+        "{ runs(filter: { status: [queued] }) { nodes { id agent { name } } } }",
+      );
+      expect(queued.data?.runs.nodes.length).toBeGreaterThan(0);
+      for (const run of queued.data?.runs.nodes ?? []) {
+        await gql(
+          'mutation($id: String!) { runStop(id: $id, reason: "Clearing the test queue") { success } }',
+          {
+            id: run.id,
+          },
+        );
+      }
+      expect((await runner("/claim", machine.token, {})).status).toBe(204);
+
+      // Assigning an issue to an agent wakes it with a decision run.
+      const people = await gql<{ users: { nodes: { id: string; name: string }[] } }>(
+        "{ users { nodes { id name } } }",
+      );
+      const coachId = people.data?.users.nodes.find((u) => u.name === "Coach")?.id ?? "";
+      const created = await gql<{ issueCreate: { issue: { id: string; identifier: string } } }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier } } }",
+        { input: { teamId, title: "Build a 12-week training plan", assigneeId: coachId } },
+      );
+      const issue = created.data?.issueCreate.issue;
+      type Claim = {
+        run: {
+          id: string;
+          kind: string;
+          modelTier: string;
+          sessionId: string | null;
+          issue: string;
+        };
+        agent: { name: string };
+        token: string;
+        mcpUrl: string;
+        input: {
+          systemPrompt: string;
+          prompt: string;
+          tools: boolean;
+          outputSchema: { properties: Record<string, unknown> };
+        };
+      };
+      const decision = await runner<Claim>("/claim", machine.token, {});
+      expect(decision.status).toBe(200);
+      expect(decision.body).toMatchObject({
+        run: { kind: "decision", modelTier: "small", issue: issue?.identifier },
+        agent: { name: "Coach" },
+        mcpUrl: "http://localhost/mcp",
+        input: { tools: false },
+      });
+      expect(decision.body.input.systemPrompt).toContain("Coach things.");
+      expect(decision.body.input.prompt).toContain("Youssef assigned the issue to you");
+      expect(decision.body.input.prompt).toContain("Build a 12-week training plan");
+      expect(decision.body.input.outputSchema.properties).toHaveProperty("action");
+      // The run's token acts as the agent, for this run only.
+      const asRun = await gql<{ viewer: { name: string } }>(
+        "{ viewer { name } }",
+        undefined,
+        decision.body.token,
+      );
+      expect(asRun.data?.viewer.name).toBe("Coach");
+
+      const logged = await runner<{ stop: boolean }>(
+        `/runs/${decision.body.run.id}/logs`,
+        machine.token,
+        {
+          seq: 0,
+          events: [{ type: "assistant", text: "Thinking about the plan" }],
+          usage: { inputTokens: 900, outputTokens: 40, numTurns: 1 },
+        },
+      );
+      expect(logged.body.stop).toBe(false);
+      const bogus = await runner(`/runs/${decision.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { action: "teleport", reason: "?" },
+      });
+      expect(bogus.body).toEqual({ status: "failed" });
+
+      // Try again with a valid decision: the hub queues a work session.
+      await gql(
+        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "@Coach what\'s the plan?" }) { success } }',
+        { id: issue?.id },
+      );
+      const second = await runner<Claim>("/claim", machine.token, {});
+      expect(second.body.run.kind).toBe("decision");
+      expect(second.body.input.prompt).toContain("what's the plan?");
+      const decided = await runner(`/runs/${second.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: {
+          action: "work",
+          reason: "Assigned and clear",
+          goal: "Draft the 12-week plan",
+          modelTier: "standard",
+        },
+      });
+      expect(decided.body).toEqual({ status: "completed" });
+
+      const work = await runner<Claim>("/claim", machine.token, {});
+      expect(work.body).toMatchObject({
+        run: { kind: "work", modelTier: "standard" },
+        input: { tools: true },
+      });
+      expect(work.body.input.prompt).toContain("Your goal: Draft the 12-week plan");
+      // The agent works through the hub's MCP server with the run's token; history names the run.
+      await client.request("/mcp", {
+        method: "POST",
+        token: work.body.token,
+        json: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "create_comment",
+            arguments: { issueId: issue?.identifier, body: "Drafting weeks 1-4 now." },
+          },
+        },
+      });
+      const history = await gql<{
+        auditEntries: { nodes: { action: string; runId: string | null }[] };
+      }>(
+        "query($id: String) { auditEntries(entityId: $id, first: 1) { nodes { action runId } } }",
+        { id: issue?.id },
+      );
+      expect(history.data?.auditEntries.nodes[0]).toEqual({
+        action: "comment.create",
+        runId: work.body.run.id,
+      });
+      await runner(`/runs/${work.body.run.id}/logs`, machine.token, {
+        seq: 0,
+        events: [{ type: "tool_use", name: "create_comment" }],
+        sessionId: "session-abc",
+      });
+      // A tool that needs permission: the run asks, waits, and uses the one-time approval once.
+      const use = () =>
+        gql<{ permissionUse: { allowed: boolean; via: string | null } }>(
+          'mutation { permissionUse(action: "tool:Bash", resource: "npm test") { allowed via } }',
+          undefined,
+          work.body.token,
+        ).then((r) => r.data?.permissionUse);
+      expect(await use()).toEqual({ allowed: false, via: null });
+      const asked = await gql<{ requestCreate: { request: { id: string } } }>(
+        'mutation { requestCreate(input: { title: "Run the tests", action: "tool:Bash", resource: "npm test", reason: "Check the plan generator" }) { request { id } } }',
+        undefined,
+        work.body.token,
+      );
+      const askedId = asked.data?.requestCreate.request.id;
+      const waiting = await gql<{ run: { waitingOnRequest: { id: string } | null } }>(
+        "query($id: String!) { run(id: $id) { waitingOnRequest { id } } }",
+        { id: work.body.run.id },
+      );
+      expect(waiting.data?.run.waitingOnRequest?.id).toBe(askedId);
+      await gql("mutation($id: String!) { requestApprove(id: $id) { success } }", { id: askedId });
+      expect(await use()).toEqual({ allowed: true, via: "approval" });
+      expect(await use()).toEqual({ allowed: false, via: null });
+      const paused = await runner(`/runs/${work.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: {
+          outcome: "needs_input",
+          summary: "Weeks 1-4 drafted",
+          question: "Which race date are you targeting?",
+        },
+      });
+      expect(paused.body).toEqual({ status: "needs_input" });
+      const afterPause = await gql<{
+        issue: { comments: { nodes: { body: string; user: { name: string } }[] } };
+      }>("query($id: String!) { issue(id: $id) { comments { nodes { body user { name } } } } }", {
+        id: issue?.id,
+      });
+      expect(afterPause.data?.issue.comments.nodes.at(-1)).toEqual({
+        body: "Which race date are you targeting?",
+        user: { name: "Coach" },
+      });
+      // The run's token died with it.
+      const expired = await client.request("/graphql", {
+        method: "POST",
+        json: { query: "{ viewer { id } }" },
+        token: work.body.token,
+      });
+      expect(expired.status).toBe(401);
+
+      // Answering resumes the same session, on the same machine.
+      await gql(
+        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "April 12th." }) { success } }',
+        {
+          id: issue?.id,
+        },
+      );
+      const resumed = await runner<Claim>("/claim", machine.token, {});
+      expect(resumed.body.run).toMatchObject({ kind: "work", sessionId: "session-abc" });
+      expect(resumed.body.input.prompt).toContain("April 12th.");
+
+      // Stopping: the owner gives a reason, the machine hears it on its next check-in.
+      const noReason = await gql(
+        'mutation($id: String!) { runStop(id: $id, reason: "") { success } }',
+        {
+          id: resumed.body.run.id,
+        },
+      );
+      expect(noReason.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      await gql(
+        'mutation($id: String!) { runStop(id: $id, reason: "Wrong race, pause this") { success } }',
+        {
+          id: resumed.body.run.id,
+        },
+      );
+      const beat = await runner<{ stop: { id: string; reason: string }[] }>(
+        "/heartbeat",
+        machine.token,
+        {
+          runIds: [resumed.body.run.id],
+        },
+      );
+      expect(beat.body.stop).toEqual([
+        { id: resumed.body.run.id, reason: "Wrong race, pause this" },
+      ]);
+      await runner(`/runs/${resumed.body.run.id}/complete`, machine.token, { status: "stopped" });
+
+      const runsOnIssue = await gql<{
+        issue: {
+          runs: {
+            nodes: { kind: string; status: string; stopReason: string | null; logCount: number }[];
+          };
+        };
+      }>(
+        "query($id: String!) { issue(id: $id) { runs { nodes { kind status stopReason logCount } } } }",
+        {
+          id: issue?.id,
+        },
+      );
+      expect(runsOnIssue.data?.issue.runs.nodes).toEqual([
+        { kind: "work", status: "stopped", stopReason: "Wrong race, pause this", logCount: 0 },
+        { kind: "work", status: "completed", stopReason: null, logCount: 1 },
+        { kind: "decision", status: "completed", stopReason: null, logCount: 0 },
+        { kind: "decision", status: "failed", stopReason: null, logCount: 1 },
+      ]);
+      const transcript = await gql<{
+        run: { logs: { seq: number; events: { text?: string }[] }[]; inputTokens: number };
+      }>("query($id: String!) { run(id: $id) { inputTokens logs { seq events } } }", {
+        id: decision.body.run.id,
+      });
+      expect(transcript.data?.run).toEqual({
+        inputTokens: 900,
+        logs: [{ seq: 0, events: [{ type: "assistant", text: "Thinking about the plan" }] }],
+      });
+
+      // Routing: an agent tagged for another machine waits for one that has the tag.
+      await gql(
+        'mutation($id: String!) { userUpdate(id: $id, input: { runnerTags: ["gym"] }) { success } }',
+        { id: coachId },
+      );
+      await gql(
+        'mutation($a: String!) { runCreate(input: { agentId: $a, goal: "Check the gym schedule" }) { success } }',
+        {
+          a: coachId,
+        },
+      );
+      expect((await runner("/claim", machine.token, {})).status).toBe(204);
+      await gql(
+        'mutation($id: String!) { machineUpdate(id: $id, input: { tags: ["personal", "gym"] }) { success } }',
+        {
+          id: machine.id,
+        },
+      );
+      const tagged = await runner<Claim>("/claim", machine.token, {});
+      expect(tagged.body.run.kind).toBe("work");
+      await runner(`/runs/${tagged.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "done", summary: "Gym is open 6-22." },
+      });
+
+      await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+        id: machine.id,
+      });
+      expect((await runner("/me", machine.token)).status).toBe(401);
+    });
   });
 }

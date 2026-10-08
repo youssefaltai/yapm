@@ -5,12 +5,12 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
-import { and, eq, gt, isNull, lt } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HTTPException } from "hono/http-exception";
 import { audit } from "./audit.js";
-import type { HubEnv, User } from "./context.js";
+import type { HubDeps, HubEnv, User } from "./context.js";
 import { fromBase64Url, newId, randomToken, sha256Hex, toBase64Url } from "./crypto.js";
 import { commit, type HubDb } from "./db.js";
 import { seedCompany } from "./seed.js";
@@ -24,7 +24,11 @@ function now(c: Context<HubEnv>): number {
   return c.var.deps.now?.() ?? Date.now();
 }
 
-export function relyingParty(c: Context<HubEnv>): { origin: string; rpID: string; rpName: string } {
+export function relyingParty(c: { var: { deps: HubDeps }; req: { url: string } }): {
+  origin: string;
+  rpID: string;
+  rpName: string;
+} {
   const { config } = c.var.deps;
   const origin = config.origin ?? new URL(c.req.url).origin;
   return { origin, rpID: new URL(origin).hostname, rpName: config.rpName ?? "Life OS" };
@@ -42,9 +46,13 @@ export const resolveViewer: MiddlewareHandler<HubEnv> = async (c, next) => {
   const header = c.req.header("authorization");
   if (header) {
     const token = header.replace(/^Bearer\s+/i, "").trim();
-    const user = await userForToken(db, token, now(c));
-    if (!user) throw new HTTPException(401, { message: "Invalid API token" });
-    c.set("viewer", { user, via: "token" });
+    const found = await userForToken(db, token, now(c));
+    if (!found) throw new HTTPException(401, { message: "Invalid API token" });
+    c.set("viewer", {
+      user: found.user,
+      via: "token",
+      ...(found.runId ? { runId: found.runId } : {}),
+    });
     return next();
   }
   const cookie = getCookie(c, SESSION_COOKIE);
@@ -66,21 +74,36 @@ export const resolveViewer: MiddlewareHandler<HubEnv> = async (c, next) => {
   return next();
 };
 
-async function userForToken(db: HubDb, token: string, at: number): Promise<User | null> {
+async function userForToken(
+  db: HubDb,
+  token: string,
+  at: number,
+): Promise<{ user: User; runId: string | null } | null> {
   if (!token.startsWith(API_TOKEN_PREFIX)) return null;
   const tokenHash = await sha256Hex(token);
   const row = await db
-    .select({ user: users, tokenId: apiTokens.id, lastUsedAt: apiTokens.lastUsedAt })
+    .select({
+      user: users,
+      tokenId: apiTokens.id,
+      lastUsedAt: apiTokens.lastUsedAt,
+      runId: apiTokens.runId,
+    })
     .from(apiTokens)
     .innerJoin(users, eq(users.id, apiTokens.userId))
-    .where(and(eq(apiTokens.tokenHash, tokenHash), isNull(apiTokens.revokedAt)))
+    .where(
+      and(
+        eq(apiTokens.tokenHash, tokenHash),
+        isNull(apiTokens.revokedAt),
+        or(isNull(apiTokens.expiresAt), gt(apiTokens.expiresAt, at)),
+      ),
+    )
     .get();
   if (!row?.user.active) return null;
   // Record usage at most hourly so busy agents don't spend a write per request.
   if (!row.lastUsedAt || at - row.lastUsedAt > 60 * 60 * 1000) {
     await db.update(apiTokens).set({ lastUsedAt: at }).where(eq(apiTokens.id, row.tokenId));
   }
-  return row.user;
+  return { user: row.user, runId: row.runId };
 }
 
 /** Issues a new API token for a member. The plain token is returned once and never stored. */

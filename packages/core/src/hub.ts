@@ -8,6 +8,7 @@ import { createLoaders } from "./loaders.js";
 import { mcpHandler } from "./mcp/index.js";
 import { waitUntilOf } from "./push.js";
 import { CLIENT_ID_HEADER } from "./realtime.js";
+import { runnerRoutes } from "./runs/routes.js";
 
 /**
  * The hub's HTTP surface, independent of where it runs. Platform adapters
@@ -32,10 +33,14 @@ export function createHub(deps: HubDeps) {
     c.json({ ok: true, platform: deps.config.platform, version: deps.config.version }),
   );
 
-  app.use("/api/*", resolveViewer);
+  // Runners authenticate as machines, not members (see runs/routes.ts).
+  app.use("/api/*", (c, next) =>
+    c.req.path.startsWith("/api/runner/") ? next() : resolveViewer(c, next),
+  );
   app.use("/graphql", resolveViewer);
   app.use("/mcp", resolveViewer);
 
+  app.route("/api/runner", runnerRoutes);
   app.route("/api", authRoutes);
 
   /** Live updates: a WebSocket that says "something changed" after every mutation. */

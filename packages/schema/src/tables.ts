@@ -40,6 +40,8 @@ export const users = sqliteTable(
     managerId: text("manager_id"),
     /** An agent's job description: responsibilities, ownership, when to escalate. */
     charter: text("charter"),
+    /** Machines must have all of these tags to run this agent, e.g. `["employer-a"]`. */
+    runnerTags: text("runner_tags", { mode: "json" }).$type<string[]>(),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     ...timestamps,
   },
@@ -195,6 +197,9 @@ export const apiTokens = sqliteTable(
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     lastUsedAt: integer("last_used_at", { mode: "number" }),
     revokedAt: integer("revoked_at", { mode: "number" }),
+    /** Tokens minted for one run stop working when it ends, or at this time at the latest. */
+    expiresAt: integer("expires_at", { mode: "number" }),
+    runId: text("run_id"),
   },
   (t) => [
     uniqueIndex("api_tokens_hash_idx").on(t.tokenHash),
@@ -401,6 +406,8 @@ export const notifications = sqliteTable(
     archivedAt: integer("archived_at", { mode: "number" }),
     /** When it was sent as a push notification, if the member has push turned on. */
     pushedAt: integer("pushed_at", { mode: "number" }),
+    /** When the dispatcher considered waking the (agent) recipient for it. */
+    dispatchedAt: integer("dispatched_at", { mode: "number" }),
     ...timestamps,
   },
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
@@ -446,3 +453,105 @@ export const hubSettings = sqliteTable("hub_settings", {
   value: text("value").notNull(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
 });
+
+export const MACHINE_STATUSES = ["pending", "active", "revoked"] as const;
+export type MachineStatus = (typeof MACHINE_STATUSES)[number];
+
+/** A computer running the runner daemon. Enrolled with a pairing code the owner confirms. */
+export const machines = sqliteTable(
+  "machines",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    status: text("status", { enum: MACHINE_STATUSES }).notNull().default("pending"),
+    /** Shown on the machine and in the app; the owner approves when they match. */
+    pairingCode: text("pairing_code").notNull(),
+    /** SHA-256 of the machine's secret (`lrn_…`), which only the runner knows. */
+    tokenHash: text("token_hash").notNull(),
+    tags: text("tags", { mode: "json" }).$type<string[]>().notNull(),
+    /** Names of the MCP servers installed on the machine. */
+    mcps: text("mcps", { mode: "json" }).$type<string[]>().notNull(),
+    /** How many runs it takes at once. */
+    capacity: integer("capacity").notNull().default(2),
+    version: text("version"),
+    lastSeenAt: integer("last_seen_at", { mode: "number" }),
+    approvedAt: integer("approved_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("machines_token_idx").on(t.tokenHash)],
+);
+
+export const RUN_KINDS = ["decision", "work"] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
+export const RUN_STATUSES = [
+  "queued",
+  "running",
+  "needs_input",
+  "completed",
+  "failed",
+  "stopped",
+  "canceled",
+] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+
+/**
+ * One agent wake on a runner: a short decision ("what, if anything, do I do about this?")
+ * or a work session. The hub queues it, a machine claims it and streams its transcript back.
+ */
+export const runs = sqliteTable(
+  "runs",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind", { enum: RUN_KINDS }).notNull(),
+    status: text("status", { enum: RUN_STATUSES }).notNull().default("queued"),
+    issueId: text("issue_id"),
+    /** What woke the agent: notification ids and types, or the decision that started the work. */
+    trigger: text("trigger", { mode: "json" }).$type<Record<string, unknown>>(),
+    goal: text("goal"),
+    /** small, standard or top. */
+    modelTier: text("model_tier").notNull().default("standard"),
+    /** Not before this time (a `wait_until` decision). */
+    notBefore: integer("not_before", { mode: "number" }),
+    machineId: text("machine_id"),
+    /** The Agent SDK session, to resume on the same machine after needs-input. */
+    sessionId: text("session_id"),
+    resumeOfRunId: text("resume_of_run_id"),
+    result: text("result", { mode: "json" }).$type<Record<string, unknown>>(),
+    error: text("error"),
+    stopRequestedAt: integer("stop_requested_at", { mode: "number" }),
+    stopReason: text("stop_reason"),
+    stoppedById: text("stopped_by_id"),
+    /** A request for approval the run is waiting on. */
+    waitingOnRequestId: text("waiting_on_request_id"),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    numTurns: integer("num_turns").notNull().default(0),
+    logCount: integer("log_count").notNull().default(0),
+    startedAt: integer("started_at", { mode: "number" }),
+    heartbeatAt: integer("heartbeat_at", { mode: "number" }),
+    endedAt: integer("ended_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [
+    index("runs_status_idx").on(t.status, t.createdAt),
+    index("runs_agent_idx").on(t.agentId, t.createdAt),
+    index("runs_issue_idx").on(t.issueId, t.createdAt),
+  ],
+);
+
+/**
+ * A run's transcript, in batches: each row holds the events one upload carried, so a busy
+ * run costs a write per batch rather than per message.
+ */
+export const runLogs = sqliteTable(
+  "run_logs",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id").notNull(),
+    seq: integer("seq").notNull(),
+    events: text("events", { mode: "json" }).$type<unknown[]>().notNull(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (t) => [uniqueIndex("run_logs_run_seq_idx").on(t.runId, t.seq)],
+);

@@ -1263,6 +1263,8 @@ export function hubContract(
           id: string;
           kind: string;
           modelTier: string;
+          model: string;
+          effort: string;
           sessionId: string | null;
           issue: string;
         };
@@ -1279,7 +1281,14 @@ export function hubContract(
       const decision = await runner<Claim>("/claim", machine.token, {});
       expect(decision.status).toBe(200);
       expect(decision.body).toMatchObject({
-        run: { kind: "decision", modelTier: "small", issue: issue?.identifier },
+        // The hub picks the model: decisions run on the small tier's pinned model.
+        run: {
+          kind: "decision",
+          modelTier: "small",
+          model: "claude-haiku-5-5",
+          effort: "low",
+          issue: issue?.identifier,
+        },
         agent: { name: "Coach" },
         mcpUrl: "http://localhost/mcp",
         input: { tools: false },
@@ -1302,7 +1311,7 @@ export function hubContract(
         {
           seq: 0,
           events: [{ type: "assistant", text: "Thinking about the plan" }],
-          usage: { inputTokens: 900, outputTokens: 40, numTurns: 1 },
+          usage: { inputTokens: 900, outputTokens: 40, numTurns: 1, costUsd: 0.0021 },
         },
       );
       expect(logged.body.stop).toBe(false);
@@ -1333,7 +1342,7 @@ export function hubContract(
 
       const work = await runner<Claim>("/claim", machine.token, {});
       expect(work.body).toMatchObject({
-        run: { kind: "work", modelTier: "standard" },
+        run: { kind: "work", modelTier: "standard", model: "claude-opus-5-5", effort: "medium" },
         input: { tools: true },
       });
       expect(work.body.input.prompt).toContain("Your goal: Draft the 12-week plan");
@@ -1470,12 +1479,20 @@ export function hubContract(
         { kind: "decision", status: "failed", stopReason: null, logCount: 1 },
       ]);
       const transcript = await gql<{
-        run: { logs: { seq: number; events: { text?: string }[] }[]; inputTokens: number };
-      }>("query($id: String!) { run(id: $id) { inputTokens logs { seq events } } }", {
-        id: decision.body.run.id,
-      });
+        run: {
+          logs: { seq: number; events: { text?: string }[] }[];
+          inputTokens: number;
+          costUsd: number;
+          routeRule: string;
+        };
+      }>(
+        "query($id: String!) { run(id: $id) { inputTokens costUsd routeRule logs { seq events } } }",
+        { id: decision.body.run.id },
+      );
       expect(transcript.data?.run).toEqual({
         inputTokens: 900,
+        costUsd: 0.0021,
+        routeRule: "decision",
         logs: [{ seq: 0, events: [{ type: "assistant", text: "Thinking about the plan" }] }],
       });
 
@@ -1503,6 +1520,111 @@ export function hubContract(
         status: "completed",
         result: { outcome: "done", summary: "Gym is open 6-22." },
       });
+
+      // Model routing: the owner pins each tier's model and routes labels; rules decide the rest.
+      const routing = await gql<{
+        organizationUpdate: { organization: { modelRouting: Record<string, unknown> } };
+      }>(
+        "mutation($r: JSONObject!) { organizationUpdate(input: { modelRouting: $r }) { organization { modelRouting } } }",
+        {
+          r: {
+            tiers: { standard: { model: "claude-sonnet-5-5", effort: "high" } },
+            labels: { Bills: "top" },
+          },
+        },
+      );
+      expect(routing.data?.organizationUpdate.organization.modelRouting).toEqual({
+        tiers: {
+          small: { model: "claude-haiku-5-5", effort: "low" },
+          standard: { model: "claude-sonnet-5-5", effort: "high" },
+          top: { model: "claude-opus-5-5", effort: "high" },
+        },
+        labels: { bills: "top" },
+      });
+      const badRouting = await gql(
+        "mutation($r: JSONObject!) { organizationUpdate(input: { modelRouting: $r }) { success } }",
+        { r: { tiers: { top: { model: "claude-opus-5-5", effort: "enormous" } } } },
+      );
+      expect(badRouting.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const inverted = await gql(
+        'mutation($id: String!) { userUpdate(id: $id, input: { modelFloor: "top", modelCeiling: "standard" }) { success } }',
+        { id: coachId },
+      );
+      expect(inverted.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const limited = await gql<{
+        userUpdate: { user: { modelFloor: string; modelCeiling: string; topRunsPerWeek: number } };
+      }>(
+        'mutation($id: String!) { userUpdate(id: $id, input: { modelCeiling: "standard", topRunsPerWeek: 1 }) { user { modelFloor modelCeiling topRunsPerWeek } } }',
+        { id: coachId },
+      );
+      expect(limited.data?.userUpdate.user).toEqual({
+        modelFloor: "small",
+        modelCeiling: "standard",
+        topRunsPerWeek: 1,
+      });
+      const billIssue = await gql<{ issueCreate: { issue: { id: string } } }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
+        { input: { teamId, title: "Check the gym invoice", labelIds: [labelId] } },
+      );
+      const billId = billIssue.data?.issueCreate.issue.id;
+      const startOn = (modelTier?: string) =>
+        gql<{ runCreate: { run: { model: string; effort: string; routeRule: string } } }>(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { model effort routeRule } } }",
+          { input: { agentId: coachId, issueId: billId, goal: "Check the invoice", modelTier } },
+        ).then((r) => r.data?.runCreate.run);
+      const finish = async (costUsd: number) => {
+        const claimed = await runner<Claim>("/claim", machine.token, {});
+        await runner(`/runs/${claimed.body.run.id}/complete`, machine.token, {
+          status: "completed",
+          result: { outcome: "done", summary: "Checked." },
+          usage: { inputTokens: 100, outputTokens: 10, costUsd },
+        });
+        return claimed.body.run;
+      };
+      // The Bills label asks for top; the agent's ceiling caps it at standard.
+      expect(await startOn()).toEqual({
+        model: "claude-sonnet-5-5",
+        effort: "high",
+        routeRule: "label:bills+ceiling",
+      });
+      expect(await finish(0.5)).toMatchObject({ model: "claude-sonnet-5-5", effort: "high" });
+      // The owner may overrule the agent's limits.
+      expect(await startOn("top")).toEqual({
+        model: "claude-opus-5-5",
+        effort: "high",
+        routeRule: "owner",
+      });
+      await finish(1.25);
+      // With the ceiling raised, the week's one top run is already spent.
+      await gql(
+        'mutation($id: String!) { userUpdate(id: $id, input: { modelCeiling: "top" }) { success } }',
+        { id: coachId },
+      );
+      expect(await startOn()).toEqual({
+        model: "claude-sonnet-5-5",
+        effort: "high",
+        routeRule: "label:bills+budget",
+      });
+      await finish(0.25);
+      const routes = await gql<{
+        insights: {
+          company: { costUsd: number };
+          routes: { model: string; routeRule: string; runs: number; costPerCompletedRun: number }[];
+        };
+      }>(
+        "{ insights(days: 1) { company { costUsd } routes { model routeRule runs costPerCompletedRun } } }",
+      );
+      expect(routes.data?.insights.company.costUsd).toBeGreaterThanOrEqual(2);
+      expect(routes.data?.insights.routes).toContainEqual({
+        model: "claude-opus-5-5",
+        routeRule: "owner",
+        runs: 1,
+        costPerCompletedRun: 1.25,
+      });
+      await gql(
+        "mutation($r: JSONObject!) { organizationUpdate(input: { modelRouting: $r }) { success } }",
+        { r: { tiers: {}, labels: {} } },
+      );
 
       await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
         id: machine.id,

@@ -40,6 +40,7 @@ import {
   type RunInput,
   workInput,
 } from "./prompts.js";
+import { loadRouting, routeRun } from "./routing.js";
 
 type RunRow = typeof runs.$inferSelect;
 type Machine = typeof machines.$inferSelect;
@@ -151,6 +152,7 @@ async function wake(
   if (!(await withinLimits(db, agentId, issueId, at))) return false;
 
   if (paused && isComment) {
+    const routed = await routeRun(db, { kind: "work", agentId, issueId, resumes: paused }, at);
     await commit(db, [
       db.update(runs).set({ status: "completed", updatedAt: at }).where(eq(runs.id, paused.id)),
       db.insert(runs).values({
@@ -159,7 +161,7 @@ async function wake(
         kind: "work",
         issueId,
         goal: paused.goal,
-        modelTier: paused.modelTier,
+        ...routed,
         trigger: { notes: [trigger] },
         resumeOfRunId: paused.id,
         sessionId: paused.sessionId,
@@ -192,7 +194,7 @@ async function wake(
       agentId,
       kind: "decision",
       issueId,
-      modelTier: "small",
+      ...(await routeRun(db, { kind: "decision", agentId, issueId }, at)),
       trigger: { notes: [trigger] },
       createdAt: at,
       updatedAt: at,
@@ -247,6 +249,9 @@ export interface ClaimedRun {
     id: string;
     kind: RunRow["kind"];
     modelTier: ModelTier;
+    /** The pinned model id and effort to run with. */
+    model: string;
+    effort: string;
     /** Resume this Agent SDK session (needs-input runs continue where they paused). */
     sessionId: string | null;
     issue: string | null;
@@ -338,6 +343,7 @@ async function prepare(db: HubDb, run: RunRow, machine: Machine, at: number): Pr
       id: run.id,
       kind: run.kind,
       modelTier: run.modelTier as ModelTier,
+      ...(await modelOf(db, run)),
       sessionId: run.resumeOfRunId ? run.sessionId : null,
       issue: issue ? await identifierOf(db, issue) : null,
       issueId: issue?.id ?? null,
@@ -347,6 +353,13 @@ async function prepare(db: HubDb, run: RunRow, machine: Machine, at: number): Pr
     input,
     mcpServers: serversForAgent(await listMcpServers(db, machine.id), agent.id),
   };
+}
+
+/** The run's model and effort; runs queued before routing existed take their tier's setting. */
+async function modelOf(db: HubDb, run: RunRow) {
+  if (run.model && run.effort) return { model: run.model, effort: run.effort };
+  const { tiers } = await loadRouting(db);
+  return tiers[run.modelTier as ModelTier] ?? tiers.standard;
 }
 
 async function machineRun(db: HubDb, machine: Machine, id: string) {
@@ -359,7 +372,7 @@ export interface LogUpload {
   seq: number;
   events: unknown[];
   sessionId?: string | null;
-  usage?: { inputTokens?: number; outputTokens?: number; numTurns?: number };
+  usage?: { inputTokens?: number; outputTokens?: number; numTurns?: number; costUsd?: number };
 }
 
 /** Stores a batch of transcript events; the answer says whether the run should stop. */
@@ -413,6 +426,9 @@ function usageSet(usage: LogUpload["usage"]) {
     ...(n(usage.inputTokens) !== undefined ? { inputTokens: n(usage.inputTokens) } : {}),
     ...(n(usage.outputTokens) !== undefined ? { outputTokens: n(usage.outputTokens) } : {}),
     ...(n(usage.numTurns) !== undefined ? { numTurns: n(usage.numTurns) } : {}),
+    ...(typeof usage.costUsd === "number" && usage.costUsd >= 0 && usage.costUsd < 10_000
+      ? { costUsd: usage.costUsd }
+      : {}),
   };
 }
 
@@ -588,6 +604,16 @@ async function applyDecision(ctx: Ctx, run: RunRow, decision: Decision) {
           .get();
         if (busy) return;
       }
+      const routed = await routeRun(
+        db,
+        {
+          kind: later ? "decision" : "work",
+          agentId: run.agentId,
+          issueId: run.issueId,
+          requestedTier: decision.modelTier ?? null,
+        },
+        now,
+      );
       await commit(db, [
         db.insert(runs).values({
           id: newId(),
@@ -595,7 +621,7 @@ async function applyDecision(ctx: Ctx, run: RunRow, decision: Decision) {
           kind: later ? "decision" : "work",
           issueId: run.issueId,
           goal: later ? null : (decision.goal ?? null),
-          modelTier: later ? "small" : (decision.modelTier ?? "standard"),
+          ...routed,
           notBefore: later ? Date.parse(decision.until ?? "") : null,
           trigger: later ? { notes: [{ type: "wake" }] } : { decisionRunId: run.id, notes },
           createdAt: now,
@@ -606,6 +632,7 @@ async function applyDecision(ctx: Ctx, run: RunRow, decision: Decision) {
           [
             event(ctx, later ? "run.schedule" : "run.queue", "run", run.id, {
               action: decision.action,
+              ...(later ? {} : { route: routed }),
             }),
           ],
           now,

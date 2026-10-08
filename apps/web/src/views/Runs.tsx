@@ -205,6 +205,10 @@ interface RunDetail extends RunSummary {
   error: string | null;
   stopReason: string | null;
   numTurns: number;
+  model: string | null;
+  effort: string | null;
+  routeRule: string | null;
+  costUsd: number;
   machine: { id: string; name: string } | null;
   stoppedBy: { name: string } | null;
   logs: { seq: number; events: TranscriptEvent[] }[];
@@ -225,7 +229,7 @@ type TranscriptEvent = {
 };
 
 const RUN_DETAIL = `query($id: String!) { run(id: $id) {
-  ${RUN_SUMMARY} trigger result error stopReason numTurns
+  ${RUN_SUMMARY} trigger result error stopReason numTurns model effort routeRule costUsd
   machine { id name } stoppedBy { name }
   logs { seq events }
 } }`;
@@ -357,11 +361,15 @@ export function RunPage({ id }: { id: string }) {
           <dt className="text-faint">Machine</dt>
           <dd className="text-muted">{run.machine?.name ?? "Not picked up yet"}</dd>
           <dt className="text-faint">Model</dt>
-          <dd className="text-muted">{run.modelTier}</dd>
+          <dd className="text-muted">
+            {run.model ? `${run.model} · ${run.effort ?? "default"} effort` : run.modelTier}
+            {run.routeRule && <span className="text-faint"> · {run.routeRule}</span>}
+          </dd>
           <dt className="text-faint">Usage</dt>
           <dd className="text-muted">
             {tokens(run.inputTokens)} in · {tokens(run.outputTokens)} out
             {run.numTurns ? ` · ${run.numTurns} turns` : ""}
+            {run.costUsd ? ` · $${run.costUsd.toFixed(3)} at API prices` : ""}
           </dd>
           <dt className="text-faint">Started</dt>
           <dd className="text-muted">

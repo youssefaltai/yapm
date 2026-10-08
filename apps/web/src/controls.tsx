@@ -82,7 +82,7 @@ export function Popover({
         role="dialog"
         aria-label={label}
         style={style}
-        className="popover fixed max-h-[min(360px,70vh)] max-w-[calc(100vw-16px)] overflow-hidden rounded-lg border border-line bg-panel text-[13px] shadow-2xl"
+        className="fixed animate-pop-in max-h-[min(360px,70vh)] max-w-[calc(100vw-16px)] overflow-hidden rounded-lg border border-line bg-panel text-[13px] shadow-2xl"
       >
         {children}
       </div>
@@ -852,7 +852,7 @@ export function TooltipHost() {
       ref={ref}
       role="tooltip"
       style={pos ?? { visibility: "hidden", top: 0, left: 0 }}
-      className="tooltip pointer-events-none fixed z-[70] max-w-xs rounded-md border border-line bg-raised px-2 py-1 text-[12px] text-ink shadow-lg"
+      className="pointer-events-none animate-fade-in fixed z-[70] max-w-xs rounded-md border border-line bg-raised px-2 py-1 text-[12px] text-ink shadow-lg"
     >
       {tip.text}
     </div>,

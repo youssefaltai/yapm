@@ -2,4 +2,4 @@ export { API_TOKEN_PREFIX, createApiToken, ownerExists, SESSION_COOKIE } from ".
 export type { HubConfig, HubDeps, User, Viewer } from "./context.js";
 export type { HubDb } from "./db.js";
 export { createHub, type Hub } from "./hub.js";
-export { DEFAULT_LABELS, DEFAULT_STATES, DEFAULT_TEAMS, seedCompany } from "./seed.js";
+export { DEFAULT_STATES, seedCompany } from "./seed.js";

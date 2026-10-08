@@ -8,6 +8,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     // The hub serves the app in production; in development Vite proxies to it.
-    proxy: { "/api": hub, "/graphql": hub },
+    proxy: { "/api": { target: hub, ws: true }, "/graphql": hub },
   },
 });

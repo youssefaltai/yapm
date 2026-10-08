@@ -1,10 +1,11 @@
 import { createYoga } from "graphql-yoga";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { authRoutes, resolveViewer } from "./auth.js";
+import { authRoutes, relyingParty, resolveViewer } from "./auth.js";
 import type { HubDeps, HubEnv } from "./context.js";
 import { type GraphQLContext, schema } from "./graphql/schema.js";
 import { createLoaders } from "./loaders.js";
+import { CLIENT_ID_HEADER } from "./realtime.js";
 
 /**
  * The hub's HTTP surface, independent of where it runs. Platform adapters
@@ -34,8 +35,29 @@ export function createHub(deps: HubDeps) {
 
   app.route("/api", authRoutes);
 
+  /** Live updates: a WebSocket that says "something changed" after every mutation. */
+  app.get("/api/live", (c) => {
+    const viewer = c.var.viewer;
+    if (!viewer) throw new HTTPException(401, { message: "Not signed in" });
+    // Browsers send cookies on WebSocket handshakes, so check the origin like any cookie write.
+    const origin = c.req.header("origin");
+    if (viewer.via === "session" && origin && origin !== relyingParty(c).origin) {
+      throw new HTTPException(403, { message: "Cross-origin request refused" });
+    }
+    if (!deps.realtime) throw new HTTPException(501, { message: "Live updates are not available" });
+    if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
+      throw new HTTPException(426, { message: "Expected a WebSocket upgrade" });
+    }
+    return deps.realtime.connect(c);
+  });
+
   app.on(["GET", "POST"], "/graphql", (c) =>
-    yoga.fetch(c.req.raw, { deps, viewer: c.var.viewer, loaders: createLoaders(deps.db) }),
+    yoga.fetch(c.req.raw, {
+      deps,
+      viewer: c.var.viewer,
+      loaders: createLoaders(deps.db),
+      clientId: c.req.header(CLIENT_ID_HEADER) ?? null,
+    }),
   );
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));

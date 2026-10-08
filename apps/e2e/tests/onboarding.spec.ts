@@ -527,6 +527,43 @@ test.describe
       expect((await mcp("get_metrics", { member: "me" })).current.runs).toBeGreaterThan(0);
     });
 
+    test("watches the Claude plan's limits and what agents used", async () => {
+      const resetsAt = Date.now() + 2 * 3_600_000;
+      await page.request.post("/api/runner/heartbeat", {
+        headers: { authorization: `Bearer ${machineToken}` },
+        data: {
+          runIds: [],
+          claudeAccount: { email: "owner@example.com", subscriptionType: "max" },
+          planUsage: {
+            observedAt: Date.now(),
+            source: "usage",
+            available: true,
+            limits: [
+              { kind: "five_hour", label: "Current session (5 hours)", utilization: 42, resetsAt },
+              { kind: "seven_day", label: "This week, all models", utilization: 85, resetsAt },
+            ],
+          },
+        },
+      });
+      await page.getByRole("link", { name: "Usage" }).click();
+      const plan = page.getByRole("region", { name: "owner@example.com" });
+      await expect(plan.getByText("Max plan")).toBeVisible();
+      await expect(plan.getByRole("meter", { name: "Current session (5 hours)" })).toHaveAttribute(
+        "aria-valuenow",
+        "42",
+      );
+      await expect(plan.getByText("Near the limit")).toBeVisible();
+      await expect(plan.getByText("Used by MacBook")).toBeVisible();
+      await page.getByRole("tab", { name: "Runs" }).click();
+      await expect(page.getByRole("row", { name: /Ada/ })).toBeVisible();
+      await page.getByRole("tab", { name: "Machine" }).click();
+      await expect(page.getByRole("row", { name: /MacBook/ })).toBeVisible();
+      await page.goto("/machines");
+      await expect(
+        page.getByText("owner@example.com · max · session 42% · week 85%"),
+      ).toBeVisible();
+    });
+
     test("adds an MCP server to a machine and connects it", async () => {
       await page.goto("/machines");
       const servers = page.getByRole("region", { name: "MCP servers on MacBook" });

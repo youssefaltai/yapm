@@ -5,6 +5,7 @@ import {
   createIssueStore,
   cycleMenu,
   estimateMenu,
+  issueContextMenu,
   labelsMenu,
   priorityMenu,
   projectMenu,
@@ -12,6 +13,7 @@ import {
   targetStore,
   workspaceStore,
 } from "../actions.js";
+import { openContextMenu } from "../contextMenu.js";
 import { promptDialog } from "../controls.js";
 import {
   ISSUE_FIELDS,
@@ -210,6 +212,11 @@ export function IssuesView({
       else next.add(id);
       return next;
     });
+  // Right-clicking a selected issue acts on the whole selection, like Linear; any other, on just it.
+  const onContextMenu = (issue: Issue) => (event: React.MouseEvent) => {
+    setFocusedId(issue.id);
+    openContextMenu(event, issueContextMenu(selected.has(issue.id) ? selectedIssues : [issue]));
+  };
   const withTargets = (menu: (issues: Issue[]) => MenuSpec | undefined) => () => {
     const spec = targets.length ? menu(targets) : undefined;
     if (spec) openMenu(spec);
@@ -329,6 +336,7 @@ export function IssuesView({
                     selected={selected.has(issue.id)}
                     onFocus={() => setFocusedId(issue.id)}
                     onToggle={() => toggle(issue.id)}
+                    onContextMenu={onContextMenu(issue)}
                     showTeam={!team}
                     triage={issue.state.type === "triage" ? team : null}
                   />
@@ -346,6 +354,7 @@ export function IssuesView({
           selected={selected}
           onFocus={setFocusedId}
           onToggle={toggle}
+          onContextMenu={onContextMenu}
         />
       )}
       {selected.size > 0 && (
@@ -467,6 +476,7 @@ function IssueRow({
   selected,
   onFocus,
   onToggle,
+  onContextMenu,
   showTeam,
   triage,
 }: {
@@ -475,6 +485,7 @@ function IssueRow({
   selected: boolean;
   onFocus: () => void;
   onToggle: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
   showTeam: boolean;
   /** The team, when the issue waits in its Triage. */
   triage: Team | null;
@@ -487,6 +498,7 @@ function IssueRow({
       role="button"
       tabIndex={-1}
       onMouseEnter={onFocus}
+      onContextMenu={onContextMenu}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) onToggle();
         else navigate(paths.issue(issue.identifier));
@@ -553,6 +565,7 @@ function Board({
   selected,
   onFocus,
   onToggle,
+  onContextMenu,
 }: {
   groups: Group[];
   source: IssueSource;
@@ -560,6 +573,7 @@ function Board({
   selected: Set<string>;
   onFocus: (id: string) => void;
   onToggle: (id: string) => void;
+  onContextMenu: (issue: Issue) => (event: React.MouseEvent) => void;
 }) {
   const [over, setOver] = useState<string | null>(null);
   const teams = useStore(workspaceStore)?.teams.nodes ?? [];
@@ -621,6 +635,7 @@ function Board({
                 selected={selected.has(issue.id)}
                 onFocus={() => onFocus(issue.id)}
                 onToggle={() => onToggle(issue.id)}
+                onContextMenu={onContextMenu(issue)}
               />
             ))}
           </div>
@@ -636,12 +651,14 @@ function BoardCard({
   selected,
   onFocus,
   onToggle,
+  onContextMenu,
 }: {
   issue: Issue;
   focused: boolean;
   selected: boolean;
   onFocus: () => void;
   onToggle: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
 }) {
   const due = issue.dueDate ? dueLabel(issue.dueDate) : null;
   const [dragging, setDragging] = useState(false);
@@ -657,6 +674,7 @@ function BoardCard({
       }}
       onDragEnd={() => setDragging(false)}
       onMouseEnter={onFocus}
+      onContextMenu={onContextMenu}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) onToggle();
         else navigate(paths.issue(issue.identifier));

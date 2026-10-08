@@ -209,6 +209,10 @@ const UserUpdateInput = builder.inputType("UserUpdateInput", {
     title: t.string({ required: false }),
     charter: t.string({ required: false }),
     managerId: t.string({ required: false }),
+    runnerTags: t.stringList({
+      required: false,
+      description: "Owner only: machines need all these tags to run this agent.",
+    }),
   }),
 });
 

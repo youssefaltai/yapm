@@ -3,6 +3,7 @@ import {
   grants,
   issues,
   requests,
+  runs,
   teamMemberships,
   teams,
   users,
@@ -174,6 +175,15 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
   const id = newId();
   const owner = await ownerId(db);
   await commit(db, [
+    // A run that asks shows as waiting on the answer.
+    ...(ctx.runId
+      ? [
+          db
+            .update(runs)
+            .set({ waitingOnRequestId: id, updatedAt: now })
+            .where(eq(runs.id, ctx.runId)),
+        ]
+      : []),
     db.insert(requests).values({
       id,
       requesterId: actor.id,
@@ -197,6 +207,14 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
     ),
   ]);
   return id;
+}
+
+/** The run that asked stops waiting once the request is answered. */
+function stopWaiting(db: HubDb, requestId: string, now: number): WriteOp {
+  return db
+    .update(runs)
+    .set({ waitingOnRequestId: null, updatedAt: now })
+    .where(eq(runs.waitingOnRequestId, requestId));
 }
 
 async function pendingRequest(ctx: Ctx, id: string) {
@@ -332,7 +350,7 @@ export async function approveRequest(
       },
     ]),
   );
-  await commit(db, [...ops, ...audit(db, events, now)]);
+  await commit(db, [...ops, stopWaiting(db, id, now), ...audit(db, events, now)]);
   return id;
 }
 
@@ -361,6 +379,7 @@ export async function rejectRequest(ctx: Ctx, id: string, reason: string): Promi
         data: { title: request.title, status: "rejected", reason: answer },
       },
     ]),
+    stopWaiting(db, id, now),
     ...audit(
       db,
       [
@@ -388,6 +407,7 @@ export async function cancelRequest(ctx: Ctx, id: string): Promise<string> {
     throw new ServiceError("CONFLICT", `This request was already ${request.status}`);
   await commit(db, [
     db.update(requests).set({ status: "canceled", updatedAt: now }).where(eq(requests.id, id)),
+    stopWaiting(db, id, now),
     ...audit(db, [event(ctx, "request.cancel", "request", id, { title: request.title })], now),
   ]);
   return id;
@@ -436,4 +456,35 @@ export async function revokeGrant(ctx: Ctx, id: string): Promise<string> {
     ),
   ]);
   return id;
+}
+
+/**
+ * Uses a permission now if the member has it (recording the use, or using up a one-time
+ * approval) and says so; never throws for a missing permission. Runners call this before
+ * each tool call that needs one.
+ */
+export async function usePermission(
+  ctx: Ctx,
+  action: string,
+  resource: string | null,
+): Promise<Permission> {
+  const { db, now } = ctx;
+  const permission = await checkPermission(db, ctx.actorId, action, resource);
+  if (!permission.allowed || permission.via === "owner") return permission;
+  const ops = await authorize(ctx, action, resource);
+  await commit(db, [
+    ...ops,
+    ...audit(
+      db,
+      [
+        event(ctx, "permission.use", "user", ctx.actorId, {
+          action,
+          resource,
+          via: permission.via,
+        }),
+      ],
+      now,
+    ),
+  ]);
+  return permission;
 }

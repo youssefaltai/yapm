@@ -7,6 +7,7 @@ import {
   labelsMenu,
   parentMenu,
   priorityMenu,
+  projectMenu,
   relationMenu,
   statusMenu,
   targetStore,
@@ -119,6 +120,7 @@ export function IssuePage({ identifier }: { identifier: string }) {
     a: open(assigneeMenu),
     l: open(labelsMenu),
     e: open(estimateMenu),
+    "shift+p": () => issue && void projectMenu([issue]).then(openMenu),
     Escape: () => issue && navigate(paths.team(issue.team.key)),
   });
 
@@ -343,6 +345,26 @@ function Properties({
           className={`w-full bg-transparent outline-none [color-scheme:dark] ${due?.overdue ? "text-red-400" : issue.dueDate ? "" : "text-faint"}`}
         />
       </label>
+      <PropertyLabel>Project</PropertyLabel>
+      <PropertyButton onClick={() => void projectMenu([issue]).then(openMenu)} hint="Shift+P">
+        {issue.project ? (
+          <>
+            <span
+              className="size-2.5 shrink-0 rounded-full"
+              style={{ background: issue.project.color }}
+              aria-hidden
+            />
+            <span className="truncate">
+              {issue.project.name}
+              {issue.projectMilestone && (
+                <span className="text-faint"> › {issue.projectMilestone.name}</span>
+              )}
+            </span>
+          </>
+        ) : (
+          <span className="text-faint">Add to project</span>
+        )}
+      </PropertyButton>
       <PropertyLabel>Parent</PropertyLabel>
       <PropertyButton onClick={open(parentMenu(issue))}>
         {issue.parent ? issue.parent.identifier : <span className="text-faint">Set parent</span>}

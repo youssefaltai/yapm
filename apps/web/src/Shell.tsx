@@ -8,12 +8,15 @@ import { Kbd, MenuHost, openMenu, useHotkeys } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
+import { DocumentPage, DocumentsView } from "./views/Documents.js";
 import { HireAgentHost } from "./views/HireAgent.js";
 import { InboxView, useUnreadCount } from "./views/Inbox.js";
+import { InitiativesView } from "./views/Initiatives.js";
 import { IssuePage } from "./views/IssuePage.js";
 import { IssuesView } from "./views/IssuesView.js";
 import { MachinesView } from "./views/Machines.js";
 import { MemberPage } from "./views/MemberPage.js";
+import { CreateProjectHost, ProjectPage, ProjectsView } from "./views/Projects.js";
 import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
 import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
 
@@ -83,6 +86,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       <CreateIssueHost />
       <CreateTeamHost />
       <HireAgentHost />
+      <CreateProjectHost />
       <MenuHost />
       <ToastHost />
     </div>
@@ -151,6 +155,16 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <RunPage key={route.id} id={route.id} />;
     case "machines":
       return <MachinesView />;
+    case "projects":
+      return <ProjectsView />;
+    case "project":
+      return <ProjectPage key={route.id} id={route.id} tab={route.tab} />;
+    case "initiatives":
+      return <InitiativesView />;
+    case "documents":
+      return <DocumentsView />;
+    case "document":
+      return <DocumentPage key={route.id} id={route.id} />;
     case "notFound":
       return <NotFound what="Page" />;
   }
@@ -240,6 +254,20 @@ function Sidebar({
               </span>
             )}
           </span>
+        </NavLink>
+        <NavLink
+          to={paths.projects()}
+          active={
+            route.name === "projects" || route.name === "project" || route.name === "initiatives"
+          }
+        >
+          Projects
+        </NavLink>
+        <NavLink
+          to={paths.documents()}
+          active={route.name === "documents" || route.name === "document"}
+        >
+          Documents
         </NavLink>
         <NavLink
           to={paths.runs()}

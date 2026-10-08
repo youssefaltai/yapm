@@ -6,6 +6,8 @@ import {
   labels,
   notifications,
   PRIORITY_LABELS,
+  projectMilestones,
+  projects,
   requests,
   teams,
   users,
@@ -42,13 +44,13 @@ export interface McpContext {
   act<T>(fn: (service: Ctx) => Promise<T>): Promise<T>;
 }
 
-type Args = Record<string, unknown>;
-const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+export type Args = Record<string, unknown>;
+export const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+export const num = (v: unknown) => (typeof v === "number" ? v : undefined);
 
 // Name resolution: agents say "Finance", "me", "In Progress" or "Bills", like they would in Linear's MCP.
 
-async function resolveTeam(c: McpContext, ref: string) {
+export async function resolveTeam(c: McpContext, ref: string) {
   const row = await c.db
     .select()
     .from(teams)
@@ -64,7 +66,7 @@ async function resolveTeam(c: McpContext, ref: string) {
   return row;
 }
 
-async function resolveUser(c: McpContext, ref: string) {
+export async function resolveUser(c: McpContext, ref: string) {
   if (ref.toLowerCase() === "me") return c.viewer;
   const row = await c.db
     .select()
@@ -119,7 +121,36 @@ async function resolveLabels(c: McpContext, teamId: string, refs: string[]) {
   });
 }
 
-async function requireIssue(c: McpContext, ref: string) {
+export async function resolveProject(c: McpContext, ref: string) {
+  const row = await c.db
+    .select()
+    .from(projects)
+    .where(or(eq(projects.id, ref), sql`lower(${projects.name}) = ${ref.toLowerCase()}`))
+    .get();
+  if (!row) throw new ToolError(`No project matches "${ref}". Use list_projects to see them.`);
+  return row;
+}
+
+export async function resolveMilestone(c: McpContext, ref: string, projectId: string | null) {
+  const rows = await c.db
+    .select()
+    .from(projectMilestones)
+    .where(
+      or(
+        eq(projectMilestones.id, ref),
+        sql`lower(${projectMilestones.name}) = ${ref.toLowerCase()}`,
+      ),
+    )
+    .all();
+  const row = rows.find((m) => m.id === ref) ?? rows.find((m) => m.projectId === projectId);
+  if (!row)
+    throw new ToolError(
+      `No milestone "${ref}"${projectId ? " in that project" : ""}. Use get_project to see them.`,
+    );
+  return row;
+}
+
+export async function requireIssue(c: McpContext, ref: string) {
   const issue = await findIssue(c.db, ref);
   if (!issue) throw new ToolError(`No issue matches "${ref}".`);
   return issue;
@@ -139,12 +170,14 @@ function priority(value: unknown): number | undefined {
 
 // Compact shapes for the model: names over ids where it helps, ids where it needs them.
 
-async function issueSummary(c: McpContext, issue: IssueRow) {
-  const [team, state, assignee, issueLabels] = await Promise.all([
+export async function issueSummary(c: McpContext, issue: IssueRow) {
+  const [team, state, assignee, issueLabels, project, milestone] = await Promise.all([
     c.loaders.team.load(issue.teamId),
     c.loaders.state.load(issue.stateId),
     issue.assigneeId ? c.loaders.user.load(issue.assigneeId) : null,
     c.loaders.labelsByIssue.load(issue.id),
+    issue.projectId ? c.loaders.project.load(issue.projectId) : null,
+    issue.projectMilestoneId ? c.loaders.projectMilestone.load(issue.projectMilestoneId) : null,
   ]);
   const identifier = `${team?.key}-${issue.number}`;
   return {
@@ -160,6 +193,8 @@ async function issueSummary(c: McpContext, issue: IssueRow) {
     labels: issueLabels.map((l) => l.name),
     estimate: issue.estimate,
     dueDate: issue.dueDate,
+    project: project?.name ?? null,
+    milestone: milestone?.name ?? null,
     parentId: issue.parentId,
     createdAt: new Date(issue.createdAt).toISOString(),
     updatedAt: new Date(issue.updatedAt).toISOString(),
@@ -234,6 +269,11 @@ const issueFields = {
     description: "Parent issue id or identifier, for sub-issues",
   },
   dueDate: { type: ["string", "null"], description: "YYYY-MM-DD" },
+  project: { type: ["string", "null"], description: "Project name or id; null to remove" },
+  milestone: {
+    type: ["string", "null"],
+    description: "Milestone name (in the issue's project) or id; null to remove",
+  },
 } as const;
 
 async function issueInput(c: McpContext, args: Args, teamId: string) {
@@ -251,10 +291,20 @@ async function issueInput(c: McpContext, args: Args, teamId: string) {
   if (args.parentId !== undefined)
     input.parentId = args.parentId ? (await requireIssue(c, String(args.parentId))).id : null;
   if (args.dueDate !== undefined) input.dueDate = str(args.dueDate) ?? null;
+  if (args.project !== undefined)
+    input.projectId = args.project ? (await resolveProject(c, String(args.project))).id : null;
+  if (args.milestone !== undefined) {
+    const projectId =
+      (input.projectId as string | null | undefined) ??
+      (args.issueId ? (await requireIssue(c, String(args.issueId))).projectId : null);
+    input.projectMilestoneId = args.milestone
+      ? (await resolveMilestone(c, String(args.milestone), projectId ?? null)).id
+      : null;
+  }
   return input;
 }
 
-const limitArg = { type: "integer", description: "Maximum results (default 50, max 250)" };
+export const limitArg = { type: "integer", description: "Maximum results (default 50, max 250)" };
 
 /**
  * Tools named and shaped after Linear's official MCP server, so agents already know them,
@@ -593,7 +643,7 @@ export const tools: Tool<McpContext>[] = [
     name: "update_issue",
     title: "Update issue",
     description:
-      "Update an issue's title, description, status, assignee, priority, estimate, labels, parent or due date.",
+      "Update an issue's title, description, status, assignee, priority, estimate, labels, parent, due date, project or milestone.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "Issue id or identifier" }, ...issueFields },
@@ -602,7 +652,7 @@ export const tools: Tool<McpContext>[] = [
     async run(args, c) {
       const issue = await requireIssue(c, String(args.id));
       const { id: _id, ...rest } = args;
-      const input = await issueInput(c, rest, issue.teamId);
+      const input = await issueInput(c, { ...rest, issueId: issue.id }, issue.teamId);
       await c.act((s) => updateIssue(s, issue.id, input));
       c.loaders.issue.clear(issue.id);
       c.loaders.labelsByIssue.clear(issue.id);

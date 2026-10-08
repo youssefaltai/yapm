@@ -34,7 +34,7 @@ import {
 } from "./types.js";
 
 /** Linear's mutation payloads: `{ success, <entity> }`. */
-function payload<T>(name: string, field: string, type: ObjectRef<Types, T>) {
+export function payload<T>(name: string, field: string, type: ObjectRef<Types, T>) {
   return builder.objectRef<{ entity: T }>(name).implement({
     fields: (t) => ({
       success: t.boolean({ resolve: () => true }),
@@ -70,7 +70,7 @@ const IssueArchivePayload = builder
     }),
   });
 
-const DeletePayload = builder.objectRef<{ entityId: string }>("DeletePayload").implement({
+export const DeletePayload = builder.objectRef<{ entityId: string }>("DeletePayload").implement({
   fields: (t) => ({
     success: t.boolean({ resolve: () => true }),
     entityId: t.exposeString("entityId"),
@@ -123,6 +123,8 @@ const IssueCreateInput = builder.inputType("IssueCreateInput", {
     dueDate: t.field({ type: "TimelessDate", required: false }),
     labelIds: t.stringList({ required: false }),
     sortOrder: t.float({ required: false }),
+    projectId: t.string({ required: false }),
+    projectMilestoneId: t.string({ required: false }),
   }),
 });
 
@@ -140,6 +142,11 @@ const IssueUpdateInput = builder.inputType("IssueUpdateInput", {
     labelIds: t.stringList({ required: false, description: "Replaces all labels." }),
     addedLabelIds: t.stringList({ required: false }),
     removedLabelIds: t.stringList({ required: false }),
+    projectId: t.string({
+      required: false,
+      description: "Null removes the issue from its project.",
+    }),
+    projectMilestoneId: t.string({ required: false, description: "Also sets the project." }),
   }),
 });
 

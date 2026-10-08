@@ -297,6 +297,46 @@ test.describe
       await expect(page.getByText("Stopped by Youssef: Wait until payday")).toBeVisible();
     });
 
+    test("plans a project with milestones, updates and a document", async () => {
+      await page.getByRole("link", { name: "Projects" }).click();
+      await page.getByRole("button", { name: "New project" }).click();
+      const dialog = page.getByRole("dialog", { name: "New project" });
+      await dialog.getByLabel("Name").fill("Pay off the car");
+      await dialog.getByLabel("Summary").fill("Owe nothing on the car by spring");
+      await dialog.getByLabel("Lead").selectOption({ label: "Ada" });
+      await dialog.getByRole("button", { name: "Create project" }).click();
+      await expect(page.getByLabel("Project name")).toHaveValue("Pay off the car");
+
+      await page.getByLabel("New milestone").fill("Half paid");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByText("Half paid")).toBeVisible();
+
+      // Ada reports on it over MCP; the owner sees it in the Inbox and on the project.
+      const update = await mcp("create_project_update", {
+        project: "Pay off the car",
+        body: "Two extra payments **sent**.",
+        health: "atRisk",
+      });
+      expect(update.project).toBe("Pay off the car");
+      await expect(page.getByText("Two extra payments sent.").first()).toBeVisible();
+      await expect(page.getByText("At risk").first()).toBeVisible();
+
+      await page.getByRole("button", { name: "+ New document" }).click();
+      await page.getByLabel("Document title").fill("Payment plan");
+      await page.getByLabel("Content").fill("# Plan\n- Pay **200** extra a month");
+      await page.getByRole("button", { name: "Done" }).click();
+      await expect(page.getByRole("heading", { name: "Plan" })).toBeVisible();
+      await expect(page.locator(".markdown strong")).toHaveText("200");
+      await page.waitForTimeout(1000);
+      const doc = await mcp("list_documents", { query: "payment" });
+      expect(doc.documents[0]).toMatchObject({ title: "Payment plan", project: "Pay off the car" });
+
+      await page.getByRole("link", { name: /Inbox/ }).click();
+      await expect(
+        page.getByRole("button", { name: /Pay off the car.*Ada posted an update/ }),
+      ).toBeVisible();
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

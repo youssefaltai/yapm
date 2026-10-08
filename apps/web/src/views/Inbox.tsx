@@ -4,6 +4,7 @@ import { usePushState } from "../push.js";
 import { navigate, paths } from "../router.js";
 import { Avatar, timeAgo } from "../ui.js";
 import { IssuePage } from "./IssuePage.js";
+import { ProjectPage } from "./Projects.js";
 import { RequestPage } from "./Requests.js";
 
 type NotificationType =
@@ -14,7 +15,8 @@ type NotificationType =
   | "issueNewComment"
   | "issueStatusChanged"
   | "requestCreated"
-  | "requestAnswered";
+  | "requestAnswered"
+  | "projectUpdateCreated";
 
 interface Notification {
   id: string;
@@ -26,6 +28,8 @@ interface Notification {
   issue: { identifier: string; title: string } | null;
   comment: { body: string } | null;
   request: { id: string; title: string; status: string } | null;
+  project: { id: string; name: string } | null;
+  projectUpdate: { body: string; health: string } | null;
 }
 
 const INBOX_QUERY = `{ notifications(first: 100) { nodes {
@@ -34,6 +38,8 @@ const INBOX_QUERY = `{ notifications(first: 100) { nodes {
   issue { identifier title }
   comment { body }
   request { id title status }
+  project { id name }
+  projectUpdate { body health }
 } } }`;
 
 /** Unread notifications, for the sidebar. */
@@ -63,6 +69,8 @@ function describe(n: Notification): string {
       return n.data?.status === "rejected"
         ? `${who} rejected your request: ${String(n.data?.reason ?? "")}`
         : `${who} approved your request${n.data?.always ? " for good" : ""}`;
+    case "projectUpdateCreated":
+      return `${who} posted an update: ${snippet(n.projectUpdate?.body)}`;
   }
 }
 
@@ -74,6 +82,7 @@ function snippet(body: string | undefined) {
 function heading(n: Notification) {
   if (n.request) return n.request.title;
   if (n.issue) return n.issue.title;
+  if (n.project) return n.project.name;
   return "Notification";
 }
 
@@ -89,12 +98,13 @@ export function InboxView() {
         "mutation($id: String!, $at: DateTime) { notificationUpdate(id: $id, input: { readAt: $at }) { success } }",
         { id: n.id, at: new Date().toISOString() },
       );
-    if (window.matchMedia("(min-width: 768px)").matches) {
+    if (window.matchMedia("(min-width: 768px)").matches && (n.request || n.issue)) {
       setSelected(n.id);
       return;
     }
     if (n.request) navigate(paths.request(n.request.id));
     else if (n.issue) navigate(paths.issue(n.issue.identifier));
+    else if (n.project) navigate(paths.project(n.project.id));
   }
 
   return (
@@ -178,7 +188,9 @@ export function InboxView() {
         </div>
       </section>
       <section className="hidden min-w-0 flex-1 md:block">
-        {current?.request ? (
+        {current?.project && !current.issue && !current.request ? (
+          <ProjectPage key={current.project.id} id={current.project.id} tab="overview" />
+        ) : current?.request ? (
           <RequestPage key={current.request.id} id={current.request.id} />
         ) : current?.issue ? (
           <IssuePage key={current.issue.identifier} identifier={current.issue.identifier} />

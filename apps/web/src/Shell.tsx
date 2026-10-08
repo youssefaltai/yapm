@@ -1,5 +1,11 @@
 import { type ReactNode, useEffect, useState } from "react";
-import { commandPalette, createIssueStore, createTeamStore, workspaceStore } from "./actions.js";
+import {
+  commandPalette,
+  createIssueStore,
+  createTeamStore,
+  shortcutsStore,
+  workspaceStore,
+} from "./actions.js";
 import type { Viewer } from "./api.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { useLiveUpdates } from "./live.js";
@@ -24,6 +30,7 @@ import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js"
 import { RoadmapView } from "./views/Roadmap.js";
 import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
 import { ViewPage } from "./views/SavedView.js";
+import { ShortcutsHost } from "./views/Shortcuts.js";
 import { TeamSettings } from "./views/TeamSettings.js";
 
 export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => void }) {
@@ -54,6 +61,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
   const currentTeam = teamFor(workspace ?? null, route);
   useHotkeys({
     "mod+k": () => openMenu(commandPalette()),
+    "?": () => shortcutsStore.set(true),
     c: () => createIssueStore.set(currentTeam ? { teamId: currentTeam.id } : {}),
   });
 
@@ -102,6 +110,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       <CreateIssueHost />
       <CreateTeamHost />
       <HireAgentHost />
+      <ShortcutsHost />
       <CreateProjectHost />
       <MenuHost />
       <ToastHost />

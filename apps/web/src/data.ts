@@ -41,6 +41,30 @@ export interface Team {
   cycleStartDay: number;
   cycleCooldownTime: number;
   upcomingCycleCount: number;
+  templates: IssueTemplate[];
+}
+
+export interface Schedule {
+  frequency: "daily" | "weekdays" | "weekly" | "monthly";
+  time: string;
+  weekday: number | null;
+  monthDay: number | null;
+  description?: string;
+}
+
+export interface IssueTemplate {
+  id: string;
+  name: string;
+  templateData: {
+    title?: string;
+    description?: string;
+    priority?: number;
+    assigneeId?: string;
+    labelIds?: string[];
+    stateId?: string;
+  };
+  schedule: Schedule | null;
+  nextRunAt: string | null;
 }
 
 export interface SavedView {
@@ -71,6 +95,7 @@ export const WORKSPACE_QUERY = `{
       states { nodes { id name type color position } }
       labels { nodes { id name color } }
       triageEnabled cyclesEnabled cycleDuration cycleStartDay cycleCooldownTime upcomingCycleCount
+      templates { id name templateData nextRunAt schedule { frequency time weekday monthDay description } }
     }
   }
   users { nodes { id name kind title isMe manager { id } } }

@@ -30,7 +30,7 @@ const deps: HubDeps = {
 };
 const app = createNodeApp(deps, webDir);
 
-// The scheduler: cycles, rituals and other time-based work, once a minute.
+// The scheduler: cycles, recurring issues and other time-based work, once a minute.
 const runTick = () => tick(deps).catch((error) => console.error("Scheduler tick failed", error));
 setInterval(runTick, 60_000).unref();
 void runTick();

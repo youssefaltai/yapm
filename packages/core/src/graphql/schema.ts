@@ -8,6 +8,7 @@ import "./push.js";
 import "./runs.js";
 import "./projects.js";
 import "./cycles.js";
+import "./templates.js";
 
 export type { GraphQLContext } from "./builder.js";
 

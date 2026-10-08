@@ -5,7 +5,7 @@ import {
   createTeamStore,
   workspaceStore,
 } from "../actions.js";
-import { mutate, PRIORITIES, toast } from "../data.js";
+import { type IssueTemplate, mutate, PRIORITIES, type Schedule, toast } from "../data.js";
 import { navigate, paths } from "../router.js";
 import {
   Avatar,
@@ -42,13 +42,38 @@ function CreateIssue({
     () => defaults.teamId ?? teams.find((t) => t.id === lastTeamId)?.id ?? teams[0]?.id ?? "",
   );
   const team = teams.find((t) => t.id === teamId);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [stateId, setStateId] = useState<string | undefined>(defaults.stateId);
-  const [priority, setPriority] = useState(0);
-  const [assigneeId, setAssigneeId] = useState<string | null>(defaults.assigneeId ?? null);
-  const [labelIds, setLabelIds] = useState<string[]>([]);
+  // Editing a template uses the same form; a schedule makes it a recurring issue.
+  const editing = defaults.template && "id" in defaults.template ? defaults.template : null;
+  const templateMode = !!defaults.template;
+  const data = editing?.templateData ?? {};
+  const [name, setName] = useState(editing?.name ?? "");
+  const [schedule, setSchedule] = useState<Schedule | null>(
+    editing
+      ? editing.schedule
+      : defaults.template && "recurring" in defaults.template && defaults.template.recurring
+        ? { frequency: "weekdays", time: "09:00", weekday: 1, monthDay: 1 }
+        : null,
+  );
+  const [title, setTitle] = useState(data.title ?? "");
+  const [description, setDescription] = useState(data.description ?? "");
+  const [stateId, setStateId] = useState<string | undefined>(data.stateId ?? defaults.stateId);
+  const [priority, setPriority] = useState(data.priority ?? 0);
+  const [assigneeId, setAssigneeId] = useState<string | null>(
+    data.assigneeId ?? defaults.assigneeId ?? null,
+  );
+  const [labelIds, setLabelIds] = useState<string[]>(data.labelIds ?? []);
   const [busy, setBusy] = useState(false);
+
+  const applyTemplate = (t: IssueTemplate) => {
+    setTitle(
+      t.templateData.title?.replaceAll("{date}", new Date().toISOString().slice(0, 10)) ?? "",
+    );
+    setDescription(t.templateData.description ?? "");
+    setPriority(t.templateData.priority ?? 0);
+    setAssigneeId(t.templateData.assigneeId ?? null);
+    setLabelIds(t.templateData.labelIds ?? []);
+    if (t.templateData.stateId) setStateId(t.templateData.stateId);
+  };
 
   if (!team) {
     return (
@@ -79,7 +104,51 @@ function CreateIssue({
   const assignee = workspace?.users.nodes.find((u) => u.id === assigneeId);
   const labels = team.labels.nodes.filter((l) => labelIds.includes(l.id));
 
+  async function saveTemplate() {
+    if (!title.trim() || busy || !team) return;
+    setBusy(true);
+    const templateData = {
+      title,
+      description: description || null,
+      priority,
+      assigneeId,
+      labelIds,
+      ...(stateId ? { stateId } : {}),
+    };
+    const scheduleInput = schedule && {
+      frequency: schedule.frequency,
+      time: schedule.time,
+      ...(schedule.frequency === "weekly" ? { weekday: schedule.weekday ?? 1 } : {}),
+      ...(schedule.frequency === "monthly" ? { monthDay: schedule.monthDay ?? 1 } : {}),
+    };
+    const result = editing
+      ? await mutate(
+          "mutation($id: String!, $input: TemplateUpdateInput!) { templateUpdate(id: $id, input: $input) { success } }",
+          {
+            id: editing.id,
+            input: { name: name || title, templateData, schedule: scheduleInput },
+          },
+        )
+      : await mutate(
+          "mutation($input: TemplateCreateInput!) { templateCreate(input: $input) { success } }",
+          {
+            input: {
+              teamId: team.id,
+              name: name || title,
+              templateData,
+              ...(scheduleInput ? { schedule: scheduleInput } : {}),
+            },
+          },
+        );
+    setBusy(false);
+    if (result) {
+      toast(schedule ? "Recurring issue saved" : "Template saved");
+      onClose();
+    }
+  }
+
   async function submit() {
+    if (templateMode) return saveTemplate();
     if (!title.trim() || busy || !team) return;
     setBusy(true);
     const result = await mutate<{ issueCreate: { issue: { identifier: string } } }>(
@@ -115,7 +184,11 @@ function CreateIssue({
   const pick = (placeholder: string, items: MenuItem[]) => () => openMenu({ placeholder, items });
 
   return (
-    <Modal onClose={onClose} label="New issue" wide>
+    <Modal
+      onClose={onClose}
+      label={templateMode ? (schedule ? "Recurring issue" : "Template") : "New issue"}
+      wide
+    >
       <div className="flex items-center gap-2 px-4 pt-3 text-muted">
         <button
           type="button"
@@ -138,8 +211,44 @@ function CreateIssue({
           {team.key}
         </button>
         <span className="text-faint">›</span>
-        <span>{defaults.parentId ? "New sub-issue" : "New issue"}</span>
+        <span>
+          {templateMode
+            ? schedule
+              ? "Recurring issue"
+              : "Template"
+            : defaults.parentId
+              ? "New sub-issue"
+              : "New issue"}
+        </span>
+        {!templateMode && team.templates.length > 0 && (
+          <button
+            type="button"
+            onClick={pick(
+              "Use a template…",
+              team.templates.map((t) => ({
+                id: t.id,
+                label: t.name,
+                onSelect: () => applyTemplate(t),
+              })),
+            )}
+            className="ml-auto rounded-md px-2 py-0.5 text-[12px] hover:bg-raised"
+          >
+            Use template
+          </button>
+        )}
       </div>
+      {templateMode && (
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+          <input
+            aria-label="Template name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Template name (defaults to the title)"
+            className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2 py-1 outline-none focus:border-accent"
+          />
+          <ScheduleFields schedule={schedule} onChange={setSchedule} />
+        </div>
+      )}
       <div className="px-4 pt-3">
         <input
           // biome-ignore lint/a11y/noAutofocus: the dialog opens to type a title
@@ -153,7 +262,7 @@ function CreateIssue({
               void submit();
             }
           }}
-          placeholder="Issue title"
+          placeholder={templateMode ? "Issue title (use {date} for the day)" : "Issue title"}
           className="w-full bg-transparent text-lg font-medium outline-none placeholder:text-faint"
         />
         <textarea
@@ -260,7 +369,7 @@ function CreateIssue({
           onClick={() => void submit()}
           className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
         >
-          Create issue
+          {templateMode ? "Save" : "Create issue"}
         </button>
       </div>
     </Modal>
@@ -276,5 +385,90 @@ function Chip({ onClick, children }: { onClick: () => void; children: React.Reac
     >
       {children}
     </button>
+  );
+}
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const FREQUENCIES: { value: Schedule["frequency"] | "none"; label: string }[] = [
+  { value: "none", label: "Doesn't repeat" },
+  { value: "daily", label: "Every day" },
+  { value: "weekdays", label: "Weekdays" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+];
+
+const field =
+  "rounded-md border border-line bg-panel px-2 py-1 outline-none focus:border-accent [color-scheme:dark]";
+
+/** When a recurring issue repeats, in the company's time zone. */
+function ScheduleFields({
+  schedule,
+  onChange,
+}: {
+  schedule: Schedule | null;
+  onChange: (schedule: Schedule | null) => void;
+}) {
+  const set = (patch: Partial<Schedule>) => schedule && onChange({ ...schedule, ...patch });
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <select
+        aria-label="Repeats"
+        value={schedule?.frequency ?? "none"}
+        onChange={(e) => {
+          const value = e.target.value as Schedule["frequency"] | "none";
+          onChange(
+            value === "none"
+              ? null
+              : {
+                  frequency: value,
+                  time: schedule?.time ?? "09:00",
+                  weekday: schedule?.weekday ?? 1,
+                  monthDay: schedule?.monthDay ?? 1,
+                },
+          );
+        }}
+        className={field}
+      >
+        {FREQUENCIES.map((f) => (
+          <option key={f.value} value={f.value}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+      {schedule?.frequency === "weekly" && (
+        <select
+          aria-label="On day"
+          value={schedule.weekday ?? 1}
+          onChange={(e) => set({ weekday: Number(e.target.value) })}
+          className={field}
+        >
+          {DAYS.map((d, i) => (
+            <option key={d} value={i}>
+              {d}
+            </option>
+          ))}
+        </select>
+      )}
+      {schedule?.frequency === "monthly" && (
+        <input
+          type="number"
+          aria-label="Day of the month"
+          min={1}
+          max={31}
+          value={schedule.monthDay ?? 1}
+          onChange={(e) => set({ monthDay: Number(e.target.value) || 1 })}
+          className={`${field} w-16`}
+        />
+      )}
+      {schedule && (
+        <input
+          type="time"
+          aria-label="Time of day"
+          value={schedule.time}
+          onChange={(e) => set({ time: e.target.value || "09:00" })}
+          className={field}
+        />
+      )}
+    </span>
   );
 }

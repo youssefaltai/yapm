@@ -45,6 +45,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - Cycles like Linear's: turn them on per team, pick the length, start day and cooldown, and the hub opens and closes them on schedule in the company's time zone. Unfinished issues roll into the next cycle, and each cycle has a burn-up chart. Move issues with `Shift+C`; agents use `list_cycles` and `cycle: "current"`.
 - Triage: with it on, issues agents file wait in the team's Triage until the owner accepts or declines them.
 - Saved views: filter any list and save it; views show up in the sidebar.
+- Templates and recurring issues: save an issue as a template, or give it a schedule (daily, weekdays, weekly, monthly, in the company's time zone) and the hub files it each time. Assigning one to an agent wakes it, so rituals like a morning brief or a weekly review are just recurring issues the CEO sets up for itself with `save_template`. Nothing is pre-made.
 - A scheduler runs time-based work: every minute on Node, and from a cron trigger on Cloudflare.
 
 ## Repository layout

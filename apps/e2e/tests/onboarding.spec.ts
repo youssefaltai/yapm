@@ -388,6 +388,34 @@ test.describe
       ).toBeVisible();
     });
 
+    test("sets up a recurring issue and files issues from a template", async () => {
+      await page.getByRole("link", { name: /Personal Finance/ }).click();
+      await page.getByRole("link", { name: "Settings" }).click();
+      await page.getByRole("button", { name: "New recurring issue" }).click();
+      const editor = page.getByRole("dialog", { name: "Recurring issue" });
+      await editor.getByLabel("Issue title").fill("Review the budget {date}");
+      await editor.getByLabel("Repeats").selectOption({ label: "Weekly" });
+      await editor.getByLabel("On day").selectOption({ label: "Mon" });
+      await editor.getByLabel("Time of day").fill("18:30");
+      await editor.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByText("Mondays at 18:30")).toBeVisible();
+
+      await page.getByRole("button", { name: "New template" }).click();
+      const template = page.getByRole("dialog", { name: "Template" });
+      await template.getByLabel("Template name").fill("Bill to pay");
+      await template.getByLabel("Issue title").fill("Pay the ___ bill");
+      await template.getByLabel("Issue description").fill("Amount:\nDue:");
+      await template.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByRole("button", { name: /Bill to pay/ })).toBeVisible();
+
+      await page.keyboard.press("c");
+      await page.getByRole("button", { name: "Use template" }).click();
+      await page.getByRole("option", { name: "Bill to pay" }).click();
+      await expect(page.getByLabel("Issue title")).toHaveValue("Pay the ___ bill");
+      await expect(page.getByLabel("Issue description")).toHaveValue("Amount:\nDue:");
+      await page.keyboard.press("Escape");
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

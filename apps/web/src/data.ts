@@ -180,8 +180,14 @@ export function useQuery<T>(
     };
   }, [key, pollMs]);
 
+  // When the variables change (a new filter, another period), keep showing the last result until
+  // the new one lands, like Linear, rather than blanking the view; `stale` says it's outdated.
   const current = state.key === key;
-  return { data: current ? state.data : null, error: current ? state.error : null };
+  return {
+    data: key ? state.data : null,
+    error: current ? state.error : null,
+    stale: !current && state.data !== null,
+  };
 }
 
 /** Runs a mutation, then refreshes every view. Errors go to the shared toast. */

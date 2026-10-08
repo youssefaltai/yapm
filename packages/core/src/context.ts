@@ -31,6 +31,8 @@ export interface HubDeps {
 export interface Viewer {
   user: User;
   via: "session" | "token";
+  /** Set when the token was minted for one agent run; its changes are attributed to the run. */
+  runId?: string;
 }
 
 export type HubEnv = {

@@ -4,6 +4,7 @@ import type { HubDeps, Viewer } from "../context.js";
 import { ServiceError } from "../errors.js";
 import type { Loaders } from "../loaders.js";
 import { background, deliverPush } from "../push.js";
+import { dispatch } from "../runs/service.js";
 import type { Ctx } from "../services/common.js";
 
 export interface GraphQLContext {
@@ -78,11 +79,19 @@ export async function act<T>(ctx: GraphQLContext, fn: (service: Ctx) => Promise<
   const viewer = requireViewer(ctx);
   try {
     const at = now(ctx);
-    const service: Ctx = { db: ctx.deps.db, actorId: viewer.user.id, now: at };
+    const service: Ctx = {
+      db: ctx.deps.db,
+      actorId: viewer.user.id,
+      now: at,
+      ...(viewer.runId ? { runId: viewer.runId } : {}),
+    };
     const result = await fn(service);
     await announce(ctx, viewer.user.id, at);
-    if (service.notified && ctx.origin)
-      background(ctx.waitUntil, deliverPush(ctx.deps, at, ctx.origin));
+    if (service.notified) {
+      // Wake agents the change concerns, and tell the owner's phone.
+      await dispatch(ctx.deps, at);
+      if (ctx.origin) background(ctx.waitUntil, deliverPush(ctx.deps, at, ctx.origin));
+    }
     return result;
   } catch (error) {
     if (error instanceof ServiceError) {

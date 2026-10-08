@@ -5,6 +5,7 @@ import type { HubEnv } from "../context.js";
 import { createLoaders } from "../loaders.js";
 import { background, deliverPush, waitUntilOf } from "../push.js";
 import { CLIENT_ID_HEADER } from "../realtime.js";
+import { dispatch } from "../runs/service.js";
 import type { Ctx } from "../services/common.js";
 import { handleMessage } from "./protocol.js";
 import { type McpContext, tools } from "./tools.js";
@@ -42,9 +43,17 @@ export async function mcpHandler(c: Context<HubEnv>) {
     appUrl,
     async act(fn) {
       const at = deps.now?.() ?? Date.now();
-      const service: Ctx = { db: deps.db, actorId: viewer.user.id, now: at };
+      const service: Ctx = {
+        db: deps.db,
+        actorId: viewer.user.id,
+        now: at,
+        ...(viewer.runId ? { runId: viewer.runId } : {}),
+      };
       const result = await fn(service);
-      if (service.notified) background(waitUntil, deliverPush(deps, at, appUrl));
+      if (service.notified) {
+        await dispatch(deps, at);
+        background(waitUntil, deliverPush(deps, at, appUrl));
+      }
       // Later reads in the same call must see the change.
       for (const loader of Object.values(loaders)) loader.clearAll();
       try {

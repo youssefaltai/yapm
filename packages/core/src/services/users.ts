@@ -5,6 +5,7 @@ import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { forbidden, notFound, ServiceError } from "../errors.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import { cleanTags } from "./machines.js";
 import { authorize } from "./requests.js";
 
 export interface AgentHireInput {
@@ -20,6 +21,7 @@ export interface UserUpdateInput {
   title?: string | null;
   charter?: string | null;
   managerId?: string | null;
+  runnerTags?: string[] | null;
 }
 
 async function actor(ctx: Ctx) {
@@ -109,6 +111,12 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
       throw new ServiceError("BAD_REQUEST", "The owner reports to no one");
     if (input.managerId) await checkManager(db, id, input.managerId);
     next.managerId = input.managerId;
+  }
+  if (input.runnerTags != null) {
+    if ((await actor(ctx)).kind !== "owner")
+      throw forbidden("Only the owner decides where agents run");
+    if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on machines");
+    next.runnerTags = cleanTags(input.runnerTags, "Runner tags");
   }
   const { charter } = input;
   const diff = changes(user, next);

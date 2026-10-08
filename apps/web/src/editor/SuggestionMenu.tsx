@@ -70,7 +70,7 @@ const SuggestionList = forwardRef<MenuHandle, MenuProps>(function SuggestionList
     <div
       ref={listRef}
       role="listbox"
-      className="max-h-80 w-64 overflow-y-auto rounded-lg border border-line bg-panel p-1 text-[13px] shadow-2xl"
+      className="max-h-80 w-64 origin-top-left animate-pop-in overflow-y-auto rounded-lg border border-line bg-panel p-1 text-[13px] shadow-2xl"
     >
       {!items.length && <p className="px-2 py-1.5 text-faint">Searching…</p>}
       {items.map((item, index) => {

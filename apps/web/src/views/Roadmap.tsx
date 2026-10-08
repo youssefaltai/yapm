@@ -142,7 +142,7 @@ export function RoadmapView() {
                             }}
                           >
                             <span
-                              className="block h-full"
+                              className="block h-full animate-grow-x transition-[width] duration-500 ease-snappy"
                               style={{
                                 width: `${Math.round(p.progress.progress * 100)}%`,
                                 background: `${p.color}88`,

@@ -142,7 +142,7 @@ export function InboxView() {
           )}
           <ul aria-label="Notifications">
             {items.map((n) => (
-              <li key={n.id} className="group relative">
+              <li key={n.id} className="group relative animate-fade-in">
                 <button
                   type="button"
                   onClick={() => open(n)}
@@ -187,7 +187,7 @@ export function InboxView() {
                       },
                     )
                   }
-                  className="absolute right-3 bottom-2 hidden rounded px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
+                  className="absolute right-3 bottom-2 hidden animate-fade-in rounded px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
                 >
                   Archive
                 </button>
@@ -196,7 +196,10 @@ export function InboxView() {
           </ul>
         </div>
       </section>
-      <section className="hidden min-w-0 flex-1 md:block">
+      <section
+        key={current?.id ?? "none"}
+        className="hidden min-w-0 flex-1 animate-fade-in md:block"
+      >
         {current?.project && !current.issue && !current.request ? (
           <ProjectPage key={current.project.id} id={current.project.id} tab="overview" />
         ) : current?.request ? (

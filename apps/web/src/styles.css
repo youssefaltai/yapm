@@ -111,26 +111,6 @@ input[type="number"]::-webkit-outer-spin-button {
   margin: 0;
 }
 
-/* Dropdowns, date pickers and tooltips fade in, like Linear's. */
-@keyframes float-in {
-  from {
-    opacity: 0;
-    transform: translateY(-2px) scale(0.98);
-  }
-}
-.popover {
-  animation: float-in 0.12s ease-out;
-}
-.tooltip {
-  animation: float-in 0.1s ease-out;
-}
-@media (prefers-reduced-motion: reduce) {
-  .popover,
-  .tooltip {
-    animation: none;
-  }
-}
-
 /* Rendered Markdown: documents, project descriptions and updates. */
 .markdown {
   line-height: 1.65;

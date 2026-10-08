@@ -24,6 +24,8 @@ export interface HubDeps {
   now?: () => number;
   /** Live updates; without it, apps fall back to refetching on focus. */
   realtime?: Realtime;
+  /** Outgoing HTTP, e.g. to push services; tests replace it. Defaults to the global fetch. */
+  fetch?: typeof fetch;
 }
 
 export interface Viewer {

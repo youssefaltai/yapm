@@ -3,6 +3,7 @@ import { createGraphQLError } from "graphql-yoga";
 import type { HubDeps, Viewer } from "../context.js";
 import { ServiceError } from "../errors.js";
 import type { Loaders } from "../loaders.js";
+import { background, deliverPush } from "../push.js";
 import type { Ctx } from "../services/common.js";
 
 export interface GraphQLContext {
@@ -11,6 +12,10 @@ export interface GraphQLContext {
   loaders: Loaders;
   /** The calling tab or runner, echoed in live-update events. */
   clientId?: string | null;
+  /** The web app's origin, for links in push notifications. */
+  origin?: string;
+  /** Keeps work going after the response, e.g. sending push notifications. */
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 interface GraphQLTypes {
@@ -73,8 +78,11 @@ export async function act<T>(ctx: GraphQLContext, fn: (service: Ctx) => Promise<
   const viewer = requireViewer(ctx);
   try {
     const at = now(ctx);
-    const result = await fn({ db: ctx.deps.db, actorId: viewer.user.id, now: at });
+    const service: Ctx = { db: ctx.deps.db, actorId: viewer.user.id, now: at };
+    const result = await fn(service);
     await announce(ctx, viewer.user.id, at);
+    if (service.notified && ctx.origin)
+      background(ctx.waitUntil, deliverPush(ctx.deps, at, ctx.origin));
     return result;
   } catch (error) {
     if (error instanceof ServiceError) {

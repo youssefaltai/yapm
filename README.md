@@ -8,7 +8,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 
 **Phase 0: foundations.** What works today:
 
-- First-run setup: name your company and create your owner passkey. The company is seeded with a CEO agent, a Chief of Staff, seven teams with Linear's workflow states, and starter labels.
+- First-run setup: name your company and create your owner passkey. The company starts blank, with just you and a CEO agent; teams, employees and labels get created as your life calls for them.
 - Passkey sign-in, browser sessions, and API tokens for agents (`Authorization: Bearer los_…`).
 - A Linear-shaped GraphQL API at `/graphql`: `viewer`, `organization`, `users`, `teams`, `team`, `workflowStates`, `issueLabels`, `auditEntries`, `apiTokenCreate`.
 - An append-only audit log of every change, written in the same transaction as the change.

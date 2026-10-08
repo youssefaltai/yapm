@@ -1,0 +1,118 @@
+import { type FormEvent, useCallback, useState } from "react";
+import { hireAgentStore, workspaceStore } from "../actions.js";
+import { mutate } from "../data.js";
+import { navigate, paths } from "../router.js";
+import { Modal, useStore } from "../ui.js";
+
+export function HireAgentHost() {
+  const open = useStore(hireAgentStore);
+  const close = useCallback(() => hireAgentStore.set(false), []);
+  return open ? <HireAgent onClose={close} /> : null;
+}
+
+function HireAgent({ onClose }: { onClose: () => void }) {
+  const workspace = useStore(workspaceStore);
+  const members = workspace?.users.nodes ?? [];
+  const ceo = members.find((m) => m.kind === "agent" && !m.manager?.id) ?? members[0];
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [charter, setCharter] = useState("");
+  const [managerId, setManagerId] = useState(ceo?.id ?? "");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    const result = await mutate<{ agentHire: { user: { id: string } } }>(
+      "mutation($input: AgentHireInput!) { agentHire(input: $input) { user { id } } }",
+      {
+        input: {
+          name,
+          title: title || null,
+          charter: charter || null,
+          managerId: managerId || null,
+        },
+      },
+    );
+    setBusy(false);
+    if (result) {
+      onClose();
+      navigate(paths.member(result.agentHire.user.id));
+    }
+  }
+
+  const input =
+    "w-full rounded-md border border-line bg-canvas px-3 py-2 outline-none placeholder:text-faint focus:border-accent";
+  return (
+    <Modal onClose={onClose} label="Hire agent">
+      <form onSubmit={submit} className="p-5">
+        <h2 className="text-[15px] font-medium">Hire an agent</h2>
+        <p className="mt-1 mb-4 text-muted">
+          An AI employee with a name, a role and a charter that says what it owns.
+        </p>
+        <label className="mb-3 block">
+          <span className="mb-1.5 block text-muted">Name</span>
+          <input
+            // biome-ignore lint/a11y/noAutofocus: the dialog opens to type a name
+            autoFocus
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ada"
+            className={input}
+          />
+        </label>
+        <label className="mb-3 block">
+          <span className="mb-1.5 block text-muted">Title</span>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Head of Finance"
+            className={input}
+          />
+        </label>
+        <label className="mb-3 block">
+          <span className="mb-1.5 block text-muted">Reports to</span>
+          <select
+            value={managerId}
+            onChange={(e) => setManagerId(e.target.value)}
+            className={input}
+          >
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+                {m.title && m.title !== m.name ? `, ${m.title}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mb-4 block">
+          <span className="mb-1.5 block text-muted">Charter</span>
+          <textarea
+            value={charter}
+            onChange={(e) => setCharter(e.target.value)}
+            rows={4}
+            placeholder="What this agent is responsible for, and how it should work."
+            className={input}
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={busy || !name.trim()}
+            className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
+          >
+            Hire
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

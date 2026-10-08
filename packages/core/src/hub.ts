@@ -5,6 +5,7 @@ import { authRoutes, relyingParty, resolveViewer } from "./auth.js";
 import type { HubDeps, HubEnv } from "./context.js";
 import { type GraphQLContext, schema } from "./graphql/schema.js";
 import { createLoaders } from "./loaders.js";
+import { mcpHandler } from "./mcp/index.js";
 import { CLIENT_ID_HEADER } from "./realtime.js";
 
 /**
@@ -32,6 +33,7 @@ export function createHub(deps: HubDeps) {
 
   app.use("/api/*", resolveViewer);
   app.use("/graphql", resolveViewer);
+  app.use("/mcp", resolveViewer);
 
   app.route("/api", authRoutes);
 
@@ -59,6 +61,10 @@ export function createHub(deps: HubDeps) {
       clientId: c.req.header(CLIENT_ID_HEADER) ?? null,
     }),
   );
+
+  /** MCP over Streamable HTTP, stateless: tools named after Linear's MCP server. */
+  app.post("/mcp", mcpHandler);
+  app.on(["GET", "DELETE"], "/mcp", (c) => c.body(null, 405, { Allow: "POST" }));
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
 

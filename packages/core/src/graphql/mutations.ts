@@ -19,6 +19,7 @@ import {
 } from "../services/issues.js";
 import { createLabel, deleteLabel, updateLabel } from "../services/labels.js";
 import { createTeam, updateTeam } from "../services/teams.js";
+import { hireAgent, retireAgent, revokeApiToken, updateUser } from "../services/users.js";
 import { act, builder, db, notFoundError, now, requireOwner, type Types } from "./builder.js";
 import {
   Comment,
@@ -49,6 +50,7 @@ const IssueLabelPayload = payload("IssueLabelPayload", "issueLabel", IssueLabel)
 const CommentPayload = payload("CommentPayload", "comment", Comment);
 const ReactionPayload = payload("ReactionPayload", "reaction", Reaction);
 const IssueRelationPayload = payload("IssueRelationPayload", "issueRelation", IssueRelation);
+const UserPayload = payload("UserPayload", "user", User);
 
 const IssueBatchPayload = builder
   .objectRef<{ issues: (typeof issues.$inferSelect)[] }>("IssueBatchPayload")
@@ -185,6 +187,37 @@ const IssueRelationCreateInput = builder.inputType("IssueRelationCreateInput", {
     type: t.field({ type: IssueRelationType, required: true }),
   }),
 });
+
+const AgentHireInput = builder.inputType("AgentHireInput", {
+  fields: (t) => ({
+    name: t.string({
+      required: true,
+      description: "How others address the agent, e.g. Finance Lead.",
+    }),
+    title: t.string({ required: false }),
+    charter: t.string({
+      required: false,
+      description: "The job: responsibilities, ownership, when to escalate.",
+    }),
+    managerId: t.string({ required: false, description: "Defaults to the owner." }),
+  }),
+});
+
+const UserUpdateInput = builder.inputType("UserUpdateInput", {
+  fields: (t) => ({
+    name: t.string({ required: false }),
+    title: t.string({ required: false }),
+    charter: t.string({ required: false }),
+    managerId: t.string({ required: false }),
+  }),
+});
+
+async function loadUser(ctx: Parameters<typeof db>[0], id: string) {
+  ctx.loaders.user.clear(id);
+  const row = await ctx.loaders.user.load(id);
+  if (!row) throw notFoundError("User");
+  return row;
+}
 
 async function loadIssue(ctx: Parameters<typeof db>[0], id: string) {
   const row = await db(ctx).select().from(issues).where(eq(issues.id, id)).get();
@@ -380,6 +413,42 @@ builder.mutationType({
       },
     }),
 
+    agentHire: t.field({
+      type: UserPayload,
+      description: "Hires an AI agent employee with a charter.",
+      args: { input: t.arg({ type: AgentHireInput, required: true }) },
+      resolve: async (_root, args, ctx) => ({
+        entity: await loadUser(ctx, await act(ctx, (s) => hireAgent(s, args.input))),
+      }),
+    }),
+    userUpdate: t.field({
+      type: UserPayload,
+      description: "Renames a member or changes their title, manager or (for agents) charter.",
+      args: {
+        id: t.arg.string({ required: true }),
+        input: t.arg({ type: UserUpdateInput, required: true }),
+      },
+      resolve: async (_root, args, ctx) => ({
+        entity: await loadUser(ctx, await act(ctx, (s) => updateUser(s, args.id, args.input))),
+      }),
+    }),
+    agentRetire: t.field({
+      type: UserPayload,
+      description: "Retires an agent: its tokens stop working and its reports move to its manager.",
+      args: { id: t.arg.string({ required: true }) },
+      resolve: async (_root, args, ctx) => ({
+        entity: await loadUser(ctx, await act(ctx, (s) => retireAgent(s, args.id))),
+      }),
+    }),
+    apiTokenRevoke: t.field({
+      type: DeletePayload,
+      args: { id: t.arg.string({ required: true }) },
+      resolve: async (_root, args, ctx) => {
+        await act(ctx, (s) => revokeApiToken(s, args.id));
+        return { entityId: args.id };
+      },
+    }),
+
     apiTokenCreate: t.field({
       type: ApiTokenPayload,
       description: "Owner only: issues an API token for yourself or an agent.",
@@ -391,7 +460,7 @@ builder.mutationType({
         const viewer = requireOwner(ctx);
         const userId = args.userId ?? viewer.user.id;
         const user = await ctx.loaders.user.load(userId);
-        if (!user) throw notFoundError("User");
+        if (!user?.active) throw notFoundError("User");
         const created = await createApiToken(
           db(ctx),
           { userId, name: args.name, actorId: viewer.user.id },

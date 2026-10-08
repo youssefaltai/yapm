@@ -10,6 +10,7 @@ import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
 import { CyclePage, CyclesView } from "./views/Cycles.js";
 import { DocumentPage, DocumentsView } from "./views/Documents.js";
+import { Handbook } from "./views/Handbook.js";
 import { HireAgentHost } from "./views/HireAgent.js";
 import { InboxView, useUnreadCount } from "./views/Inbox.js";
 import { InitiativesView } from "./views/Initiatives.js";
@@ -197,6 +198,8 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <InitiativesView />;
     case "roadmap":
       return <RoadmapView />;
+    case "handbook":
+      return <Handbook />;
     case "documents":
       return <DocumentsView />;
     case "document":
@@ -317,7 +320,10 @@ function Sidebar({
             {running > 0 && <span className="text-[11px] text-accent">{running}</span>}
           </span>
         </NavLink>
-        <NavLink to={paths.company()} active={route.name === "company"}>
+        <NavLink
+          to={paths.company()}
+          active={route.name === "company" || route.name === "handbook"}
+        >
           Company
         </NavLink>
       </nav>

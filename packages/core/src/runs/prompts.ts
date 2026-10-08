@@ -1,5 +1,6 @@
 import {
   comments,
+  feedback,
   type issues,
   PRIORITY_LABELS,
   requests,
@@ -8,7 +9,7 @@ import {
   workflowStates,
   workspaces,
 } from "@life-os/schema";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { HubDb } from "../db.js";
 
 // Everything an agent reads when it wakes is built here, by the hub, from current data.
@@ -245,20 +246,40 @@ async function describeTriggers(db: HubDb, notes: TriggerNote[]) {
 
 type Agent = typeof users.$inferSelect;
 
+/** Long texts are cut so a growing handbook can't crowd out the work; the tools read them whole. */
+function clipFor(text: string, max: number, tool: string) {
+  return text.length <= max ? text : `${text.slice(0, max)}\n…(cut; read it all with ${tool})`;
+}
+
 async function agentIntro(db: HubDb, agent: Agent) {
-  const [company, manager] = await Promise.all([
+  const [company, manager, open] = await Promise.all([
     db.select().from(workspaces).get(),
     agent.managerId
       ? db.select().from(users).where(eq(users.id, agent.managerId)).get()
       : undefined,
+    db
+      .select({ n: count() })
+      .from(feedback)
+      .where(and(eq(feedback.agentId, agent.id), isNull(feedback.addressedAt)))
+      .get(),
   ]);
-  return [
+  const lines = [
     `You are ${agent.name}${agent.title ? `, ${agent.title}` : ""}, an AI employee at ${company?.name ?? "the company"}.`,
     `The company runs on an issue tracker shaped like Linear; you and your teammates work through its issues and comments. You report to ${manager?.name ?? "the owner"}.`,
     "",
     "Your charter:",
     agent.charter?.trim() || "(No charter yet. Ask your manager what you own.)",
-  ].join("\n");
+  ];
+  if (company?.handbook)
+    lines.push("", "The company handbook:", clipFor(company.handbook, 8000, "get_handbook"));
+  if (agent.lessons)
+    lines.push("", "Your lessons so far:", clipFor(agent.lessons, 6000, "get_user"));
+  if (open?.n)
+    lines.push(
+      "",
+      `You have ${open.n} piece${open.n === 1 ? "" : "s"} of feedback not yet addressed (list_feedback). When you change how you work because of one, record it with update_user (lessons) and address_feedback.`,
+    );
+  return lines.join("\n");
 }
 
 export interface RunInput {

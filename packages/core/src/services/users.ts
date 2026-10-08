@@ -5,6 +5,7 @@ import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { forbidden, notFound, ServiceError } from "../errors.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import { revisionOp, updateLessons } from "./feedback.js";
 import { cleanTags } from "./machines.js";
 import { authorize } from "./requests.js";
 
@@ -20,6 +21,8 @@ export interface UserUpdateInput {
   name?: string | null;
   title?: string | null;
   charter?: string | null;
+  /** An agent's lessons; agents rewrite their own freely. */
+  lessons?: string | null;
   managerId?: string | null;
   runnerTags?: string[] | null;
 }
@@ -77,6 +80,7 @@ export async function hireAgent(ctx: Ctx, input: AgentHireInput): Promise<string
   if (managerId) await checkManager(db, null, managerId);
   const id = newId();
   const title = input.title?.trim() || null;
+  const charter = input.charter?.trim() || null;
   await commit(db, [
     db.insert(users).values({
       id,
@@ -84,11 +88,12 @@ export async function hireAgent(ctx: Ctx, input: AgentHireInput): Promise<string
       name,
       displayName: name,
       title,
-      charter: input.charter?.trim() || null,
+      charter,
       managerId,
       createdAt: now,
       updatedAt: now,
     }),
+    ...(charter ? [revisionOp(ctx, "charter", id, charter)] : []),
     ...allowed,
     ...audit(db, [event(ctx, "agent.hire", "user", id, { name, title, managerId })], now),
   ]);
@@ -118,6 +123,7 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on machines");
     next.runnerTags = cleanTags(input.runnerTags, "Runner tags");
   }
+  if (input.lessons !== undefined) await updateLessons(ctx, id, input.lessons);
   const { charter } = input;
   const diff = changes(user, next);
   const charterChanged = charter !== undefined && (charter?.trim() || null) !== user.charter;
@@ -141,6 +147,7 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
       .update(users)
       .set({ ...next, updatedAt: now })
       .where(eq(users.id, id)),
+    ...(charterChanged ? [revisionOp(ctx, "charter", id, next.charter ?? null)] : []),
     ...allowed,
     ...audit(db, events, now),
   ]);

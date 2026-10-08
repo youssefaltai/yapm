@@ -14,6 +14,7 @@ import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
 import { type Ctx, cleanText, event } from "./common.js";
+import { feedbackOp } from "./feedback.js";
 import { notify, ownerId } from "./notifications.js";
 
 /**
@@ -379,6 +380,18 @@ export async function rejectRequest(ctx: Ctx, id: string, reason: string): Promi
         data: { title: request.title, status: "rejected", reason: answer },
       },
     ]),
+    ...((await loadActor(db, request.requesterId)).kind === "agent"
+      ? [
+          feedbackOp(ctx, {
+            agentId: request.requesterId,
+            kind: "rejection",
+            body: `Rejected "${request.title}": ${answer}`,
+            runId: request.runId,
+            issueId: request.issueId,
+            requestId: id,
+          }),
+        ]
+      : []),
     stopWaiting(db, id, now),
     ...audit(
       db,

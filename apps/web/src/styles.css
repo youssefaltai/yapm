@@ -13,6 +13,24 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* The light theme swaps the palette; components only use these tokens. */
+:root[data-theme="light"] {
+  --color-canvas: #fcfcfd;
+  --color-panel: #ffffff;
+  --color-raised: #f1f1f4;
+  --color-line: #e4e4e9;
+  --color-ink: #1b1b1f;
+  --color-muted: #63676f;
+  --color-faint: #9a9ea6;
+  --color-accent: #5e6ad2;
+  --color-accent-hover: #4e5ac4;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {

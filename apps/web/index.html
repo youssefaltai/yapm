@@ -11,6 +11,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="Life OS" />
     <title>Life OS</title>
+    <script>
+      // Apply the saved theme before the first paint (see src/theme.ts).
+      try {
+        const saved = localStorage.getItem("life-os-theme");
+        const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme =
+          saved === "light" || saved === "dark" ? saved : system;
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

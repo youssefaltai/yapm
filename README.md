@@ -50,6 +50,19 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - Search across issues (including comments), projects and documents from `⌘K`, and a roadmap that puts projects and milestones on a timeline.
 - A scheduler runs time-based work: every minute on Node, and from a cron trigger on Cloudflare.
 
+**Phase 5: a company that improves itself** (done).
+
+- Feedback: stopping a run or rejecting an agent's request records why, as feedback for that agent; the owner and an agent's manager can add notes from its page. Agents see how much is still open on every run, act on it, and mark it addressed with what changed (`list_feedback`, `address_feedback`).
+- Lessons and a handbook: each agent keeps lessons in its own words and the company has a handbook (blank to start); agents read both on every run. Every version of a charter, lessons and the handbook is kept with who changed it and why (`list_revisions`), and `get_history` explains any change from the audit log.
+- Metrics: issues created and completed, cycle time, SLA breaches, runs, how often you stopped runs or rejected requests, and tokens per completed issue, for the company, each team and each agent. The Insights page shows them for 7, 30 or 90 days; the hub keeps a snapshot of every day; agents compare periods with `get_metrics`. Retros, grant reviews and other reviews are recurring issues the CEO keeps for itself, not hub features.
+
+**Phase 6: polish** (done).
+
+- MCP servers per machine, managed from the hub: add one on the Machines page or let an agent ask for it (`add_mcp_server`, with `mcp.install` approved for that machine), and choose which agents get it. When a server needs a sign-in, you get a **Connect** link on your phone; the provider sends you back to the hub, and the machine finishes the OAuth sign-in itself. Tokens stay on the machine.
+- Import from Linear with a personal API key: teams keep their keys and issues their numbers. Export everything as JSON, or issues as CSV in Linear's columns, from the Company page.
+- Light and dark themes (or follow the system) from `⌘K`.
+- The runner is packaged for npm as `@life-os/runner` (see `apps/runner/README.md` for releasing).
+
 ## Repository layout
 
 | Path | What it is |
@@ -117,7 +130,9 @@ node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBo
 node apps/runner/dist/main.js start
 ```
 
-`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent in its own folder under `~/.life-os-runner/work`, streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files, the machine's own MCP servers) asks you first, and the agent waits for your answer. Add the machine's own MCP servers under `mcpServers` in `~/.life-os-runner/config.json`.
+Once the package is published, `npx @life-os/runner enrol …` and `npx @life-os/runner start` do the same without a checkout.
+
+`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent in its own folder under `~/.life-os-runner/work`, streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files, the machine's own MCP servers) asks you first, and the agent waits for your answer. Add the machine's own MCP servers under `mcpServers` in `~/.life-os-runner/config.json`, or add them from the Machines page so the hub sets them up and handles their sign-in; their tokens are kept in `~/.life-os-runner/mcp-auth.json`.
 
 ### Configuration
 

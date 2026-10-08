@@ -13,8 +13,19 @@ export function Company({ workspace }: { workspace: Workspace }) {
         <span className="font-medium">Company</span>
       </header>
       <div className="mx-auto max-w-4xl px-4 py-6 md:px-6">
-        <h1 className="text-lg font-medium">{workspace.organization.name}</h1>
-        <p className="mt-1 text-muted">{summary(members, teams.length)}</p>
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-medium">{workspace.organization.name}</h1>
+            <p className="mt-1 text-muted">{summary(members, teams.length)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate(paths.handbook())}
+            className="rounded-md border border-line px-3 py-1.5 text-muted hover:bg-raised hover:text-ink"
+          >
+            Handbook
+          </button>
+        </div>
 
         <div className="mt-8 mb-3 flex items-center">
           <h2 className="text-[12px] font-medium text-faint uppercase">Organization</h2>

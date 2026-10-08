@@ -48,6 +48,7 @@ export type Route =
   | { name: "project"; id: string; tab: "overview" | "issues" }
   | { name: "initiatives" }
   | { name: "roadmap" }
+  | { name: "handbook" }
   | { name: "documents" }
   | { name: "document"; id: string }
   | { name: "notFound" };
@@ -74,6 +75,7 @@ export function parseRoute(path: string): Route {
     return { name: "project", id: second, tab: third === "issues" ? "issues" : "overview" };
   if (first === "initiatives") return { name: "initiatives" };
   if (first === "roadmap") return { name: "roadmap" };
+  if (first === "handbook") return { name: "handbook" };
   if (first === "documents") return { name: "documents" };
   if (first === "document" && second) return { name: "document", id: second };
   if (first === "issue" && second) return { name: "issue", identifier: second.toUpperCase() };
@@ -114,6 +116,7 @@ export const paths = {
     tab === "overview" ? `/project/${id}` : `/project/${id}/issues`,
   initiatives: () => "/initiatives",
   roadmap: () => "/roadmap",
+  handbook: () => "/handbook",
   documents: () => "/documents",
   document: (id: string) => `/document/${id}`,
 };

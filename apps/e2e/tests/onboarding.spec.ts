@@ -442,6 +442,32 @@ test.describe
       await expect(page.getByRole("button", { name: "Pay off the car" })).toBeVisible();
     });
 
+    test("coaches an agent with feedback, lessons and the handbook", async () => {
+      await page.goto("/company");
+      await page.getByRole("button", { name: /Ada/ }).first().click();
+      await expect(page.getByText("Wait until payday")).toBeVisible();
+      await page.getByLabel("Feedback").fill("Attach the receipt before closing a bill");
+      await page.getByRole("button", { name: "Send" }).click();
+      await expect(page.getByText("Attach the receipt before closing a bill")).toBeVisible();
+
+      // Ada reads it, rewrites her lessons and says what changed.
+      const open = await mcp("list_feedback", { agent: "me", open: true });
+      const note = open.find((f: { body: string }) => f.body.startsWith("Attach the receipt"));
+      await mcp("update_user", { user: "me", lessons: "- Attach receipts to bills." });
+      await mcp("address_feedback", { id: note.id, note: "Added a lesson about receipts" });
+      await expect(page.getByLabel("Lessons")).toHaveValue("- Attach receipts to bills.");
+      await expect(page.getByText("✓ Added a lesson about receipts")).toBeVisible();
+
+      await page.getByRole("button", { name: "Company" }).click();
+      await page.getByRole("button", { name: "Handbook" }).click();
+      await page.getByLabel("Handbook").fill("Money moves only with a receipt on the issue.");
+      await page.getByText(/conventions, preferences and rules/).click();
+      await expect(page.getByText("History (1 version)")).toBeVisible();
+      expect(await mcp("get_handbook", {})).toEqual({
+        handbook: "Money moves only with a receipt on the issue.",
+      });
+    });
+
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);

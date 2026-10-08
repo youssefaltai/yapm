@@ -91,3 +91,98 @@ export function weekday(date: string): number {
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
 }
+
+export interface ScheduleShape {
+  frequency: "daily" | "weekdays" | "weekly" | "monthly";
+  time: string;
+  weekday?: number;
+  monthDay?: number;
+}
+
+const FREQUENCIES = ["daily", "weekdays", "weekly", "monthly"] as const;
+
+/** Checks a schedule from the API, filling in sensible defaults; throws a message on bad input. */
+export function normalizeSchedule(value: unknown): ScheduleShape {
+  const v = (value ?? {}) as Record<string, unknown>;
+  const frequency = String(v.frequency ?? "") as ScheduleShape["frequency"];
+  if (!FREQUENCIES.includes(frequency))
+    throw new Error("Schedule frequency must be daily, weekdays, weekly or monthly");
+  const time = String(v.time ?? "09:00");
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(time);
+  if (!match) throw new Error("Schedule time must look like 08:30");
+  const schedule: ScheduleShape = { frequency, time: `${match[1]?.padStart(2, "0")}:${match[2]}` };
+  if (frequency === "weekly") {
+    const weekday = Number(v.weekday ?? 1);
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6)
+      throw new Error("Schedule weekday must be 0 (Sunday) to 6 (Saturday)");
+    schedule.weekday = weekday;
+  }
+  if (frequency === "monthly") {
+    const monthDay = Number(v.monthDay ?? 1);
+    if (!Number.isInteger(monthDay) || monthDay < 1 || monthDay > 31)
+      throw new Error("Schedule day of the month must be 1 to 31");
+    schedule.monthDay = monthDay;
+  }
+  return schedule;
+}
+
+function daysInMonth(date: string) {
+  const [y = 1970, m = 1] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+function matches(schedule: ScheduleShape, date: string) {
+  const day = weekday(date);
+  switch (schedule.frequency) {
+    case "daily":
+      return true;
+    case "weekdays":
+      return day >= 1 && day <= 5;
+    case "weekly":
+      return day === (schedule.weekday ?? 1);
+    case "monthly": {
+      const dom = Number(date.slice(8, 10));
+      return dom === Math.min(schedule.monthDay ?? 1, daysInMonth(date));
+    }
+  }
+}
+
+/** The first time the schedule fires strictly after `after`. */
+export function nextOccurrence(schedule: ScheduleShape, timeZone: string, after: number): number {
+  const [hour = 9, minute = 0] = schedule.time.split(":").map(Number);
+  const start = localDate(after, timeZone);
+  for (let i = 0; i < 400; i++) {
+    const date = addDays(start, i);
+    if (!matches(schedule, date)) continue;
+    const at = zonedTime(date, timeZone, hour, minute);
+    if (at > after) return at;
+  }
+  throw new Error("The schedule never fires");
+}
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** "Weekdays at 08:00", "Mondays at 09:30", "Monthly on the 1st at 07:00". */
+export function describeSchedule(schedule: ScheduleShape): string {
+  const at = `at ${schedule.time}`;
+  switch (schedule.frequency) {
+    case "daily":
+      return `Every day ${at}`;
+    case "weekdays":
+      return `Weekdays ${at}`;
+    case "weekly":
+      return `${WEEKDAYS[schedule.weekday ?? 1]}s ${at}`;
+    case "monthly": {
+      const d = schedule.monthDay ?? 1;
+      const suffix =
+        d % 10 === 1 && d !== 11
+          ? "st"
+          : d % 10 === 2 && d !== 12
+            ? "nd"
+            : d % 10 === 3 && d !== 13
+              ? "rd"
+              : "th";
+      return `Monthly on the ${d}${suffix} ${at}`;
+    }
+  }
+}

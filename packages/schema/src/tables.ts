@@ -740,3 +740,38 @@ export const customViews = sqliteTable("custom_views", {
   sortOrder: real("sort_order").notNull(),
   ...timestamps,
 });
+
+/** When something repeats, in the company's time zone. */
+export interface Schedule {
+  frequency: "daily" | "weekdays" | "weekly" | "monthly";
+  /** Local time, `HH:MM`. */
+  time: string;
+  /** For weekly: 0 Sunday … 6 Saturday. */
+  weekday?: number;
+  /** For monthly: 1–31 (short months use their last day). */
+  monthDay?: number;
+}
+
+/** Issue templates, like Linear's; with a schedule they create recurring issues. */
+export const templates = sqliteTable(
+  "templates",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    type: text("type", { enum: ["issue"] })
+      .notNull()
+      .default("issue"),
+    teamId: text("team_id").notNull(),
+    /** Issue fields: title, description, priority, estimate, assigneeId, labelIds, projectId, stateId. */
+    templateData: text("template_data", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    schedule: text("schedule", { mode: "json" }).$type<Schedule>(),
+    nextRunAt: integer("next_run_at", { mode: "number" }),
+    lastRunAt: integer("last_run_at", { mode: "number" }),
+    creatorId: text("creator_id"),
+    ...timestamps,
+  },
+  (t) => [index("templates_team_idx").on(t.teamId), index("templates_next_idx").on(t.nextRunAt)],
+);

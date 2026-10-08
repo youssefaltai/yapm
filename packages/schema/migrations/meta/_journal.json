@@ -57,6 +57,13 @@
       "when": 1791432112632,
       "tag": "0007_cycles_views",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791433384131,
+      "tag": "0008_templates",
+      "breakpoints": true
     }
   ]
 }

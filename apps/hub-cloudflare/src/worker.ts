@@ -35,7 +35,7 @@ export default {
     hub ??= createHub(depsOf(env));
     return hub.fetch(request, env, ctx);
   },
-  // Cycles, rituals and other time-based work (see the cron trigger in wrangler.jsonc).
+  // Cycles, recurring issues and other time-based work (see the cron trigger in wrangler.jsonc).
   scheduled(controller, env, ctx) {
     ctx.waitUntil(tick(depsOf(env), controller.scheduledTime));
   },

@@ -23,6 +23,9 @@ export interface Claim {
     id: string;
     kind: "decision" | "work";
     modelTier: "small" | "standard" | "top";
+    /** The pinned model id and effort the hub chose; older hubs send neither. */
+    model?: string;
+    effort?: "low" | "medium" | "high" | "xhigh" | "max";
     sessionId: string | null;
     issue: string | null;
     issueId: string | null;
@@ -48,6 +51,8 @@ export interface Usage {
   inputTokens?: number;
   outputTokens?: number;
   numTurns?: number;
+  /** What the session would cost at API prices. */
+  costUsd?: number;
 }
 
 export interface Completion {

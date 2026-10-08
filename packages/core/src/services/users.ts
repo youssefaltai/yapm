@@ -1,4 +1,4 @@
-import { apiTokens, teamMemberships, users } from "@life-os/schema";
+import { apiTokens, MODEL_TIERS, type ModelTier, teamMemberships, users } from "@life-os/schema";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
@@ -25,6 +25,11 @@ export interface UserUpdateInput {
   lessons?: string | null;
   managerId?: string | null;
   runnerTags?: string[] | null;
+  /** Owner only: the cheapest and dearest tiers the agent's work may run on. */
+  modelFloor?: string | null;
+  modelCeiling?: string | null;
+  /** Owner only: top-tier work runs allowed in any 7 days. */
+  topRunsPerWeek?: number | null;
 }
 
 async function actor(ctx: Ctx) {
@@ -122,6 +127,28 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
       throw forbidden("Only the owner decides where agents run");
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on machines");
     next.runnerTags = cleanTags(input.runnerTags, "Runner tags");
+  }
+  if (input.modelFloor != null || input.modelCeiling != null || input.topRunsPerWeek != null) {
+    if ((await actor(ctx)).kind !== "owner")
+      throw forbidden("Only the owner sets which models an agent may use");
+    if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on models");
+    const tier = (value: string, what: string) => {
+      if (!MODEL_TIERS.includes(value as ModelTier))
+        throw new ServiceError("BAD_REQUEST", `${what} is small, standard or top`);
+      return value as ModelTier;
+    };
+    if (input.modelFloor != null) next.modelFloor = tier(input.modelFloor, "The floor");
+    if (input.modelCeiling != null) next.modelCeiling = tier(input.modelCeiling, "The ceiling");
+    const floor = next.modelFloor ?? user.modelFloor;
+    const ceiling = next.modelCeiling ?? user.modelCeiling;
+    if (MODEL_TIERS.indexOf(floor) > MODEL_TIERS.indexOf(ceiling))
+      throw new ServiceError("BAD_REQUEST", "The floor can't be above the ceiling");
+    if (input.topRunsPerWeek != null) {
+      const n = input.topRunsPerWeek;
+      if (!Number.isInteger(n) || n < 0 || n > 1000)
+        throw new ServiceError("BAD_REQUEST", "Top runs per week is a whole number from 0 to 1000");
+      next.topRunsPerWeek = n;
+    }
   }
   if (input.lessons !== undefined) await updateLessons(ctx, id, input.lessons);
   const { charter } = input;

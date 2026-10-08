@@ -18,6 +18,7 @@ export const COUNT_KEYS = [
   "runsCompleted",
   "runsStopped",
   "tokens",
+  "costUsd",
   "requestsAnswered",
   "requestsRejected",
 ] as const;
@@ -49,6 +50,8 @@ export function deriveMetrics(c: Counts) {
     rejectionRate: c.requestsAnswered ? c.requestsRejected / c.requestsAnswered : null,
     tokens: c.tokens,
     tokensPerCompletedIssue: c.completed ? c.tokens / c.completed : null,
+    costUsd: c.costUsd,
+    costPerCompletedIssue: c.completed ? c.costUsd / c.completed : null,
   };
 }
 export type Metrics = ReturnType<typeof deriveMetrics>;
@@ -90,6 +93,7 @@ export async function countAll(db: HubDb, from: number, to: number) {
         runsCompleted: sql<number>`sum(case when ${runs.status} = 'completed' then 1 else 0 end)`,
         runsStopped: sql<number>`sum(case when ${runs.stoppedById} is not null then 1 else 0 end)`,
         tokens: sql<number>`sum(${runs.inputTokens} + ${runs.outputTokens})`,
+        costUsd: sql<number>`sum(${runs.costUsd})`,
       })
       .from(runs)
       .where(and(gte(runs.endedAt, from), lt(runs.endedAt, to)))
@@ -139,6 +143,50 @@ export async function countAll(db: HubDb, from: number, to: number) {
   }
   return all;
 }
+
+/**
+ * How each model route did over [from, to): the evidence for tuning the routing table. A route
+ * is one model, effort and rule; work is judged by cost per completed run, since a cheap run
+ * that fails and has to be redone isn't cheap.
+ */
+export async function routeStats(db: HubDb, from: number, to: number) {
+  const rows = await db
+    .select({
+      kind: runs.kind,
+      modelTier: runs.modelTier,
+      model: runs.model,
+      effort: runs.effort,
+      routeRule: runs.routeRule,
+      runs: sql<number>`count(*)`,
+      completed: sql<number>`sum(case when ${runs.status} = 'completed' then 1 else 0 end)`,
+      failed: sql<number>`sum(case when ${runs.status} = 'failed' then 1 else 0 end)`,
+      stopped: sql<number>`sum(case when ${runs.stoppedById} is not null then 1 else 0 end)`,
+      tokens: sql<number>`sum(${runs.inputTokens} + ${runs.outputTokens})`,
+      costUsd: sql<number>`sum(${runs.costUsd})`,
+    })
+    .from(runs)
+    .where(and(gte(runs.endedAt, from), lt(runs.endedAt, to)))
+    .groupBy(runs.kind, runs.modelTier, runs.model, runs.effort, runs.routeRule)
+    .all();
+  return rows
+    .map((r) => {
+      const n = (v: unknown) => Number(v ?? 0);
+      const completed = n(r.completed);
+      return {
+        ...r,
+        runs: n(r.runs),
+        completed,
+        failed: n(r.failed),
+        stopped: n(r.stopped),
+        tokens: n(r.tokens),
+        costUsd: n(r.costUsd),
+        successRate: n(r.runs) ? completed / n(r.runs) : null,
+        costPerCompletedRun: completed ? n(r.costUsd) / completed : null,
+      };
+    })
+    .sort((a, b) => b.costUsd - a.costUsd || b.runs - a.runs);
+}
+export type RouteStats = Awaited<ReturnType<typeof routeStats>>[number];
 
 /** Metrics over the last `days` days up to `at`, for one scope. */
 export async function metricsFor(

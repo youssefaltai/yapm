@@ -13,7 +13,8 @@ import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit } from "../db.js";
 import { badRequest, forbidden, notFound } from "../errors.js";
-import { MODEL_TIERS } from "../runs/prompts.js";
+import { MODEL_TIERS, type ModelTier } from "../runs/prompts.js";
+import { routeRun } from "../runs/routing.js";
 import { stopRun } from "../runs/service.js";
 import { event } from "../services/common.js";
 import { findIssue } from "../services/issues.js";
@@ -73,6 +74,19 @@ Run.implement({
     status: t.field({ type: RunStatus, resolve: (r) => r.status }),
     goal: t.exposeString("goal", { nullable: true }),
     modelTier: t.exposeString("modelTier"),
+    model: t.exposeString("model", {
+      nullable: true,
+      description: "The pinned model id the hub chose, e.g. claude-opus-5-5.",
+    }),
+    effort: t.exposeString("effort", { nullable: true, description: "low to max." }),
+    routeRule: t.exposeString("routeRule", {
+      nullable: true,
+      description:
+        "The routing rule that chose the model, e.g. `label:research` or `requested+budget`.",
+    }),
+    costUsd: t.exposeFloat("costUsd", {
+      description: "What the session would cost at API prices, as the Agent SDK reports it.",
+    }),
     trigger: t.field({ type: "JSONObject", nullable: true, resolve: (r) => r.trigger ?? null }),
     result: t.field({ type: "JSONObject", nullable: true, resolve: (r) => r.result ?? null }),
     error: t.exposeString("error", { nullable: true }),
@@ -270,6 +284,18 @@ builder.objectField(User, "runnerTags", (t) =>
   }),
 );
 
+builder.objectFields(User, (t) => ({
+  modelFloor: t.exposeString("modelFloor", {
+    description: "The cheapest tier this agent's work runs on.",
+  }),
+  modelCeiling: t.exposeString("modelCeiling", {
+    description: "The dearest tier this agent's work may run on.",
+  }),
+  topRunsPerWeek: t.exposeInt("topRunsPerWeek", {
+    description: "Top-tier work runs allowed in any 7 days; more drop to standard.",
+  }),
+}));
+
 const RunPayload = builder.objectRef<{ id: string }>("RunPayload").implement({
   fields: (t) => ({
     success: t.boolean({ resolve: () => true }),
@@ -313,7 +339,10 @@ const RunCreateInput = builder.inputType("RunCreateInput", {
     agentId: t.string({ required: true }),
     issueId: t.string({ required: false, description: "An issue id or identifier." }),
     goal: t.string({ required: true }),
-    modelTier: t.string({ required: false, description: "small, standard (default) or top" }),
+    modelTier: t.string({
+      required: false,
+      description: "small, standard or top. Leave it out to let the routing rules decide.",
+    }),
   }),
 });
 
@@ -339,9 +368,19 @@ builder.mutationFields((t) => ({
         if (args.input.issueId && !issue) throw notFound("Issue");
         const goal = args.input.goal.trim();
         if (!goal) throw badRequest("Say what the agent should do");
-        const tier = args.input.modelTier ?? "standard";
-        if (!(MODEL_TIERS as readonly string[]).includes(tier))
+        const tier = args.input.modelTier ?? null;
+        if (tier !== null && !(MODEL_TIERS as readonly string[]).includes(tier))
           throw badRequest("modelTier is small, standard or top");
+        const routed = await routeRun(
+          s.db,
+          {
+            kind: "work",
+            agentId: agent.id,
+            issueId: issue?.id ?? null,
+            ownerTier: tier as ModelTier | null,
+          },
+          s.now,
+        );
         const runId = newId();
         await commit(s.db, [
           s.db.insert(runs).values({
@@ -350,7 +389,7 @@ builder.mutationFields((t) => ({
             kind: "work",
             issueId: issue?.id ?? null,
             goal: goal.slice(0, 2000),
-            modelTier: tier,
+            ...routed,
             trigger: { notes: [], requestedBy: s.actorId },
             createdAt: s.now,
             updatedAt: s.now,
@@ -362,6 +401,7 @@ builder.mutationFields((t) => ({
                 agentId: agent.id,
                 issueId: issue?.id ?? null,
                 goal,
+                route: routed,
               }),
             ],
             s.now,

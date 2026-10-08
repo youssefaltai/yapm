@@ -180,7 +180,8 @@ describe("runner daemon", () => {
     expect(await runner.claim()).toBe(1);
     await runner.idle();
     const decide = sessions[0];
-    expect(decide?.model).toBe("haiku");
+    expect(decide?.model).toBe("claude-haiku-5-5");
+    expect(decide?.effort).toBe("low");
     expect(decide?.input.tools).toBe(false);
     expect(decide?.input.prompt).toContain("Plan my training");
 
@@ -207,7 +208,9 @@ describe("runner daemon", () => {
     expect(await runner.claim()).toBe(1);
     await until(() => sessions.length === 2, "the work session");
     const work = sessions[1];
-    expect(work?.model).toBe("haiku");
+    // The decision asked for small; the hub's rules grant it, with small's pinned model.
+    expect(work?.model).toBe("claude-haiku-5-5");
+    expect(work?.effort).toBe("low");
     expect(work?.input.tools).toBe(true);
     expect(work?.hubMcp.url).toBe("http://localhost/mcp");
     expect(work?.hubMcp.token).toMatch(/^los_/);

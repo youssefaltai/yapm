@@ -151,4 +151,40 @@ test.describe
       await expect(other.getByRole("button", { name: /Switch to a cheaper tariff/ })).toBeVisible();
       await other.close();
     });
+
+    test("hires an agent and connects it to Claude Code with a token", async () => {
+      await page.getByRole("link", { name: "Company" }).click();
+      await page.getByRole("button", { name: "+ Hire agent" }).click();
+      const dialog = page.getByRole("dialog", { name: "Hire agent" });
+      await dialog.getByLabel("Name").fill("Ada");
+      await dialog.getByLabel("Title").fill("Head of Finance");
+      await dialog.getByLabel("Charter").fill("Owns the household budget and the bills.");
+      await dialog.getByRole("button", { name: "Hire" }).click();
+
+      await expect(page.getByLabel("Name")).toHaveValue("Ada");
+      await expect(page.getByLabel("Charter")).toHaveValue(
+        "Owns the household budget and the bills.",
+      );
+
+      page.once("dialog", (prompt) => prompt.accept("Laptop"));
+      await page.getByRole("button", { name: "+ New token" }).click();
+      await expect(page.getByText("Copy this token now.")).toBeVisible();
+      await expect(page.getByText(/claude mcp add --transport http life-os/)).toBeVisible();
+      const token = (await page.locator("code").first().textContent()) ?? "";
+
+      const response = await page.request.post("/mcp", {
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        data: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "get_user", arguments: { query: "me" } },
+        },
+      });
+      const body = await response.json();
+      expect(JSON.parse(body.result.content[0].text)).toMatchObject({
+        name: "Ada",
+        title: "Head of Finance",
+      });
+    });
   });

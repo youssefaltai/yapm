@@ -19,6 +19,7 @@ import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
 import { createComment, createReaction } from "../services/comments.js";
 import type { Ctx } from "../services/common.js";
 import { event } from "../services/common.js";
+import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
 import { cleanTags } from "../services/machines.js";
 import {
@@ -658,6 +659,13 @@ export async function stopRun(ctx: Ctx, id: string, reason: string) {
           : { status: run.status === "queued" ? "canceled" : "stopped", endedAt: now }),
       })
       .where(eq(runs.id, id)),
+    feedbackOp(ctx, {
+      agentId: run.agentId,
+      kind: "stop",
+      body: why,
+      runId: id,
+      issueId: run.issueId,
+    }),
     ...audit(
       db,
       [

@@ -3,6 +3,7 @@ import { workspaceStore } from "../actions.js";
 import { mutate, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { Avatar, openMenu, timeAgo, useStore } from "../ui.js";
+import { FeedbackSection, Prose, RevisionList } from "./Learning.js";
 import { RunsSection } from "./Runs.js";
 
 interface Token {
@@ -20,6 +21,7 @@ interface MemberDetail {
   kind: "owner" | "agent";
   title: string | null;
   charter: string | null;
+  lessons: string | null;
   active: boolean;
   isMe: boolean;
   createdAt: string;
@@ -33,7 +35,7 @@ interface MemberDetail {
 }
 
 const MEMBER_QUERY = `query($id: String!) { user(id: $id) {
-  id name kind title charter active isMe createdAt runnerTags
+  id name kind title charter lessons active isMe createdAt runnerTags
   manager { id name }
   directReports { nodes { id name kind title } }
   apiTokens { id name prefix createdAt lastUsedAt revokedAt }
@@ -196,12 +198,37 @@ export function MemberPage({ id }: { id: string }) {
             <p className="mb-2 text-faint">
               The agent's job: what it owns, how it works, and when it escalates to you.
             </p>
-            <Charter
+            <Prose
+              label="Charter"
               value={member.charter ?? ""}
+              placeholder="Responsibilities, ownership, and when to escalate…"
               disabled={!canEdit || !member.active}
               onSave={(charter) => update({ charter })}
             />
+            <RevisionList subject="charter" entityId={member.id} />
           </section>
+        )}
+
+        {member.kind === "agent" && (
+          <section className="mt-8">
+            <h2 className="mb-2 font-medium">Lessons</h2>
+            <p className="mb-2 text-faint">
+              What {member.name} has learned, in its own words. It reads them on every run and
+              rewrites them as it learns.
+            </p>
+            <Prose
+              label="Lessons"
+              value={member.lessons ?? ""}
+              placeholder="Nothing learned yet."
+              disabled={!canEdit || !member.active}
+              onSave={(lessons) => update({ lessons })}
+            />
+            <RevisionList subject="lessons" entityId={member.id} />
+          </section>
+        )}
+
+        {member.kind === "agent" && (
+          <FeedbackSection agent={member} canGive={canEdit && member.active} />
         )}
 
         {member.kind === "agent" && <RunsSection agentId={member.id} />}
@@ -362,31 +389,6 @@ function GiveWork({ agent }: { agent: { id: string; name: string } }) {
         </button>
       </div>
     </form>
-  );
-}
-
-function Charter({
-  value,
-  disabled,
-  onSave,
-}: {
-  value: string;
-  disabled: boolean;
-  onSave: (v: string) => void;
-}) {
-  const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
-  return (
-    <textarea
-      aria-label="Charter"
-      value={text}
-      disabled={disabled}
-      rows={Math.max(6, text.split("\n").length + 1)}
-      placeholder="Responsibilities, ownership, and when to escalate…"
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => text !== value && onSave(text)}
-      className="w-full resize-y rounded-lg border border-line bg-panel px-4 py-3 leading-relaxed outline-none placeholder:text-faint focus:border-faint"
-    />
   );
 }
 

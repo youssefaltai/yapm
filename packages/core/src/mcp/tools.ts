@@ -460,7 +460,7 @@ export const tools: Tool<McpContext>[] = [
   {
     name: "get_user",
     title: "Get user",
-    description: 'Get a member by id or name, or "me". Agents include their charter.',
+    description: 'Get a member by id or name, or "me". Agents include their charter and lessons.',
     readOnly: true,
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
     async run(args, c) {
@@ -473,6 +473,7 @@ export const tools: Tool<McpContext>[] = [
         title: u.title,
         manager: manager?.name ?? null,
         charter: u.charter,
+        lessons: u.lessons,
       };
     },
   },
@@ -838,7 +839,7 @@ export const tools: Tool<McpContext>[] = [
     name: "update_user",
     title: "Update member",
     description:
-      "Change a member's name, title, manager or charter. You may rename yourself freely; changing others needs user.update, and charters need charter.update.",
+      "Change a member's name, title, manager, charter or lessons. You may rename yourself and rewrite your own lessons freely; changing others needs user.update, charters need charter.update and someone else's lessons need lessons.update. Lessons replace the old text, so keep what still holds.",
     inputSchema: {
       type: "object",
       properties: {
@@ -846,6 +847,10 @@ export const tools: Tool<McpContext>[] = [
         name: { type: "string" },
         title: { type: "string" },
         charter: { type: "string" },
+        lessons: {
+          type: "string",
+          description: "What the agent has learned, in markdown. Read on every run.",
+        },
         manager: { type: "string" },
       },
       required: ["user"],
@@ -858,6 +863,7 @@ export const tools: Tool<McpContext>[] = [
           ...(str(args.name) !== undefined ? { name: str(args.name) } : {}),
           ...(str(args.title) !== undefined ? { title: str(args.title) } : {}),
           ...(str(args.charter) !== undefined ? { charter: str(args.charter) } : {}),
+          ...(str(args.lessons) !== undefined ? { lessons: str(args.lessons) } : {}),
           ...(manager ? { managerId: manager.id } : {}),
         }),
       );

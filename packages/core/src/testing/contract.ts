@@ -1984,5 +1984,94 @@ export function hubContract(
         { id: teamId },
       );
     });
+    it("learns from feedback, keeps lessons and a handbook, and versions them", async () => {
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+        token?: string,
+      ) => {
+        const result = await client.graphql<T>(query, variables, token);
+        if (result.errors) throw new Error(result.errors[0]?.message);
+        return result.data as T;
+      };
+      const { users } = await gql<{ users: { nodes: { id: string; name: string }[] } }>(
+        "{ users { nodes { id name } } }",
+      );
+      const ceoId = users.nodes.find((u) => u.name === "CEO")?.id ?? "";
+
+      // Stopping a run and rejecting an agent's request became feedback on their own.
+      const automatic = await gql<{
+        feedbacks: { kind: string; body: string; agent: { id: string } }[];
+      }>("{ feedbacks(first: 100) { kind body agent { id } } }");
+      expect(
+        automatic.feedbacks.some((f) => f.kind === "stop" && f.body === "Wrong race, pause this"),
+      ).toBe(true);
+      expect(automatic.feedbacks.some((f) => f.kind === "rejection" && f.agent.id === ceoId)).toBe(
+        true,
+      );
+
+      const note = await gql<{
+        feedbackCreate: { feedback: { id: string; kind: string; author: { name: string } } };
+      }>(
+        'mutation($id: String!) { feedbackCreate(input: { agentId: $id, body: "Say the total first in money updates." }) { feedback { id kind author { name } } } }',
+        { id: ceoId },
+      );
+      expect(note.feedbackCreate.feedback.kind).toBe("note");
+      const self = await client.graphql(
+        'mutation($id: String!) { feedbackCreate(input: { agentId: $id, body: "I am great" }) { success } }',
+        { id: ceoId },
+        ceoToken,
+      );
+      expect(self.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+
+      // The agent rewrites its own lessons without asking, then marks the note addressed.
+      await gql(
+        'mutation($id: String!) { userUpdate(id: $id, input: { lessons: "- Lead money updates with the total." }) { success } }',
+        { id: ceoId },
+        ceoToken,
+      );
+      await gql(
+        'mutation($id: String!) { feedbackAddress(id: $id, note: "Added a lesson") { success } }',
+        { id: note.feedbackCreate.feedback.id },
+        ceoToken,
+      );
+      const open = await gql<{ feedbacks: { id: string }[] }>(
+        "query($id: String) { feedbacks(agentId: $id, open: true) { id } }",
+        { id: ceoId },
+      );
+      expect(open.feedbacks.map((f) => f.id)).not.toContain(note.feedbackCreate.feedback.id);
+
+      const handbook = await client.graphql(
+        'mutation { organizationUpdate(input: { handbook: "Agents never pay without a receipt." }) { success } }',
+        undefined,
+        ceoToken,
+      );
+      expect(handbook.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      const org = await gql<{ organizationUpdate: { organization: { handbook: string } } }>(
+        'mutation { organizationUpdate(input: { handbook: "Agents never pay without a receipt." }) { organization { handbook } } }',
+      );
+      expect(org.organizationUpdate.organization.handbook).toBe(
+        "Agents never pay without a receipt.",
+      );
+
+      const versions = await gql<{
+        lessons: { content: string; author: { name: string } }[];
+        handbook: { content: string }[];
+        user: { lessons: string };
+      }>(
+        `query($id: String!) {
+          lessons: revisions(subject: "lessons", entityId: $id) { content author { name } }
+          handbook: revisions(subject: "handbook") { content }
+          user(id: $id) { lessons }
+        }`,
+        { id: ceoId },
+      );
+      expect(versions.lessons[0]).toEqual({
+        content: "- Lead money updates with the total.",
+        author: { name: "CEO" },
+      });
+      expect(versions.handbook[0]?.content).toBe("Agents never pay without a receipt.");
+      expect(versions.user.lessons).toBe("- Lead money updates with the total.");
+    });
   });
 }

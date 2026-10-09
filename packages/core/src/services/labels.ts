@@ -17,7 +17,7 @@ export interface LabelInput {
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 
 function checkColor(color: string) {
-  if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #5e6ad2");
+  if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #8b8b90");
 }
 
 export async function createLabel(ctx: Ctx, input: LabelInput & { name: string }): Promise<string> {

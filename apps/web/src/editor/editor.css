@@ -46,9 +46,9 @@
 }
 
 .rich a {
-  color: var(--color-accent-hover);
+  color: var(--color-ink);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--color-accent-hover) 40%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--color-ink) 35%, transparent);
   text-underline-offset: 2px;
   cursor: pointer;
 }
@@ -132,7 +132,7 @@
   content: "";
   width: 7px;
   height: 4px;
-  border: solid white;
+  border: solid var(--color-on-accent);
   border-width: 0 0 1.5px 1.5px;
   transform: translateY(-1px) rotate(-45deg);
 }
@@ -225,7 +225,7 @@
   white-space: pre;
 }
 
-/* Syntax colours, close to Linear's. */
+/* Syntax in greys, told apart by weight and tone rather than hue. */
 .rich .hljs-comment,
 .rich .hljs-quote {
   color: var(--color-faint);
@@ -234,72 +234,27 @@
 .rich .hljs-keyword,
 .rich .hljs-selector-tag,
 .rich .hljs-built_in,
-.rich .hljs-doctag {
-  color: #c792ea;
+.rich .hljs-doctag,
+.rich .hljs-title,
+.rich .hljs-section,
+.rich .hljs-name {
+  color: var(--color-ink);
+  font-weight: 600;
 }
 .rich .hljs-string,
 .rich .hljs-regexp,
-.rich .hljs-addition,
-.rich .hljs-attribute {
-  color: #a5d6a7;
-}
+.rich .hljs-attribute,
 .rich .hljs-number,
 .rich .hljs-literal,
 .rich .hljs-symbol,
 .rich .hljs-bullet {
-  color: #f78c6c;
+  color: var(--color-muted);
 }
-.rich .hljs-title,
-.rich .hljs-section,
-.rich .hljs-name,
-.rich .hljs-selector-id,
-.rich .hljs-selector-class {
-  color: #82aaff;
-}
-.rich .hljs-type,
-.rich .hljs-template-tag,
-.rich .hljs-variable,
-.rich .hljs-params {
-  color: #ffcb6b;
-}
-.rich .hljs-attr,
-.rich .hljs-property,
-.rich .hljs-meta {
-  color: #89ddff;
+.rich .hljs-addition {
+  color: var(--color-success);
 }
 .rich .hljs-deletion {
-  color: #f07178;
-}
-:root[data-theme="light"] .rich .hljs-keyword,
-:root[data-theme="light"] .rich .hljs-selector-tag,
-:root[data-theme="light"] .rich .hljs-built_in {
-  color: #7c3aed;
-}
-:root[data-theme="light"] .rich .hljs-string,
-:root[data-theme="light"] .rich .hljs-regexp,
-:root[data-theme="light"] .rich .hljs-addition,
-:root[data-theme="light"] .rich .hljs-attribute {
-  color: #15803d;
-}
-:root[data-theme="light"] .rich .hljs-number,
-:root[data-theme="light"] .rich .hljs-literal,
-:root[data-theme="light"] .rich .hljs-symbol {
-  color: #c2410c;
-}
-:root[data-theme="light"] .rich .hljs-title,
-:root[data-theme="light"] .rich .hljs-section,
-:root[data-theme="light"] .rich .hljs-name {
-  color: #1d4ed8;
-}
-:root[data-theme="light"] .rich .hljs-type,
-:root[data-theme="light"] .rich .hljs-variable,
-:root[data-theme="light"] .rich .hljs-params {
-  color: #a16207;
-}
-:root[data-theme="light"] .rich .hljs-attr,
-:root[data-theme="light"] .rich .hljs-property,
-:root[data-theme="light"] .rich .hljs-meta {
-  color: #0e7490;
+  color: var(--color-critical);
 }
 
 .rich table {

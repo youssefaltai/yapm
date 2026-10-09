@@ -63,15 +63,18 @@ export function useHotkeys(
   }, [enabled]);
 }
 
-export function StatusIcon({
-  type,
-  color,
-  size = 14,
-}: {
-  type: StateType;
-  color: string;
-  size?: number;
-}) {
+/** Greys like everything else: the shape tells the states apart, as in Linear. */
+const STATUS_TONE: Record<StateType, string> = {
+  triage: "var(--color-muted)",
+  backlog: "var(--color-faint)",
+  unstarted: "var(--color-muted)",
+  started: "var(--color-ink)",
+  completed: "var(--color-muted)",
+  canceled: "var(--color-faint)",
+};
+
+export function StatusIcon({ type, size = 14 }: { type: StateType; size?: number }) {
+  const color = STATUS_TONE[type];
   const r = 6;
   const common = { width: size, height: size, viewBox: "0 0 14 14", className: "shrink-0" };
   switch (type) {
@@ -140,7 +143,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
   if (priority === 1) {
     return (
       <svg {...common} aria-hidden>
-        <rect x="1" y="1" width="12" height="12" rx="3" fill="#f2994a" />
+        <rect x="1" y="1" width="12" height="12" rx="3" fill="var(--color-warning)" />
         <path
           d="M7 3.5v4.2M7 9.6v.9"
           stroke="var(--color-canvas)"
@@ -154,7 +157,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
     return (
       <svg {...common} aria-hidden>
         {[2, 6, 10].map((x) => (
-          <rect key={x} x={x} y="6.25" width="2" height="1.5" rx="0.5" fill="#5c6068" />
+          <rect key={x} x={x} y="6.25" width="2" height="1.5" rx="0.5" fill="var(--color-faint)" />
         ))}
       </svg>
     );
@@ -170,7 +173,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
           width="3"
           height={3 + i * 3}
           rx="0.75"
-          fill={i < filled ? "#8a8f98" : "#3a3d44"}
+          fill={i < filled ? "var(--color-muted)" : "var(--color-line)"}
         />
       ))}
     </svg>
@@ -212,7 +215,7 @@ export function UnassignedIcon({ size = 18 }: { size?: number }) {
 export function LabelChip({ label }: { label: Label }) {
   return (
     <span className="inline-flex max-w-40 items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[12px] text-muted">
-      <span className="size-2 shrink-0 rounded-full" style={{ background: label.color }} />
+      <span className="size-2 shrink-0 rounded-full bg-muted" />
       <span className="truncate">{label.name}</span>
     </span>
   );
@@ -480,7 +483,7 @@ function CommandMenu({ spec, depth }: { spec: MenuSpec; depth: number }) {
                 {spec.multi && (
                   <span
                     className={`flex size-3.5 items-center justify-center rounded-sm border text-[10px] transition-colors ${
-                      item.checked ? "border-accent bg-accent text-white" : "border-faint"
+                      item.checked ? "border-accent bg-accent text-on-accent" : "border-faint"
                     }`}
                   >
                     {item.checked ? "✓" : ""}
@@ -554,9 +557,9 @@ export function SlaBadge({ breachesAt, open }: { breachesAt: string | null; open
         : `SLA ${Math.round(hours / 24)}d`;
   const tone =
     left <= 0
-      ? "border-red-500/40 text-red-400"
+      ? "border-critical/40 text-critical"
       : hours < 24
-        ? "border-amber-500/40 text-amber-400"
+        ? "border-warning/40 text-warning"
         : "border-line text-muted";
   return (
     <span

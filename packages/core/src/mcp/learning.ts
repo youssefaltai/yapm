@@ -16,6 +16,7 @@ import {
   metricHistory,
   scopeKey,
 } from "../services/metrics.js";
+import { updateOrganization } from "../services/organization.js";
 import { type Tool, ToolError } from "./protocol.js";
 import { type McpContext, requireIssue, resolveTeam, resolveUser, str } from "./tools.js";
 
@@ -205,6 +206,26 @@ export const learningTools: Tool<McpContext>[] = [
     async run(args, c) {
       await c.act((s) => updateHandbook(s, String(args.handbook)));
       return { updated: true };
+    },
+  },
+  {
+    name: "update_organization",
+    title: "Update company",
+    description:
+      "Rename the company or set its time zone (IANA, e.g. Europe/Berlin). Needs organization.update.",
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string" }, timezone: { type: "string" } },
+    },
+    async run(args, c) {
+      await c.act((s) =>
+        updateOrganization(s, {
+          name: str(args.name) ?? null,
+          timezone: str(args.timezone) ?? null,
+        }),
+      );
+      const company = await c.db.select().from(workspaces).get();
+      return { name: company?.name, timezone: company?.timezone };
     },
   },
   {

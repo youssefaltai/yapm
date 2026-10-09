@@ -30,7 +30,13 @@ import {
 } from "../services/issues.js";
 import { createLabel } from "../services/labels.js";
 import { archiveNotification, inInbox, updateNotification } from "../services/notifications.js";
-import { cancelRequest, checkPermission, createRequest } from "../services/requests.js";
+import {
+  approveRequest,
+  cancelRequest,
+  checkPermission,
+  createRequest,
+  rejectRequest,
+} from "../services/requests.js";
 import { createTeam } from "../services/teams.js";
 import { hireAgent, retireAgent, updateUser } from "../services/users.js";
 import { type Tool, ToolError } from "./protocol.js";
@@ -910,7 +916,7 @@ export const tools: Tool<McpContext>[] = [
     name: "create_request",
     title: "Ask for approval",
     description:
-      "Ask the owner for permission to do something you aren't allowed to do yet. One request covers one action: its title names only that action, so ask separately for each. The owner approves once, always allows it, or rejects it with a reason. Do what doesn't need it meanwhile; if you can't go on without the answer, finish with needs_input and you're woken when it comes. Asking again while one is pending returns the pending one.",
+      "Ask the owner for permission to do something you aren't allowed to do yet. One request covers one action: its title names only that action, so ask separately for each. The owner approves once, always allows it, or rejects it with a reason; a manager above you may also approve once or reject. Do what doesn't need it meanwhile; if you can't go on without the answer, finish with needs_input and you're woken when it comes. Asking again while one is pending returns the pending one.",
     inputSchema: {
       type: "object",
       properties: {
@@ -942,7 +948,7 @@ export const tools: Tool<McpContext>[] = [
     name: "get_request",
     title: "Get request",
     description:
-      "A request's status (pending, approved, rejected, canceled) and the owner's answer. A one-time approval is used up by the action it allows.",
+      "A request's status (pending, approved, rejected, canceled) and the answer. A one-time approval is used up by the action it allows.",
     readOnly: true,
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
     async run(args, c) {
@@ -988,6 +994,36 @@ export const tools: Tool<McpContext>[] = [
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
     async run(args, c) {
       await c.act((s) => cancelRequest(s, String(args.id)));
+      return requestSummary(c, String(args.id));
+    },
+  },
+  {
+    name: "approve_request",
+    title: "Approve request",
+    description:
+      "Approve once a pending request from someone below you in the reporting line. You can only pass on what a grant already lets you do; only the owner always allows.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" }, note: { type: "string" } },
+      required: ["id"],
+    },
+    async run(args, c) {
+      await c.act((s) => approveRequest(s, String(args.id), { note: str(args.note) ?? null }));
+      return requestSummary(c, String(args.id));
+    },
+  },
+  {
+    name: "reject_request",
+    title: "Reject request",
+    description:
+      "Reject a pending request from someone below you in the reporting line. The reason is required: it tells them what to do instead.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" }, reason: { type: "string" } },
+      required: ["id", "reason"],
+    },
+    async run(args, c) {
+      await c.act((s) => rejectRequest(s, String(args.id), String(args.reason)));
       return requestSummary(c, String(args.id));
     },
   },

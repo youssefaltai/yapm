@@ -22,8 +22,10 @@ import {
   type MenuItem,
   type MenuSpec,
   PriorityIcon,
+  ProjectDot,
   StatusIcon,
   shortDate,
+  tint,
   UnassignedIcon,
 } from "./ui.js";
 
@@ -73,7 +75,7 @@ export function statusMenu(issues: Issue[]): MenuSpec | undefined {
     items: states.map((state, index) => ({
       id: state.id,
       label: state.name,
-      icon: <StatusIcon type={state.type} />,
+      icon: <StatusIcon type={state.type} color={state.color} />,
       hint: String(index + 1),
       checked: issues.every((i) => i.state.id === state.id),
       onSelect: () => {
@@ -109,7 +111,13 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
     "{ projects(first: 100) { nodes { id name color projectMilestones { nodes { id name } } } } }",
   );
   const ids = issues.map((i) => i.id);
-  const dot = <span className="size-2.5 rounded-full bg-muted" aria-hidden />;
+  const dot = (color: string) => (
+    <span
+      className="size-2.5 rounded-full"
+      style={{ background: tint(color, "var(--color-muted)") }}
+      aria-hidden
+    />
+  );
   return {
     placeholder: `Move ${plural(issues)} to project…`,
     items: [
@@ -124,7 +132,7 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
         {
           id: p.id,
           label: p.name,
-          icon: dot,
+          icon: dot(p.color),
           checked: issues.every((i) => i.project?.id === p.id && !i.projectMilestone),
           onSelect: () =>
             void updateIssues(
@@ -137,7 +145,7 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
           id: m.id,
           label: `${p.name} › ${m.name}`,
           keywords: p.name,
-          icon: dot,
+          icon: dot(p.color),
           checked: issues.every((i) => i.projectMilestone?.id === m.id),
           onSelect: () =>
             void updateIssues(
@@ -282,7 +290,12 @@ export function labelsMenu(issues: Issue[]): MenuSpec | undefined {
     ...labels.map((label) => ({
       id: label.id,
       label: label.name,
-      icon: <span className="size-2.5 rounded-full bg-muted" />,
+      icon: (
+        <span
+          className="size-2.5 rounded-full"
+          style={{ background: tint(label.color, "var(--color-muted)") }}
+        />
+      ),
       checked: has.get(label.id) ?? false,
       onSelect: () => {
         const on = !has.get(label.id);
@@ -386,7 +399,7 @@ export async function searchIssueItems(
       id: issue.id,
       label: issue.title,
       section: "Issues",
-      icon: <StatusIcon type={issue.state.type} />,
+      icon: <StatusIcon type={issue.state.type} color={issue.state.color} />,
       hint: issue.identifier,
       onSelect: () => onPick(issue),
     }));
@@ -600,7 +613,7 @@ export function issueContextMenu(issues: Issue[]): ContextEntry[] {
       id: "status",
       label: "Status",
       hint: "S",
-      icon: one && <StatusIcon type={one.state.type} />,
+      icon: one && <StatusIcon type={one.state.type} color={one.state.color} />,
       submenu: () => statusMenu(issues),
     },
     {
@@ -742,7 +755,7 @@ async function documentProjectMenu(doc: {
       ...data.projects.nodes.map((p) => ({
         id: p.id,
         label: p.name,
-        icon: <span className="size-2.5 rounded-[3px] bg-muted" />,
+        icon: <ProjectDot color={p.color} />,
         checked: doc.project?.id === p.id,
         onSelect: () => void move(p.id),
       })),
@@ -1088,7 +1101,7 @@ export function commandPalette(): MenuSpec {
           id: `project-${p.id}`,
           label: p.name,
           section: "Projects",
-          icon: <span className="size-2.5 rounded-full bg-muted" />,
+          icon: <ProjectDot color={p.color} />,
           onSelect: () => navigate(paths.project(p.id)),
         })),
         ...(other?.searchDocuments.nodes ?? []).map((d) => ({

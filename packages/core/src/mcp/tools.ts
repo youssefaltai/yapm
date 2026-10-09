@@ -573,7 +573,7 @@ export const tools: Tool<McpContext>[] = [
         team: { type: "string", description: "Team name, key or id" },
         name: { type: "string" },
         type: { type: "string", enum: [...WORKFLOW_STATE_TYPES] },
-        color: { type: "string", description: "Hex color, e.g. #8b8b90" },
+        color: { type: "string", description: "Hex color, e.g. #5e6ad2" },
         description: { type: "string" },
         position: { type: "integer", description: "Place in the team's list, from 0" },
       },
@@ -666,7 +666,7 @@ export const tools: Tool<McpContext>[] = [
       type: "object",
       properties: {
         name: { type: "string" },
-        color: { type: "string", description: "Hex color, e.g. #8b8b90" },
+        color: { type: "string", description: "Hex color, e.g. #5e6ad2" },
         description: { type: "string" },
         team: { type: "string", description: "Team name, key or id; leave out for workspace-wide" },
       },

@@ -96,7 +96,7 @@ export interface ContractOptions {
   liveLog?: unknown[];
 }
 
-/** A hex colour with no visible hue: the palette is greys only. */
+/** A hex colour with no visible hue. */
 export const neutral = (hex: string) => {
   const [r = 0, g = 0, b = 0] = (hex.match(/[0-9a-f]{2}/gi) ?? []).map((c) => parseInt(c, 16));
   return Math.max(r, g, b) - Math.min(r, g, b) <= 12;
@@ -376,6 +376,14 @@ export function hubContract(
       );
       expect(label.errors).toBeUndefined();
       labelId = label.data?.issueLabelCreate.issueLabel.id ?? "";
+      // A label made without a colour still gets one, so it stands out from the rest.
+      const uncoloured = await client.graphql<{
+        issueLabelCreate: { issueLabel: { color: string } };
+      }>(
+        'mutation($teamId: String) { issueLabelCreate(input: { name: "Rent", teamId: $teamId }) { issueLabel { color } } }',
+        { teamId },
+      );
+      expect(uncoloured.data?.issueLabelCreate.issueLabel.color).not.toSatisfy(neutral);
 
       const create = (input: Record<string, unknown>, token?: string) =>
         client.graphql<{
@@ -1898,7 +1906,7 @@ export function hubContract(
       const project = created.projectCreate.project;
       expect(project).toMatchObject({ state: "planned", url: `/project/${project.id}` });
       expect(project.color).toMatch(/^#[0-9a-f]{6}$/);
-      expect(project.color).toSatisfy(neutral);
+      expect(project.color).not.toSatisfy(neutral);
       const bad = await client.graphql(
         'mutation($id: String!) { projectUpdate(id: $id, input: { targetDate: "soon" }) { success } }',
         { id: project.id },
@@ -3611,7 +3619,7 @@ export function hubContract(
       );
       expect(created.errors).toBeUndefined();
       const waiting = created.data?.workflowStateCreate.workflowState;
-      expect(waiting).toMatchObject({ type: "started", color: "#aaaaae" });
+      expect(waiting).toMatchObject({ type: "started", color: "#f2c94c" });
       expect(await names()).toEqual([
         "Triage",
         "Backlog",

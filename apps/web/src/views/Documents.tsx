@@ -16,8 +16,7 @@ import {
 } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
-import { timeAgo } from "../ui.js";
-import { ProjectDot } from "./Projects.js";
+import { ProjectDot, timeAgo } from "../ui.js";
 
 interface DocumentRow {
   id: string;
@@ -87,7 +86,7 @@ export function DocumentsView() {
                 <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
                 {d.project && (
                   <span className="flex max-w-40 items-center gap-1.5 truncate text-[12px] text-muted max-sm:hidden">
-                    <ProjectDot size={8} />
+                    <ProjectDot color={d.project.color} size={8} />
                     {d.project.name}
                   </span>
                 )}
@@ -190,7 +189,7 @@ export function DocumentPage({ id }: { id: string }) {
               ? {
                   label: (
                     <>
-                      <ProjectDot size={8} />
+                      <ProjectDot color={doc.project.color} size={8} />
                       {doc.project.name}
                     </>
                   ),

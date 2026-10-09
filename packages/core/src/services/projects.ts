@@ -22,16 +22,11 @@ import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, forbidden, notFound } from "../errors.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
+import { COLORS, checkColor } from "./labels.js";
 import { notify, ownerId } from "./notifications.js";
 
 // Planning, like Linear: projects (with milestones and status updates), initiatives that
 // group projects, and documents.
-
-const COLOR = /^#[0-9a-fA-F]{6}$/;
-
-function checkColor(color: string) {
-  if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #8b8b90");
-}
 
 function checkDate(date: string, label: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)))
@@ -139,7 +134,7 @@ export async function createProject(ctx: Ctx, input: ProjectInput & { name: stri
     ...fields,
     id,
     name: fields.name ?? "",
-    color: fields.color ?? "#8b8b90",
+    color: fields.color ?? COLORS[count % COLORS.length] ?? "#5e6ad2",
     state,
     creatorId: ctx.actorId,
     sortOrder: fields.sortOrder ?? count,

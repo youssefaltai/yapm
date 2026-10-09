@@ -6,14 +6,14 @@ import { insertRows } from "./write.js";
 
 /** Linear's default workflow, plus Triage. New teams start with these states. */
 export const DEFAULT_STATES: { name: string; type: WorkflowStateType; color: string }[] = [
-  { name: "Triage", type: "triage", color: "#8b8b90" },
-  { name: "Backlog", type: "backlog", color: "#6c6c71" },
-  { name: "Todo", type: "unstarted", color: "#8b8b90" },
-  { name: "In Progress", type: "started", color: "#aaaaae" },
-  { name: "In Review", type: "started", color: "#aaaaae" },
-  { name: "Done", type: "completed", color: "#d0d0d3" },
-  { name: "Canceled", type: "canceled", color: "#5e5e63" },
-  { name: "Duplicate", type: "canceled", color: "#5e5e63" },
+  { name: "Triage", type: "triage", color: "#fc7840" },
+  { name: "Backlog", type: "backlog", color: "#bec2c8" },
+  { name: "Todo", type: "unstarted", color: "#e2e2e2" },
+  { name: "In Progress", type: "started", color: "#f2c94c" },
+  { name: "In Review", type: "started", color: "#0f973d" },
+  { name: "Done", type: "completed", color: "#5e6ad2" },
+  { name: "Canceled", type: "canceled", color: "#95a2b3" },
+  { name: "Duplicate", type: "canceled", color: "#95a2b3" },
 ];
 
 const CEO_CHARTER = `You are the CEO of this company. The owner is the only human and your sole stakeholder.

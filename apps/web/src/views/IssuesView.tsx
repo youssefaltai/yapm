@@ -43,6 +43,7 @@ import {
   SlaBadge,
   StatusIcon,
   shortDate,
+  tint,
   UnassignedIcon,
   useHotkeys,
   useStore,
@@ -315,7 +316,7 @@ export function IssuesView({
                 group.issues.length === 0 ? null : (
                   <section key={group.key} aria-label={group.label}>
                     <GroupHeader
-                      icon={<StatusIcon type={group.type} />}
+                      icon={<StatusIcon type={group.type} color={group.state?.color} />}
                       label={group.label}
                       count={group.issues.length}
                       actions={
@@ -532,7 +533,7 @@ function IssueRow({
       />
       <PriorityIcon priority={issue.priority} />
       <span className="w-14 shrink-0 text-faint max-sm:hidden">{issue.identifier}</span>
-      <StatusIcon type={issue.state.type} />
+      <StatusIcon type={issue.state.type} color={issue.state.color} />
       <span className="min-w-0 flex-1 truncate">
         {issue.title}
         {issue.parent && (
@@ -621,7 +622,7 @@ function Board({
           className={`flex w-72 shrink-0 flex-col rounded-lg transition-colors duration-150 ${over === group.key ? "bg-raised" : ""}`}
         >
           <div className="flex items-center gap-2 px-2 py-2">
-            <StatusIcon type={group.type} />
+            <StatusIcon type={group.type} color={group.state?.color} />
             <span className="font-medium">{group.label}</span>
             <span className="text-faint">{group.issues.length}</span>
             {team && group.state && (
@@ -955,7 +956,12 @@ function FilterButton({
                   labels.map((l) => ({
                     value: l.id,
                     label: l.name,
-                    icon: <span className="size-2.5 rounded-full bg-muted" />,
+                    icon: (
+                      <span
+                        className="size-2.5 rounded-full"
+                        style={{ background: tint(l.color, "var(--color-muted)") }}
+                      />
+                    ),
                   })),
                 ),
             },

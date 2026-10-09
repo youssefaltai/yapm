@@ -18,7 +18,7 @@
 }
 
 @theme {
-  /* Greys only, like Linear. Colour is reserved for meaning, and even then it stays soft. */
+  /* Greys, like Linear. Colour is for meaning and for telling things apart. */
   --color-canvas: #0f0f10;
   --color-panel: #161617;
   --color-raised: #1c1c1e;
@@ -36,10 +36,19 @@
   --color-series-4: #5e5e63;
   --color-series-5: #424246;
   --color-series-other: #2e2e31;
-  /* The only colours: muted, so they read as meaning without shouting. */
+  /* Meaning: muted, so it reads without shouting. */
   --color-success: #8fb39a;
   --color-warning: #c9ad7a;
   --color-critical: #c98c88;
+  --color-urgent: #fc7840;
+  /* Linear's hues, to tell agents apart. Statuses, labels and projects bring their own. */
+  --color-hue-1: #5e6ad2;
+  --color-hue-2: #26b5ce;
+  --color-hue-3: #4cb782;
+  --color-hue-4: #f2c94c;
+  --color-hue-5: #f2994a;
+  --color-hue-6: #eb5757;
+  --color-hue-7: #bb87fc;
   --font-sans:
     "Emoji", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
@@ -66,6 +75,14 @@
   --color-success: #4e7a5b;
   --color-warning: #8a6d34;
   --color-critical: #a3524c;
+  --color-urgent: #e0602a;
+  --color-hue-1: #4f5bc4;
+  --color-hue-2: #1a8fa3;
+  --color-hue-3: #2f8f5f;
+  --color-hue-4: #a8820f;
+  --color-hue-5: #c96a24;
+  --color-hue-6: #c94343;
+  --color-hue-7: #8a5bd0;
   color-scheme: light;
 }
 

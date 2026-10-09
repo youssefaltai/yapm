@@ -26,6 +26,21 @@ export function resourceOf(tool: string, input: Record<string, unknown>): string
   return null;
 }
 
+/**
+ * What the owner reads before answering. A Bash command shows as itself in a shell block: inside
+ * JSON every quote is escaped, which makes a one-liner hard to check, and its description is
+ * already the request's reason. Other tools show their input as JSON.
+ */
+export function requestDetails(tool: string, input: Record<string, unknown>): string {
+  const command = typeof input.command === "string" ? input.command : null;
+  const [lang, body] =
+    tool === "Bash" && command ? ["sh", command] : ["json", JSON.stringify(input, null, 2)];
+  // A fence longer than any run of backticks in the body, so the body can't close it.
+  const ticks = Math.max(2, ...(body.match(/`+/g) ?? []).map((run) => run.length)) + 1;
+  const fence = "`".repeat(ticks);
+  return `${fence}${lang}\n${body.slice(0, 4000)}\n${fence}`;
+}
+
 export interface PermissionContext {
   hub: HubClient;
   token: string;
@@ -90,7 +105,7 @@ export async function decideTool(
           reason:
             description ||
             `Needed for the work on ${ctx.issue ?? "the current task"}; the session is paused until you answer.`,
-          details: `\`\`\`json\n${JSON.stringify(input, null, 2).slice(0, 4000)}\n\`\`\``,
+          details: requestDetails(tool, input),
           issueId: ctx.issueId,
         },
       },

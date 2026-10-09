@@ -13,6 +13,7 @@ export function useLiveUpdates() {
     let retry = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let pongTimer: ReturnType<typeof setTimeout> | undefined;
 
     // Batch bursts (a bulk edit is one event per request, but agents can be busy).
     const refresh = () => {
@@ -24,12 +25,15 @@ export function useLiveUpdates() {
       const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/live`;
       socket = new WebSocket(url);
       socket.onopen = () => {
-        // Anything could have changed while disconnected.
-        if (retry > 0) refresh();
+        // Anything could have changed while disconnected, or between the first load and now.
+        refresh();
         retry = 0;
       };
       socket.onmessage = (message) => {
-        if (message.data === "pong") return;
+        if (message.data === "pong") {
+          clearTimeout(pongTimer);
+          return;
+        }
         try {
           const event = JSON.parse(String(message.data)) as { clientId?: string | null };
           if (event.clientId !== CLIENT_ID) refresh();
@@ -38,6 +42,7 @@ export function useLiveUpdates() {
         }
       };
       socket.onclose = () => {
+        clearTimeout(pongTimer);
         if (closed) return;
         retry++;
         reconnectTimer = setTimeout(connect, Math.min(30_000, 500 * 2 ** retry));
@@ -45,9 +50,20 @@ export function useLiveUpdates() {
     };
     connect();
 
-    // Keep the connection alive through proxies that drop idle sockets.
+    // Keep the connection alive through proxies that drop idle sockets, and notice when it has
+    // died without closing (common on phones switching networks): no pong means reconnect.
     const ping = setInterval(() => {
-      if (socket?.readyState === WebSocket.OPEN) socket.send("ping");
+      const current = socket;
+      if (current?.readyState !== WebSocket.OPEN) return;
+      current.send("ping");
+      clearTimeout(pongTimer);
+      pongTimer = setTimeout(() => {
+        if (socket !== current) return;
+        current.onclose = null;
+        current.close();
+        retry++;
+        connect();
+      }, 10_000);
     }, 30_000);
 
     // Phones suspend background tabs; catch up when the app comes back.
@@ -61,6 +77,7 @@ export function useLiveUpdates() {
       clearInterval(ping);
       clearTimeout(reconnectTimer);
       clearTimeout(refreshTimer);
+      clearTimeout(pongTimer);
       document.removeEventListener("visibilitychange", onVisible);
       socket?.close();
     };

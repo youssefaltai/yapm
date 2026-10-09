@@ -5,6 +5,8 @@ import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { describe, expect, it } from "vitest";
 import { commit, type HubDb } from "../src/db.js";
+import type { HubEvent } from "../src/realtime.js";
+import { tick } from "../src/scheduler.js";
 import { seedCompany } from "../src/seed.js";
 import { syncCycles } from "../src/services/cycles.js";
 import { createIssue, updateIssue } from "../src/services/issues.js";
@@ -254,6 +256,39 @@ describe("SLAs and auto-archive", () => {
     const archived = await db.select().from(schema.issues).all();
     expect(archived.find((i) => i.id === done)?.archivedAt).not.toBeNull();
     expect(archived.find((i) => i.id === urgent)?.archivedAt).toBeNull();
+  });
+});
+
+describe("tick", () => {
+  it("tells open apps when time-based work changed something, and only then", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ctx = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(ctx, { name: "Bills", key: "BIL" });
+    await updateTeam(ctx, teamId, { autoArchivePeriod: 1 });
+    const done = await createIssue(ctx, { teamId, title: "Old bill" });
+    const states = await db
+      .select()
+      .from(schema.workflowStates)
+      .where(eq(schema.workflowStates.teamId, teamId))
+      .all();
+    await updateIssue(ctx, done, {
+      stateId: nth(
+        states.filter((s) => s.type === "completed"),
+        0,
+      ).id,
+    });
+    const events: HubEvent[] = [];
+    const deps = {
+      db,
+      config: { platform: "node" as const, version: "test" },
+      realtime: { connect: () => new Response(), publish: (e: HubEvent) => void events.push(e) },
+    };
+
+    await tick(deps, start + 10 * DAY);
+    expect(events).toEqual([]);
+    await tick(deps, start + 31 * DAY);
+    expect(events).toEqual([{ type: "change", actorId: "", clientId: null, at: start + 31 * DAY }]);
   });
 });
 

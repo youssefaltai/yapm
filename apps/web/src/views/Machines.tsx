@@ -8,7 +8,10 @@ import { Crumb, openMenu, timeAgo, useStore } from "../ui.js";
 
 interface Machine {
   id: string;
+  /** The owner's name for it, or else its original name. */
   name: string;
+  /** What the machine called itself when it enrolled. */
+  originalName: string;
   status: "pending" | "active" | "revoked";
   tags: string[];
   mcps: string[];
@@ -40,7 +43,7 @@ interface McpServer {
 }
 
 const MACHINES = `{ machines {
-  id name status tags mcps capacity version online lastSeenAt createdAt runningCount
+  id name originalName status tags mcps capacity version online lastSeenAt createdAt runningCount
   claudeAccount { email subscriptionType }
   planUsage { available limits { kind utilization resetsAt } }
   mcpServers { id name url command args status statusDetail authUrl allAgents agents { id name } }
@@ -196,18 +199,28 @@ function SetupPanel({
 
 function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boolean }) {
   const [code, setCode] = useState("");
+  // Empty while it goes by its original name, which shows as the placeholder to fall back to.
+  const ownName = m.name === m.originalName ? "" : m.name;
+  const [name, setName] = useState(ownName);
+  useEffect(() => setName(ownName), [ownName]);
   const [tags, setTags] = useState(m.tags.join(", "));
   useEffect(() => setTags(m.tags.join(", ")), [m.tags]);
+  const update = (input: { name?: string; tags?: string[] }) =>
+    mutate(
+      "mutation($id: String!, $input: MachineUpdateInput!) { machineUpdate(id: $id, input: $input) { success } }",
+      { id: m.id, input },
+    );
+  const saveName = async () => {
+    if (name.trim() === ownName) return;
+    if (!(await update({ name: name.trim() }))) setName(ownName);
+  };
   const saveTags = () => {
     const next = tags
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
     if (next.join(",") === m.tags.join(",")) return;
-    void mutate(
-      "mutation($id: String!, $input: MachineUpdateInput!) { machineUpdate(id: $id, input: $input) { success } }",
-      { id: m.id, input: { tags: next } },
-    );
+    void update({ tags: next });
   };
   return (
     <div className="rounded-lg border border-line px-4 py-3">
@@ -216,7 +229,10 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
           className={`size-2 rounded-full ${m.status === "pending" ? "bg-amber-400" : m.online ? "bg-emerald-400" : "bg-faint"}`}
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate font-medium">{m.name}</span>
+        <span className="min-w-0 flex-1 truncate">
+          <span className="font-medium">{m.name}</span>
+          {ownName && <span className="ml-2 text-[12px] text-faint">{m.originalName}</span>}
+        </span>
         <span className="text-[12px] text-faint">
           {m.status === "pending"
             ? "Waiting for approval"
@@ -256,6 +272,21 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
         </form>
       )}
       <dl className="mt-3 grid grid-cols-[6rem_1fr] items-center gap-y-1.5 text-[13px]">
+        <dt className="text-faint">Name</dt>
+        <dd>
+          <input
+            aria-label={`Name for ${m.originalName}`}
+            value={name}
+            disabled={!canEdit}
+            maxLength={60}
+            placeholder={m.originalName}
+            title={ownName ? `Clear it to go back to ${m.originalName}` : undefined}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className="w-full bg-transparent outline-none placeholder:text-faint"
+          />
+        </dd>
         <dt className="text-faint">Tags</dt>
         <dd>
           <input

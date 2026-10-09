@@ -2567,6 +2567,91 @@ export function hubContract(
       });
     });
 
+    it("renames a machine, keeping the name it enrolled with to fall back to", async () => {
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+        token?: string,
+      ) => client.graphql<T>(query, variables, token);
+      const rename = (id: string, name: string, token?: string) =>
+        gql(
+          "mutation($id: String!, $name: String!) { machineUpdate(id: $id, input: { name: $name }) { machine { name originalName } } }",
+          { id, name },
+          token,
+        );
+      const made = await gql<{ machineSetupTokenCreate: { token: string } }>(
+        "mutation { machineSetupTokenCreate { token } }",
+      );
+      const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+        method: "POST",
+        json: {
+          name: "Youssefs-MacBook-Pro",
+          setupToken: made.data?.machineSetupTokenCreate.token,
+        },
+      });
+      const id = joined.body.id;
+      const listed = async () => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name: "list_machines", arguments: {} },
+          },
+          token: ceoToken,
+        });
+        const body = (await response.json()) as { result: { content: { text: string }[] } };
+        const machines = JSON.parse(body.result.content[0]?.text ?? "[]") as {
+          id: string;
+          name: string;
+          originalName?: string;
+        }[];
+        return machines.find((m) => m.id === id);
+      };
+
+      // Only the owner renames machines.
+      const byAgent = await rename(id, "Work laptop", ceoToken);
+      expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+
+      const renamed = await rename(id, "  Work laptop ");
+      expect(renamed.data).toEqual({
+        machineUpdate: { machine: { name: "Work laptop", originalName: "Youssefs-MacBook-Pro" } },
+      });
+      // Agents see the new name, and can still find it by either.
+      expect(await listed()).toMatchObject({
+        name: "Work laptop",
+        originalName: "Youssefs-MacBook-Pro",
+      });
+      const me = await client.json<{ name: string }>("/api/runner/me", {
+        token: joined.body.token,
+      });
+      expect(me.body.name).toBe("Work laptop");
+
+      // Clearing the name, or giving back the original, falls back to what it enrolled with.
+      expect((await rename(id, "")).data).toEqual({
+        machineUpdate: {
+          machine: { name: "Youssefs-MacBook-Pro", originalName: "Youssefs-MacBook-Pro" },
+        },
+      });
+      expect((await listed())?.originalName).toBeUndefined();
+      await rename(id, "Work laptop");
+      await rename(id, "Youssefs-MacBook-Pro");
+      expect((await listed())?.originalName).toBeUndefined();
+      expect((await rename(id, "x".repeat(61))).errors?.[0]?.message).toMatch(/at most 60/);
+
+      const log = await gql<{
+        auditEntries: { nodes: { action: string; data: { to?: { name?: string } } }[] };
+      }>("query($id: String) { auditEntries(entityId: $id) { nodes { action data } } }", { id });
+      expect(
+        log.data?.auditEntries.nodes
+          .filter((e) => e.action === "machine.update")
+          .map((e) => e.data.to?.name),
+      ).toEqual(expect.arrayContaining(["Work laptop", "Youssefs-MacBook-Pro"]));
+
+      await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", { id });
+    });
+
     it("shows each Claude login's plan limits and what runs used, per day", async () => {
       const gql = <T = Record<string, unknown>>(
         query: string,

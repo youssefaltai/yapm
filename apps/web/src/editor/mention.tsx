@@ -85,6 +85,9 @@ function MentionChip({ node, selected }: ReactNodeViewProps) {
         navigate(kind === "user" ? paths.member(id) : paths.issue(id));
       }}
       className={`mention ${selected ? "is-selected" : ""}`}
+      // NodeViewWrapper sets white-space: normal inline, which beats the stylesheet and wraps a
+      // long issue title inside the chip.
+      style={{ whiteSpace: "nowrap" }}
     >
       {kind === "user" ? (
         <>

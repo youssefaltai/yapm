@@ -409,8 +409,18 @@
   background: var(--color-raised);
   font-weight: 500;
   line-height: 1.5;
+  /* The line height's worth, set outright: the trimmed text below no longer gives it. */
+  height: 1.5em;
   cursor: pointer;
   white-space: nowrap;
+}
+/*
+ * Centring a line box doesn't centre the letters in it: each font sits its glyphs differently in
+ * the box, so with Inter the text rode about 2px above the status icon. Trimmed to cap height and
+ * baseline, the text centres on its capitals like the icon does, whatever the font.
+ */
+.rich .mention > span {
+  text-box: trim-both cap alphabetic;
 }
 .rich .mention:hover {
   background: var(--color-line);
@@ -422,7 +432,10 @@
   color: var(--color-muted);
 }
 .rich .mention-title {
-  overflow: hidden;
+  /* Clip only sideways, for the ellipsis: hidden would cut ascenders and descenders off the
+     trimmed box. */
+  overflow-x: clip;
+  overflow-y: visible;
   text-overflow: ellipsis;
   max-width: 28ch;
 }

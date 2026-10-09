@@ -571,6 +571,29 @@ export function SlaBadge({ breachesAt, open }: { breachesAt: string | null; open
  * Linear's detail page: the content on the left, a properties sidebar on the right. On a phone
  * the sidebar sits between the heading and the content, so the facts come before the long read.
  */
+/**
+ * One step of a page header's breadcrumb: a link back and the › after it, so every header spaces
+ * and colours its trail the same way. A className (e.g. max-sm:hidden) applies to both.
+ */
+export function Crumb({
+  onClick,
+  className = "",
+  children,
+}: {
+  onClick: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <button type="button" onClick={onClick} className={`text-muted hover:text-ink ${className}`}>
+        {children}
+      </button>
+      <span className={`text-faint ${className}`}>›</span>
+    </>
+  );
+}
+
 export function DetailLayout({
   head,
   side,

@@ -15,7 +15,16 @@ import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
-import { Avatar, DetailLayout, Modal, openMenu, shortDate, timeAgo, useStore } from "../ui.js";
+import {
+  Avatar,
+  Crumb,
+  DetailLayout,
+  Modal,
+  openMenu,
+  shortDate,
+  timeAgo,
+  useStore,
+} from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 
 export type ProjectState = "backlog" | "planned" | "started" | "paused" | "completed" | "canceled";
@@ -464,14 +473,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
         source={{ kind: "project", project: { id: p.id, name: p.name } }}
         title={
           <>
-            <button
-              type="button"
-              onClick={() => navigate(paths.projects())}
-              className="text-muted hover:text-ink"
-            >
-              Projects
-            </button>
-            <span className="text-faint">›</span>
+            <Crumb onClick={() => navigate(paths.projects())}>Projects</Crumb>
             <ProjectDot color={p.color} />
             <span className="max-w-48 truncate">{p.name}</span>
           </>
@@ -482,14 +484,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
   return (
     <div className="flex h-full animate-fade-in flex-col">
       <header className="isolate flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.projects())}
-          className="text-muted hover:text-ink"
-        >
-          Projects
-        </button>
-        <span className="text-faint">›</span>
+        <Crumb onClick={() => navigate(paths.projects())}>Projects</Crumb>
         <ProjectDot color={p.color} />
         <span className="max-w-48 truncate font-medium">{p.name}</span>
         <span className="ml-2 flex gap-1">{tabs}</span>

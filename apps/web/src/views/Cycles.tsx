@@ -2,7 +2,7 @@ import { cycleName, workspaceStore } from "../actions.js";
 import { type Team, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, PageSkeleton } from "../states.js";
-import { shortDate, useStore } from "../ui.js";
+import { Crumb, shortDate, useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 import { Progress } from "./Projects.js";
 
@@ -109,13 +109,10 @@ export function CyclePage({ id }: { id: string }) {
       source={{ kind: "cycle", cycle, team }}
       title={
         <>
-          <button
-            type="button"
-            onClick={() => navigate(paths.cycles(team.key))}
-            className="text-muted hover:text-ink"
-          >
-            <span className="max-sm:hidden">{team.name} › </span>Cycles ›
-          </button>
+          <Crumb onClick={() => navigate(paths.team(team.key))} className="max-sm:hidden">
+            {team.name}
+          </Crumb>
+          <Crumb onClick={() => navigate(paths.cycles(team.key))}>Cycles</Crumb>
           {cycleName(cycle)}
         </>
       }

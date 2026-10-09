@@ -7,6 +7,7 @@ import { navigate, paths, type RunsTab } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
 import {
   Avatar,
+  Crumb,
   DetailLayout,
   Property,
   PropertyList,
@@ -268,14 +269,7 @@ export function RunPage({ id }: { id: string }) {
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.runs())}
-          className="text-muted hover:text-ink"
-        >
-          Runs
-        </button>
-        <span className="text-faint">›</span>
+        <Crumb onClick={() => navigate(paths.runs())}>Runs</Crumb>
         <span className="truncate font-medium">
           {run.agent.name} · {run.kind === "decision" ? "Decision" : "Work"}
         </span>

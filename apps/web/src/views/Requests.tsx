@@ -330,9 +330,10 @@ export function RequestPage({ id }: { id: string }) {
           }
         >
           {r.details && (
-            <pre className="mt-4 overflow-x-auto rounded-lg border border-line bg-canvas px-4 py-3 text-[13px] whitespace-pre-wrap">
-              {r.details}
-            </pre>
+            <RichText
+              source={r.details}
+              className="mt-4 rounded-lg border border-line bg-canvas px-4 py-3"
+            />
           )}
 
           {canAnswer && mode === "idle" && (

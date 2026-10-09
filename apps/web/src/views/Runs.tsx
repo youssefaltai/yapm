@@ -14,6 +14,7 @@ import {
   timeAgo,
   useStore,
 } from "../ui.js";
+import { Transcript, type TranscriptEvent } from "./Transcript.js";
 
 export type RunStatus =
   | "queued"
@@ -223,20 +224,6 @@ interface RunDetail extends RunSummary {
   logs: { seq: number; events: TranscriptEvent[] }[];
 }
 
-type TranscriptEvent = {
-  type: string;
-  at?: number;
-  text?: string;
-  name?: string;
-  input?: string;
-  error?: boolean;
-  tool?: string;
-  state?: string;
-  requestId?: string;
-  resource?: string | null;
-  turns?: number;
-};
-
 const RUN_DETAIL = `query($id: String!) { run(id: $id) {
   ${RUN_SUMMARY} trigger result error stopReason numTurns model effort routeRule costUsd
   machine { id name } stoppedBy { name }
@@ -435,12 +422,7 @@ export function RunPage({ id }: { id: string }) {
                   : "Empty."}
               </p>
             ) : (
-              <ol className="space-y-2">
-                {events.map((event, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: the transcript only grows
-                  <TranscriptLine key={i} event={event} />
-                ))}
-              </ol>
+              <Transcript events={events} active={isActive(run.status)} />
             )}
           </section>
         </DetailLayout>
@@ -491,46 +473,4 @@ function Outcome({ run }: { run: RunDetail }) {
       )}
     </div>
   );
-}
-
-function TranscriptLine({ event }: { event: TranscriptEvent }) {
-  switch (event.type) {
-    case "text":
-      return (
-        <li>
-          <RichText source={event.text ?? ""} />
-        </li>
-      );
-    case "tool":
-      return (
-        <li className="rounded-md bg-panel px-3 py-1.5 text-[13px]">
-          <span className="font-medium">{(event.name ?? "").replace(/^mcp__life-os__/, "")}</span>{" "}
-          <code className="break-all text-faint">{event.input}</code>
-        </li>
-      );
-    case "tool_result":
-      return (
-        <li
-          className={`max-h-32 overflow-hidden px-3 text-[12px] whitespace-pre-wrap ${event.error ? "text-red-400" : "text-faint"}`}
-        >
-          {event.text}
-        </li>
-      );
-    case "permission":
-      return (
-        <li className="text-[13px] text-amber-400">
-          {event.state === "waiting"
-            ? `Asked for permission to use ${event.tool}`
-            : `Permission for ${event.tool}: ${event.state}`}
-        </li>
-      );
-    case "result":
-      return (
-        <li className="text-[12px] text-faint">
-          Session ended after {event.turns ?? 0} {event.turns === 1 ? "turn" : "turns"}
-        </li>
-      );
-    default:
-      return <li className="text-[12px] text-faint">{event.type}</li>;
-  }
 }

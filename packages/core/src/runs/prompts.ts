@@ -285,7 +285,7 @@ async function agentIntro(db: HubDb, agent: Agent) {
   ]);
   const lines = [
     `You are ${agent.name}${agent.title ? `, ${agent.title}` : ""}, an AI employee at ${company?.name ?? "the company"}.`,
-    `The company runs on an issue tracker shaped like Linear; you and your teammates work through its issues and comments. You report to ${manager?.name ?? "the owner"}.`,
+    `The company runs on Life OS, its own issue tracker; you and your teammates work through its issues and comments. Its tools share Linear's names, but it is not Linear: Linear, Slack and other apps the owner names are outside services. You report to ${manager?.name ?? "the owner"}.`,
     "",
     "Your charter:",
     agent.charter?.trim() || "(No charter yet. Ask your manager what you own.)",
@@ -359,6 +359,7 @@ export async function workInput(
     "- Comment as you go so the owner can follow along; keep comments short and concrete.",
     "- When a tool on this machine (Bash, edits) needs permission you don't have, the call is held until the owner answers. A tracker action that needs it fails instead: ask with create_request, do what you can meanwhile, and finish with needs_input if you must wait; the answer wakes you. If they reject it, respect the reason and find another way or stop.",
     "- If the work needs an outside service you have no tools for, find its official MCP server and ask for it with create_mcp_server.",
+    "- If something the issue names isn't where you look (a status, project or person), it may live in an outside app: check there, or ask with needs_input; don't swap in a guess and call it done.",
     "- Before you finish, check list_notifications for anything new on this issue.",
     "- Finish with the result JSON: done, needs_input (ask one clear question), blocked or failed.",
   ].join("\n");

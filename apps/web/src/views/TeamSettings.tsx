@@ -1,8 +1,8 @@
 import { createIssueStore } from "../actions.js";
 import { confirmDialog, Select as Dropdown } from "../controls.js";
 import { mutate, type Team, toast } from "../data.js";
-import { navigate, paths } from "../router.js";
-import { Crumb } from "../ui.js";
+import { Breadcrumbs, button, PageHeader } from "../layout.js";
+import { paths } from "../router.js";
 import { SettingsLayout, SettingsPanel, SettingsRow } from "./SettingsLayout.js";
 
 const PRIORITY_SLAS = [
@@ -85,10 +85,9 @@ const range = (from: number, to: number, label: (n: number) => string) =>
 export function TeamSettings({ team }: { team: Team }) {
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <Crumb onClick={() => navigate(paths.team(team.key))}>{team.name}</Crumb>
-        <span className="font-medium">Settings</span>
-      </header>
+      <PageHeader>
+        <Breadcrumbs trail={[{ label: team.name, to: paths.team(team.key) }]}>Settings</Breadcrumbs>
+      </PageHeader>
       <SettingsLayout
         sections={[
           {
@@ -234,7 +233,7 @@ export function TeamSettings({ team }: { team: Team }) {
   );
 }
 
-const templateButton = "rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-ink";
+const templateButton = button("ghost", "sm");
 
 function TemplateActions({ team }: { team: Team }) {
   return (
@@ -271,14 +270,14 @@ function Templates({ team }: { team: Team }) {
   };
   if (team.templates.length === 0)
     return (
-      <p className="rounded-lg border border-dashed border-line px-4 py-3 text-[13px] text-faint">
+      <p className="rounded-lg border border-dashed border-line px-4 py-3 text-muted">
         None yet. Try a daily brief, a weekly review, or rent on the 1st. Agents set them up too.
       </p>
     );
   return (
     <SettingsPanel>
       {team.templates.map((t) => (
-        <div key={t.id} className="flex items-center gap-3 px-4 py-2.5">
+        <div key={t.id} className="flex min-h-14 items-center gap-3 px-4 py-2.5">
           <button
             type="button"
             onClick={() => createIssueStore.set({ teamId: team.id, template: t })}

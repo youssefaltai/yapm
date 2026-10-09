@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { copyText, workspaceStore } from "../actions.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
+import { button, eyebrow, field, Page, PageBody, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
-import { Crumb, openMenu, timeAgo, useStore } from "../ui.js";
+import { openMenu, timeAgo, useStore } from "../ui.js";
+import { RunsTabs } from "./Runs.js";
 
 interface Machine {
   id: string;
@@ -67,67 +69,69 @@ export function MachinesView() {
   const machines = (data?.machines ?? []).filter((m) => m.status !== "revoked");
   const added = setup ? machines.find((m) => !setup.known.has(m.id)) : undefined;
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <Crumb onClick={() => navigate(paths.runs())}>Runs</Crumb>
-        <span className="font-medium">Machines</span>
-        {isOwner && !setup && (
-          <button
-            type="button"
-            onClick={async () => {
-              const result = await mutate<{
-                machineSetupTokenCreate: { token: string; expiresAt: string };
-              }>("mutation { machineSetupTokenCreate { token expiresAt } }");
-              if (!result) return;
-              const { token, expiresAt } = result.machineSetupTokenCreate;
-              setSetup({
-                command: `curl -fsSL ${location.origin}/install.sh | sh -s -- --token ${token}`,
-                expiresAt,
-                known: new Set((data?.machines ?? []).map((m) => m.id)),
-              });
-            }}
-            className="ml-auto rounded-md bg-accent px-3 py-1 font-medium text-white"
-          >
-            Add machine
-          </button>
+    <Page>
+      <PageHeader
+        actions={
+          isOwner &&
+          !setup && (
+            <button
+              type="button"
+              onClick={async () => {
+                const result = await mutate<{
+                  machineSetupTokenCreate: { token: string; expiresAt: string };
+                }>("mutation { machineSetupTokenCreate { token expiresAt } }");
+                if (!result) return;
+                const { token, expiresAt } = result.machineSetupTokenCreate;
+                setSetup({
+                  command: `curl -fsSL ${location.origin}/install.sh | sh -s -- --token ${token}`,
+                  expiresAt,
+                  known: new Set((data?.machines ?? []).map((m) => m.id)),
+                });
+              }}
+              className={button("primary", "sm")}
+            >
+              Add machine
+            </button>
+          )
+        }
+        tabs={<RunsTabs active="machines" />}
+      >
+        <PageTitle>Runs</PageTitle>
+      </PageHeader>
+      <PageBody>
+        {error && <p className="text-red-400">{error}</p>}
+        {setup ? (
+          <SetupPanel setup={setup} added={added} onDone={() => setSetup(null)} />
+        ) : (
+          <p className="text-muted">
+            Agents think and work on your own Mac or Linux computers, signed in with your Claude
+            subscription.{" "}
+            {isOwner
+              ? "Add machine gives you one command to paste on the computer; it sets everything up."
+              : "The owner adds them."}
+          </p>
         )}
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">
-          {error && <p className="text-red-400">{error}</p>}
-          {setup ? (
-            <SetupPanel setup={setup} added={added} onDone={() => setSetup(null)} />
-          ) : (
-            <p className="text-muted">
-              Agents think and work on your own Mac or Linux computers, signed in with your Claude
-              subscription.{" "}
-              {isOwner
-                ? "Add machine gives you one command to paste on the computer; it sets everything up."
-                : "The owner adds them."}
-            </p>
+        <div className="mt-6 space-y-3">
+          {data && machines.length === 0 && (
+            <EmptyState
+              compact
+              icon="machine"
+              title="No machines yet"
+              description={
+                isOwner
+                  ? "Add machine gives you one command to paste on a Mac or Linux computer."
+                  : "Once the owner adds a computer, agents can run on it."
+              }
+              className="rounded-lg border border-dashed border-line"
+            />
           )}
-          <div className="mt-6 space-y-3">
-            {data && machines.length === 0 && (
-              <EmptyState
-                compact
-                icon="machine"
-                title="No machines yet"
-                description={
-                  isOwner
-                    ? "Add machine gives you one command to paste on a Mac or Linux computer."
-                    : "Once the owner adds a computer, agents can run on it."
-                }
-                className="rounded-xl border border-dashed border-line"
-              />
-            )}
-            {machines.map((m) => (
-              <MachineCard key={m.id} machine={m} canEdit={isOwner} />
-            ))}
-          </div>
-          {machines.length > 0 && <UpdateCommand />}
+          {machines.map((m) => (
+            <MachineCard key={m.id} machine={m} canEdit={isOwner} />
+          ))}
         </div>
-      </div>
-    </div>
+        {machines.length > 0 && <UpdateCommand />}
+      </PageBody>
+    </Page>
   );
 }
 
@@ -150,11 +154,7 @@ function SetupPanel({
           It runs in the background and starts again when the computer does. Give it tags below to
           choose which agents work there.
         </p>
-        <button
-          type="button"
-          onClick={onDone}
-          className="mt-3 rounded-md bg-accent px-3 py-1 font-medium text-white"
-        >
+        <button type="button" onClick={onDone} className={`mt-3 ${button("primary")}`}>
           Done
         </button>
       </div>
@@ -177,15 +177,11 @@ function SetupPanel({
             void navigator.clipboard?.writeText(setup.command);
             setCopied(true);
           }}
-          className="rounded-md bg-accent px-3 py-1 font-medium text-white"
+          className={button("primary")}
         >
           {copied ? "Copied" : "Copy command"}
         </button>
-        <button
-          type="button"
-          onClick={onDone}
-          className="rounded-md px-3 py-1 text-muted hover:text-ink"
-        >
+        <button type="button" onClick={onDone} className={button("ghost")}>
           Cancel
         </button>
         <span className="ml-auto text-[12px] text-faint">Waiting for the machine…</span>
@@ -244,13 +240,9 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
             placeholder="6-digit code"
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            className="w-32 rounded-md border border-line bg-panel px-3 py-1.5 tracking-widest outline-none focus:border-faint"
+            className={`w-32 tracking-widest ${field}`}
           />
-          <button
-            type="submit"
-            disabled={code.length !== 6}
-            className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-          >
+          <button type="submit" disabled={code.length !== 6} className={button("primary")}>
             Approve
           </button>
         </form>
@@ -347,12 +339,12 @@ function McpServers({ machine, canEdit }: { machine: Machine; canEdit: boolean }
       aria-label={`MCP servers on ${machine.name}`}
     >
       <div className="flex items-center">
-        <h3 className="text-[12px] font-medium text-faint uppercase">MCP servers</h3>
+        <h3 className={eyebrow}>MCP servers</h3>
         {canEdit && !adding && (
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="ml-auto rounded-md px-2 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-ink"
+            className={`ml-auto ${button("ghost", "sm")}`}
           >
             + Add server
           </button>
@@ -390,7 +382,7 @@ function McpServers({ machine, canEdit }: { machine: Machine; canEdit: boolean }
                 href={server.authUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-md bg-accent px-2 py-0.5 font-medium text-white"
+                className={button("primary", "sm")}
               >
                 Connect
               </a>
@@ -489,23 +481,23 @@ function AddServer({ machine, onDone }: { machine: Machine; onDone: () => void }
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="name, e.g. slack-acme"
-        className="w-40 rounded-md border border-line bg-panel px-2 py-1 outline-none placeholder:text-faint focus:border-faint"
+        className={`w-40 ${field}`}
       />
       <input
         aria-label="Server address"
         value={address}
         onChange={(e) => setAddress(e.target.value)}
         placeholder="https://… or a command, e.g. npx some-mcp"
-        className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2 py-1 outline-none placeholder:text-faint focus:border-faint"
+        className={`flex-1 ${field}`}
       />
       <button
         type="submit"
         disabled={!name.trim() || !address.trim()}
-        className="rounded-md bg-accent px-3 py-1 font-medium text-white disabled:opacity-40"
+        className={button("primary")}
       >
         Add
       </button>
-      <button type="button" onClick={onDone} className="px-2 text-muted hover:text-ink">
+      <button type="button" onClick={onDone} className={button("ghost")}>
         Cancel
       </button>
     </form>

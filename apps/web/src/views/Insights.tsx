@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "../data.js";
+import { Page, PageHeader, PageTitle, Section, Tabs } from "../layout.js";
 import { navigate, paths } from "../router.js";
-import { Bone, EmptyState, SelectedPill } from "../states.js";
+import { Bone, EmptyState } from "../states.js";
 import { Avatar } from "../ui.js";
 
 interface Metrics {
@@ -86,132 +87,132 @@ export function Insights() {
     .filter((u) => u.user?.kind === "agent")
     .sort((a, b) => b.metrics.completed - a.metrics.completed || b.metrics.runs - a.metrics.runs);
   return (
-    <div className="h-full overflow-y-auto">
-      <header className="isolate flex h-11 items-center gap-3 border-b border-line px-4 md:px-6">
-        <span className="font-medium">Insights</span>
-        <div className="ml-auto flex gap-1" role="tablist" aria-label="Period">
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              role="tab"
-              aria-selected={days === p}
-              onClick={() => setDays(p)}
-              className={`relative rounded-md px-2 py-0.5 ${days === p ? "text-ink" : "text-muted hover:text-ink"}`}
-            >
-              {days === p && <SelectedPill group="insights-period" />}
-              {p} days
-            </button>
-          ))}
-        </div>
-      </header>
-      {!company && !error && (
-        <div
-          aria-hidden
-          className="mx-auto grid max-w-5xl animate-skeleton-in grid-cols-2 gap-3 px-4 py-6 md:grid-cols-4 md:px-6"
-        >
-          {["a", "b", "c", "d", "e", "f", "g", "h"].map((k) => (
-            <div key={k} className="space-y-2.5 rounded-lg border border-line px-4 py-3">
-              <Bone className="h-2.5 w-20" />
-              <Bone className="h-5 w-12" />
-            </div>
-          ))}
-        </div>
-      )}
-      {company && (
-        <div className={`mx-auto max-w-5xl px-4 py-6 md:px-6 ${stale ? "stale" : "fresh"}`}>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat
-              label="Completed"
-              value={String(company.completed)}
-              hint={`${company.created} created`}
-            />
-            <Stat label="Cycle time" value={hours(company.cycleTimeHours)} hint="start to done" />
-            <Stat
-              label="Runs stopped"
-              value={pct(company.stopRate)}
-              hint={`of ${company.runs} runs`}
-            />
-            <Stat
-              label="Requests rejected"
-              value={pct(company.rejectionRate)}
-              hint={`of ${company.requestsAnswered} answered`}
-            />
-            <Stat label="SLA breaches" value={String(company.slaBreaches)} />
-            <Stat label="Run success" value={pct(company.runSuccessRate)} />
-            <Stat label="Tokens" value={compact(company.tokens)} />
-            <Stat
-              label="Tokens per issue"
-              value={compact(company.tokensPerCompletedIssue)}
-              hint="per completed issue"
-            />
-            <Stat label="Cost" value={usd(company.costUsd)} hint="at API prices" />
-            <Stat
-              label="Cost per issue"
-              value={usd(company.costPerCompletedIssue)}
-              hint="per completed issue"
-            />
+    <Page>
+      <PageHeader
+        actions={
+          <Tabs
+            label="Period"
+            group="insights-period"
+            options={PERIODS.map((p) => ({ id: p as number, label: `${p} days` }))}
+            value={days}
+            onChange={setDays}
+          />
+        }
+      >
+        <PageTitle>Insights</PageTitle>
+      </PageHeader>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {!company && !error && (
+          <div
+            aria-hidden
+            className="mx-auto grid max-w-5xl animate-skeleton-in grid-cols-2 gap-3 px-4 pt-6 md:grid-cols-4 md:px-6"
+          >
+            {["a", "b", "c", "d", "e", "f", "g", "h"].map((k) => (
+              <div key={k} className="space-y-2.5 rounded-lg border border-line px-4 py-3">
+                <Bone className="h-2.5 w-20" />
+                <Bone className="h-5 w-12" />
+              </div>
+            ))}
           </div>
+        )}
+        {company && (
+          <div className={`mx-auto max-w-5xl px-4 pt-6 pb-16 md:px-6 ${stale ? "stale" : "fresh"}`}>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Stat
+                label="Completed"
+                value={String(company.completed)}
+                hint={`${company.created} created`}
+              />
+              <Stat label="Cycle time" value={hours(company.cycleTimeHours)} hint="start to done" />
+              <Stat
+                label="Runs stopped"
+                value={pct(company.stopRate)}
+                hint={`of ${company.runs} runs`}
+              />
+              <Stat
+                label="Requests rejected"
+                value={pct(company.rejectionRate)}
+                hint={`of ${company.requestsAnswered} answered`}
+              />
+              <Stat label="SLA breaches" value={String(company.slaBreaches)} />
+              <Stat label="Run success" value={pct(company.runSuccessRate)} />
+              <Stat label="Tokens" value={compact(company.tokens)} />
+              <Stat
+                label="Tokens per issue"
+                value={compact(company.tokensPerCompletedIssue)}
+                hint="per completed issue"
+              />
+              <Stat label="Cost" value={usd(company.costUsd)} hint="at API prices" />
+              <Stat
+                label="Cost per issue"
+                value={usd(company.costPerCompletedIssue)}
+                hint="per completed issue"
+              />
+            </div>
 
-          <Daily rows={data?.metricHistory ?? []} />
+            <Daily rows={data?.metricHistory ?? []} />
 
-          <h2 className="mt-8 mb-2 text-[12px] font-medium text-faint uppercase">Agents</h2>
-          {agents.length === 0 ? (
-            <EmptyState
-              compact
-              icon="chart"
-              title="No agent activity in this period"
-              description="Once agents finish runs and close issues, how each one is doing shows up here."
-              className="rounded-xl border border-dashed border-line"
-            />
-          ) : (
-            <Table
-              rows={agents.map((a) => ({
-                id: a.user?.id ?? "",
-                label: (
-                  <span className="flex items-center gap-2">
-                    <Avatar name={a.user?.name ?? "?"} kind="agent" size={18} />
-                    {a.user?.name}
-                  </span>
-                ),
-                onOpen: () => a.user && navigate(paths.member(a.user.id)),
-                metrics: a.metrics,
-              }))}
-            />
-          )}
+            <Section title="Agents">
+              {agents.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon="chart"
+                  title="No agent activity in this period"
+                  description="Once agents finish runs and close issues, how each one is doing shows up here."
+                  className="rounded-lg border border-dashed border-line"
+                />
+              ) : (
+                <Table
+                  rows={agents.map((a) => ({
+                    id: a.user?.id ?? "",
+                    label: (
+                      <span className="flex items-center gap-2">
+                        <Avatar name={a.user?.name ?? "?"} kind="agent" size={18} />
+                        {a.user?.name}
+                      </span>
+                    ),
+                    onOpen: () => a.user && navigate(paths.member(a.user.id)),
+                    metrics: a.metrics,
+                  }))}
+                />
+              )}
+            </Section>
 
-          <h2 className="mt-8 mb-2 text-[12px] font-medium text-faint uppercase">Teams</h2>
-          {(insights?.teams ?? []).length === 0 ? (
-            <EmptyState
-              compact
-              icon="team"
-              title="No team activity in this period"
-              description="Teams show up here as their issues move."
-              className="rounded-xl border border-dashed border-line"
-            />
-          ) : (
-            <Table
-              teams
-              rows={(insights?.teams ?? []).map((t) => ({
-                id: t.team?.id ?? "",
-                label: t.team?.name ?? "Deleted team",
-                onOpen: () => t.team && navigate(paths.team(t.team.key)),
-                metrics: t.metrics,
-              }))}
-            />
-          )}
-          <h2 className="mt-8 mb-2 text-[12px] font-medium text-faint uppercase">Model routes</h2>
-          {(insights?.routes ?? []).length === 0 ? (
-            <p className="text-muted">No runs ended in this period.</p>
-          ) : (
-            <Routes rows={insights?.routes ?? []} />
-          )}
-          <p className="mt-6 text-faint">
-            Agents read these with get_metrics in their retros, compared with the period before.
-          </p>
-        </div>
-      )}
-    </div>
+            <Section title="Teams">
+              {(insights?.teams ?? []).length === 0 ? (
+                <EmptyState
+                  compact
+                  icon="team"
+                  title="No team activity in this period"
+                  description="Teams show up here as their issues move."
+                  className="rounded-lg border border-dashed border-line"
+                />
+              ) : (
+                <Table
+                  teams
+                  rows={(insights?.teams ?? []).map((t) => ({
+                    id: t.team?.id ?? "",
+                    label: t.team?.name ?? "Deleted team",
+                    onOpen: () => t.team && navigate(paths.team(t.team.key)),
+                    metrics: t.metrics,
+                  }))}
+                />
+              )}
+            </Section>
+            <Section title="Model routes">
+              {(insights?.routes ?? []).length === 0 ? (
+                <p className="text-muted">No runs ended in this period.</p>
+              ) : (
+                <Routes rows={insights?.routes ?? []} />
+              )}
+            </Section>
+            <p className="mt-6 text-faint">
+              Agents read these with get_metrics in their retros, compared with the period before.
+            </p>
+          </div>
+        )}
+      </div>
+    </Page>
   );
 }
 
@@ -232,8 +233,7 @@ function Daily({ rows }: { rows: InsightsData["metricHistory"] }) {
   if (rows.length < 2) return null;
   const max = Math.max(1, ...rows.map((r) => r.metrics.completed));
   return (
-    <section className="mt-8">
-      <h2 className="mb-2 text-[12px] font-medium text-faint uppercase">Completed per day</h2>
+    <Section title="Completed per day">
       <div className="flex h-24 items-end gap-1 rounded-lg border border-line px-3 py-2">
         {rows.map((r) => (
           <div
@@ -244,7 +244,7 @@ function Daily({ rows }: { rows: InsightsData["metricHistory"] }) {
           />
         ))}
       </div>
-    </section>
+    </Section>
   );
 }
 

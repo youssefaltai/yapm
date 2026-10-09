@@ -43,6 +43,7 @@ const QUERY = `query($days: Int) {
     teams { team { id key name } metrics { ${FIELDS} } }
     users { user { id name kind title } metrics { ${FIELDS} } }
     routes { kind modelTier model effort routeRule runs completed successRate costUsd costPerCompletedRun }
+    metrics { metric { id name unit target } value previousValue }
   }
   metricHistory(days: $days) { date metrics { completed created } }
 }`;
@@ -56,6 +57,11 @@ interface InsightsData {
       metrics: Metrics;
     }[];
     routes: RouteMetrics[];
+    metrics: {
+      metric: { id: string; name: string; unit: string | null; target: number | null };
+      value: number | null;
+      previousValue: number | null;
+    }[];
   };
   metricHistory: { date: string; metrics: { completed: number; created: number } }[];
 }
@@ -73,6 +79,8 @@ const compact = (v: number | null) =>
       : v >= 1000
         ? `${(v / 1000).toFixed(1)}k`
         : String(Math.round(v));
+const num = (v: number | null) =>
+  v === null || Number.isInteger(v) ? compact(v) : String(Math.round(v * 100) / 100);
 const usd = (v: number | null) =>
   v === null ? "–" : v >= 100 ? `$${Math.round(v)}` : `$${v.toFixed(v >= 1 ? 2 : 3)}`;
 
@@ -149,6 +157,21 @@ export function Insights() {
                 hint="per completed issue"
               />
             </div>
+
+            {(insights?.metrics ?? []).length > 0 && (
+              <Section title="Our metrics">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  {insights?.metrics.map(({ metric: m, value, previousValue }) => (
+                    <Stat
+                      key={m.id}
+                      label={m.name}
+                      value={`${num(value)}${m.unit ? ` ${m.unit}` : ""}`}
+                      hint={`${num(previousValue)} before${m.target === null ? "" : ` · target ${m.target}`}`}
+                    />
+                  ))}
+                </div>
+              </Section>
+            )}
 
             <Daily rows={data?.metricHistory ?? []} />
 

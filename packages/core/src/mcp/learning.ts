@@ -1,4 +1,10 @@
-import { auditEvents, REVISION_SUBJECTS, type RevisionSubject, workspaces } from "@life-os/schema";
+import {
+  type AuditFilter,
+  auditEvents,
+  REVISION_SUBJECTS,
+  type RevisionSubject,
+  workspaces,
+} from "@life-os/schema";
 import { and, desc, eq, lt } from "drizzle-orm";
 import {
   addressFeedback,
@@ -9,12 +15,18 @@ import {
 } from "../services/feedback.js";
 import {
   addCounts,
+  archiveMetric,
   countAll,
+  createMetric,
   deriveMetrics,
   emptyCounts,
+  type MetricInput,
   type Metrics,
   metricHistory,
+  metricValues,
+  requireMetric,
   scopeKey,
+  updateMetric,
 } from "../services/metrics.js";
 import { updateOrganization } from "../services/organization.js";
 import { type Tool, ToolError } from "./protocol.js";
@@ -57,7 +69,7 @@ export const learningTools: Tool<McpContext>[] = [
     name: "get_metrics",
     title: "Get metrics",
     description:
-      "How work went: issues created and completed, cycle time, SLA breaches, runs, how often the owner stopped runs or rejected requests, and tokens used. For the company, a team or a member, over the last N days compared with the N days before. Use it in retros to see whether a change helped.",
+      "How work went: issues created and completed, cycle time, SLA breaches, runs, how often the owner stopped runs or rejected requests, and tokens used. For the company, a team or a member, over the last N days compared with the N days before. `custom` has the company's own metrics (save_metric), for the company or a member. Use it in retros to see whether a change helped.",
     readOnly: true,
     inputSchema: {
       type: "object",
@@ -79,9 +91,10 @@ export const learningTools: Tool<McpContext>[] = [
         : member
           ? scopeKey("user", member.id)
           : scopeKey("company");
-      const [current, previous] = await Promise.all([
+      const [current, previous, custom] = await Promise.all([
         countAll(c.db, at - days * DAY, at),
         countAll(c.db, at - 2 * days * DAY, at - days * DAY),
+        team ? [] : metricValues(c.db, at - days * DAY, at, member?.id ?? null),
       ]);
       const result: Record<string, unknown> = {
         scope: team ? `team ${team.name}` : member ? member.name : "company",
@@ -89,6 +102,16 @@ export const learningTools: Tool<McpContext>[] = [
         current: readable(deriveMetrics(current.get(key) ?? emptyCounts())),
         previous: readable(deriveMetrics(previous.get(key) ?? emptyCounts())),
       };
+      if (custom.length)
+        result.custom = custom.map(({ metric: m, value, previousValue }) => ({
+          id: m.id,
+          name: m.name,
+          unit: m.unit,
+          target: m.target,
+          direction: m.direction,
+          current: value,
+          previous: previousValue,
+        }));
       if (args.daily === true) {
         const rows = await metricHistory(
           c.db,
@@ -103,6 +126,66 @@ export const learningTools: Tool<McpContext>[] = [
         }));
       }
       return result;
+    },
+  },
+  {
+    name: "save_metric",
+    title: "Create or update metric",
+    description:
+      "Define a metric the company agreed on, or change or archive one by id. Needs metric.update. A metric counts audit log entries matching the numerator over a period, or divides that by the entries matching the denominator. Useful actions: issue.create, issue.update, issue.archive, issue.slaBreached, comment.create, run.completed, run.failed, run.stop, request.create, request.approve, request.reject, feedback.create, project.create, document.create, cycle.complete. Use get_history to see the actions that really happen.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Metric id, to update one" },
+        name: { type: "string" },
+        description: { type: ["string", "null"] },
+        numerator: {
+          type: "object",
+          description: "What to count",
+          properties: {
+            action: { type: "string", description: "e.g. issue.create" },
+            entityType: { type: "string", description: "Only entries about this, e.g. issue" },
+          },
+          required: ["action"],
+        },
+        denominator: {
+          type: ["object", "null"],
+          description: "What to divide by, making it a ratio; null makes it a count",
+          properties: { action: { type: "string" }, entityType: { type: "string" } },
+          required: ["action"],
+        },
+        unit: { type: ["string", "null"] },
+        target: { type: ["number", "null"] },
+        direction: {
+          type: ["string", "null"],
+          enum: ["up", "down", null],
+          description: "Which way is better",
+        },
+        archived: { type: "boolean", description: "true stops measuring it" },
+      },
+    },
+    async run(args, c) {
+      const input: MetricInput = {
+        name: str(args.name) ?? null,
+        numerator: (args.numerator as AuditFilter | undefined) ?? null,
+      };
+      for (const key of ["description", "denominator", "unit", "target", "direction"] as const)
+        if (args[key] !== undefined) Object.assign(input, { [key]: args[key] });
+      let id = str(args.id);
+      if (id) await c.act((s) => updateMetric(s, String(id), input));
+      else id = await c.act((s) => createMetric(s, input));
+      if (args.archived === true) await c.act((s) => archiveMetric(s, String(id)));
+      const m = await requireMetric(c.db, id);
+      return {
+        id: m.id,
+        name: m.name,
+        numerator: m.numerator,
+        denominator: m.denominator,
+        unit: m.unit,
+        target: m.target,
+        direction: m.direction,
+        archivedAt: iso(m.archivedAt),
+      };
     },
   },
   {

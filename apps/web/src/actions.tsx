@@ -13,6 +13,7 @@ import {
   updateIssues,
   type Workspace,
 } from "./data.js";
+import { icon } from "./icons.js";
 import { navigate, paths } from "./router.js";
 import { setTheme, themeChoice } from "./theme.js";
 import {
@@ -470,8 +471,18 @@ export function openInNewTab(path: string) {
 /** The entries every linkable thing shares: open it in a new tab, copy its link. */
 export function linkEntries(path: string, name = "link"): ContextEntry[] {
   return [
-    { id: "new-tab", label: "Open in new tab", onSelect: () => openInNewTab(path) },
-    { id: "copy-link", label: "Copy link", onSelect: () => copyText(linkTo(path), name) },
+    {
+      id: "new-tab",
+      icon: icon("newTab"),
+      label: "Open in new tab",
+      onSelect: () => openInNewTab(path),
+    },
+    {
+      id: "copy-link",
+      icon: icon("link"),
+      label: "Copy link",
+      onSelect: () => copyText(linkTo(path), name),
+    },
   ];
 }
 
@@ -594,18 +605,38 @@ export function issueContextMenu(issues: Issue[]): ContextEntry[] {
       icon: one && <PriorityIcon priority={one.priority} />,
       submenu: () => priorityMenu(issues),
     },
-    { id: "labels", label: "Labels", hint: "L", submenu: () => labelsMenu(issues) },
-    { id: "project", label: "Project", hint: "⇧P", submenu: () => projectMenu(issues) },
+    {
+      id: "labels",
+      icon: icon("label"),
+      label: "Labels",
+      hint: "L",
+      submenu: () => labelsMenu(issues),
+    },
+    {
+      id: "project",
+      icon: icon("project"),
+      label: "Project",
+      hint: "⇧P",
+      submenu: () => projectMenu(issues),
+    },
     sameTeam &&
       team?.cyclesEnabled && {
         id: "cycle",
+        icon: icon("cycle"),
         label: "Cycle",
         hint: "⇧C",
         submenu: () => cycleMenu(issues),
       },
-    { id: "estimate", label: "Estimate", hint: "E", submenu: () => estimateMenu(issues) },
+    {
+      id: "estimate",
+      icon: icon("estimate"),
+      label: "Estimate",
+      hint: "E",
+      submenu: () => estimateMenu(issues),
+    },
     {
       id: "due",
+      icon: icon("calendar"),
       label: "Due date",
       submenu: () =>
         dateMenu({
@@ -621,15 +652,27 @@ export function issueContextMenu(issues: Issue[]): ContextEntry[] {
     "divider",
     one && {
       id: "sub",
+      icon: icon("subIssue"),
       label: "Create sub-issue",
       onSelect: () => createIssueStore.set({ teamId: one.team.id, parentId: one.id }),
     },
-    one && { id: "parent", label: "Set parent issue", submenu: () => parentMenu(one) },
-    one && { id: "relation", label: "Add relation", submenu: () => relationMenu(one) },
+    one && {
+      id: "parent",
+      icon: icon("parent"),
+      label: "Set parent issue",
+      submenu: () => parentMenu(one),
+    },
+    one && {
+      id: "relation",
+      icon: icon("relation"),
+      label: "Add relation",
+      submenu: () => relationMenu(one),
+    },
     "divider",
-    { id: "copy", label: "Copy", submenu: () => copyMenu(issues) },
+    { id: "copy", icon: icon("copy"), label: "Copy", submenu: () => copyMenu(issues) },
     one && {
       id: "new-tab",
+      icon: icon("newTab"),
       label: "Open in new tab",
       onSelect: () => openInNewTab(paths.issue(one.identifier)),
     },
@@ -637,11 +680,13 @@ export function issueContextMenu(issues: Issue[]): ContextEntry[] {
     archived
       ? {
           id: "unarchive",
+          icon: icon("unarchive"),
           label: "Unarchive",
           onSelect: () => unarchiveIssues(issues),
         }
       : {
           id: "archive",
+          icon: icon("archive"),
           label: "Archive",
           onSelect: async () => {
             await archiveIssues(issues);
@@ -698,6 +743,7 @@ export function documentContextMenu(
     "divider",
     {
       id: "rename",
+      icon: icon("edit"),
       label: "Rename…",
       onSelect: async () => {
         const next = await promptDialog({
@@ -713,10 +759,16 @@ export function documentContextMenu(
           );
       },
     },
-    { id: "project", label: "Move to project", submenu: () => documentProjectMenu(doc) },
+    {
+      id: "project",
+      icon: icon("project"),
+      label: "Move to project",
+      submenu: () => documentProjectMenu(doc),
+    },
     "divider",
     {
       id: "delete",
+      icon: icon("trash"),
       label: "Delete…",
       danger: true,
       onSelect: async () => {
@@ -771,6 +823,7 @@ export function commandPalette(): MenuSpec {
         ? [
             {
               id: "labels",
+              icon: icon("label"),
               label: "Add or remove labels…",
               section,
               hint: "L",
@@ -780,6 +833,7 @@ export function commandPalette(): MenuSpec {
         : []),
       {
         id: "estimate",
+        icon: icon("estimate"),
         label: "Set estimate…",
         section,
         hint: "E",
@@ -787,6 +841,7 @@ export function commandPalette(): MenuSpec {
       },
       {
         id: "project",
+        icon: icon("project"),
         label: "Move to project…",
         section,
         hint: "⇧P",
@@ -794,26 +849,47 @@ export function commandPalette(): MenuSpec {
       },
       {
         id: "cycle",
+        icon: icon("cycle"),
         label: "Move to cycle…",
         section,
         hint: "⇧C",
         onSelect: () => cycleMenu(targets),
       },
-      { id: "archive", label: "Archive", section, onSelect: () => void archiveIssues(targets) },
+      {
+        id: "archive",
+        icon: icon("archive"),
+        label: "Archive",
+        section,
+        onSelect: () => void archiveIssues(targets),
+      },
     );
     const [only] = targets;
     if (targets.length === 1 && only) {
       items.push(
-        { id: "parent", label: "Set parent issue…", section, onSelect: () => parentMenu(only) },
-        { id: "relation", label: "Add relation…", section, onSelect: () => relationMenu(only) },
+        {
+          id: "parent",
+          icon: icon("parent"),
+          label: "Set parent issue…",
+          section,
+          onSelect: () => parentMenu(only),
+        },
+        {
+          id: "relation",
+          icon: icon("relation"),
+          label: "Add relation…",
+          section,
+          onSelect: () => relationMenu(only),
+        },
         {
           id: "sub",
+          icon: icon("subIssue"),
           label: "Create sub-issue",
           section,
           onSelect: () => createIssueStore.set({ teamId: only.team.id, parentId: only.id }),
         },
         {
           id: "copy",
+          icon: icon("copy"),
           label: "Copy issue ID",
           section,
           onSelect: () => void navigator.clipboard?.writeText(only.identifier),
@@ -824,6 +900,7 @@ export function commandPalette(): MenuSpec {
   items.push(
     {
       id: "create",
+      icon: icon("newIssue"),
       label: "Create new issue",
       section: "Create",
       hint: "C",
@@ -831,30 +908,35 @@ export function commandPalette(): MenuSpec {
     },
     {
       id: "team",
+      icon: icon("team"),
       label: "Create new team",
       section: "Create",
       onSelect: () => createTeamStore.set(true),
     },
     {
       id: "hire",
+      icon: icon("hire"),
       label: "Hire an agent",
       section: "Create",
       onSelect: () => hireAgentStore.set(true),
     },
     {
       id: "new-project",
+      icon: icon("project"),
       label: "Create new project",
       section: "Create",
       onSelect: () => createProjectStore.set(true),
     },
     {
       id: "new-document",
+      icon: icon("document"),
       label: "Create new document",
       section: "Create",
       onSelect: () => void createDocument(),
     },
     {
       id: "shortcuts",
+      icon: icon("keyboard"),
       label: "Keyboard shortcuts",
       section: "Preferences",
       hint: "?",
@@ -864,83 +946,97 @@ export function commandPalette(): MenuSpec {
       id: `theme-${choice}`,
       label: choice === "system" ? "Change theme: match the system" : `Change theme: ${choice}`,
       section: "Preferences",
+      icon: icon(choice === "light" ? "sun" : choice === "dark" ? "moon" : "monitor"),
       ...(themeChoice() === choice ? { hint: "Current" } : {}),
       onSelect: () => setTheme(choice),
     })),
     {
       id: "projects",
+      icon: icon("project"),
       label: "Go to Projects",
       section: "Navigation",
       onSelect: () => navigate(paths.projects()),
     },
     {
       id: "roadmap",
+      icon: icon("roadmap"),
       label: "Go to Roadmap",
       section: "Navigation",
       onSelect: () => navigate(paths.roadmap()),
     },
     {
       id: "insights",
+      icon: icon("insights"),
       label: "Go to Insights",
       section: "Navigation",
       onSelect: () => navigate(paths.insights()),
     },
     {
       id: "usage",
+      icon: icon("usage"),
       label: "Go to Usage",
       section: "Navigation",
       onSelect: () => navigate(paths.usage()),
     },
     {
       id: "handbook",
+      icon: icon("handbook"),
       label: "Go to Handbook",
       section: "Navigation",
       onSelect: () => navigate(paths.handbook()),
     },
     {
       id: "initiatives",
+      icon: icon("initiative"),
       label: "Go to Initiatives",
       section: "Navigation",
       onSelect: () => navigate(paths.initiatives()),
     },
     {
       id: "documents",
+      icon: icon("document"),
       label: "Go to Documents",
       section: "Navigation",
       onSelect: () => navigate(paths.documents()),
     },
     {
       id: "inbox",
+      icon: icon("inbox"),
       label: "Go to Inbox",
       section: "Navigation",
       onSelect: () => navigate(paths.inbox()),
     },
     {
       id: "my",
+      icon: icon("myIssues"),
       label: "Go to My issues",
       section: "Navigation",
       onSelect: () => navigate(paths.myIssues()),
     },
     {
       id: "approvals",
+      icon: icon("approval"),
       label: "Go to Approvals",
       section: "Navigation",
       onSelect: () => navigate(paths.requests()),
     },
     {
       id: "runs",
+      icon: icon("run"),
       label: "Go to Runs",
       section: "Navigation",
       onSelect: () => navigate(paths.runs()),
     },
     {
       id: "machines",
+      icon: icon("machine"),
       label: "Go to Machines",
       section: "Navigation",
       onSelect: () => navigate(paths.machines()),
     },
     {
       id: "company",
+      icon: icon("company"),
       label: "Go to Company",
       section: "Navigation",
       onSelect: () => navigate(paths.company()),
@@ -949,6 +1045,7 @@ export function commandPalette(): MenuSpec {
       id: `team-${team.id}`,
       label: `Go to ${team.name}`,
       section: "Navigation",
+      icon: icon("team"),
       hint: team.key,
       onSelect: () => navigate(paths.team(team.key)),
     })),
@@ -980,6 +1077,7 @@ export function commandPalette(): MenuSpec {
           id: `document-${d.id}`,
           label: d.title || "Untitled",
           section: "Documents",
+          icon: icon("document"),
           onSelect: () => navigate(paths.document(d.id)),
         })),
       ];

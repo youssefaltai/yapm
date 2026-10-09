@@ -3,6 +3,7 @@ import { linkEntries } from "../actions.js";
 import { type ContextEntry, contextMenu } from "../contextMenu.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { plainText } from "../editor/plain.js";
+import { icon } from "../icons.js";
 import { button, PageHeader, PageTitle } from "../layout.js";
 import { usePushState } from "../push.js";
 import { navigate, paths } from "../router.js";
@@ -132,14 +133,24 @@ async function archive(n: Notification) {
 function notificationMenu(n: Notification, open: () => void): ContextEntry[] {
   const path = pathOf(n);
   return [
-    { id: "open", label: "Open", onSelect: open },
+    { id: "open", icon: icon("open"), label: "Open", onSelect: open },
     n.readAt
-      ? { id: "unread", label: "Mark as unread", onSelect: () => markRead(n, false) }
-      : { id: "read", label: "Mark as read", onSelect: () => markRead(n, true) },
+      ? {
+          id: "unread",
+          icon: icon("unread"),
+          label: "Mark as unread",
+          onSelect: () => markRead(n, false),
+        }
+      : {
+          id: "read",
+          icon: icon("read"),
+          label: "Mark as read",
+          onSelect: () => markRead(n, true),
+        },
     "divider",
     ...(path ? linkEntries(path) : []),
     "divider",
-    { id: "archive", label: "Archive", onSelect: () => archive(n) },
+    { id: "archive", icon: icon("archive"), label: "Archive", onSelect: () => archive(n) },
   ];
 }
 

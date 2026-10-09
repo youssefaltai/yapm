@@ -9,7 +9,7 @@ import {
   runs,
   users,
 } from "@life-os/schema";
-import { and, asc, count, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { API_TOKEN_PREFIX } from "../auth.js";
 import type { HubDeps } from "../context.js";
@@ -124,15 +124,26 @@ async function wake(
     note.type === "projectUpdateCreated"
   )
     return false;
+  let paused = onIssue.find((r) => r.status === "needs_input");
   if (note.type === "requestAnswered" && note.requestId) {
-    // A run still going hears the answer to its own request directly; one that ended wakes.
+    // The session that asked picks up the answer, wherever the request was filed: directly
+    // while it's still going, else by resuming its latest run.
     const request = await db.select().from(requests).where(eq(requests.id, note.requestId)).get();
     const asker = request?.runId
       ? await db.select().from(runs).where(eq(runs.id, request.runId)).get()
       : undefined;
-    if (asker?.status === "running") return false;
+    const latest = asker?.sessionId
+      ? await db
+          .select()
+          .from(runs)
+          .where(and(eq(runs.agentId, agentId), eq(runs.sessionId, asker.sessionId)))
+          .orderBy(desc(runs.createdAt))
+          .get()
+      : asker;
+    if (latest?.status === "running") return false;
+    const resumable = latest?.status === "needs_input" || latest?.status === "completed";
+    if (latest?.kind === "work" && latest.sessionId && resumable) paused = latest;
   }
-  const paused = onIssue.find((r) => r.status === "needs_input");
   // Comments and answers to requests are what a paused session waits for.
   const answers =
     note.type === "issueNewComment" ||
@@ -147,14 +158,21 @@ async function wake(
   if (onIssue.some((r) => r.kind === "work" && r.status === "running")) return false;
 
   if (paused && answers) {
-    const routed = await routeRun(db, { kind: "work", agentId, issueId, resumes: paused }, at);
+    const routed = await routeRun(
+      db,
+      { kind: "work", agentId, issueId: paused.issueId, resumes: paused },
+      at,
+    );
     await commit(db, [
-      db.update(runs).set({ status: "completed", updatedAt: at }).where(eq(runs.id, paused.id)),
+      db
+        .update(runs)
+        .set({ status: "completed", updatedAt: at })
+        .where(and(eq(runs.id, paused.id), eq(runs.status, "needs_input"))),
       db.insert(runs).values({
         id: newId(),
         agentId,
         kind: "work",
-        issueId,
+        issueId: paused.issueId,
         goal: paused.goal,
         ...routed,
         trigger: { notes: [trigger] },
@@ -575,6 +593,22 @@ async function applyDecision(ctx: Ctx, run: RunRow, decision: Decision) {
         now,
       );
       await commit(db, [
+        // One plan to look again per agent and issue: the newest replaces any earlier one.
+        ...(later
+          ? [
+              db
+                .update(runs)
+                .set({ status: "canceled", updatedAt: now })
+                .where(
+                  and(
+                    eq(runs.agentId, run.agentId),
+                    run.issueId ? eq(runs.issueId, run.issueId) : isNull(runs.issueId),
+                    eq(runs.status, "queued"),
+                    sql`${runs.notBefore} is not null`,
+                  ),
+                ),
+            ]
+          : []),
         db.insert(runs).values({
           id: newId(),
           agentId: run.agentId,

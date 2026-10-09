@@ -1605,12 +1605,14 @@ export function hubContract(
         result: { outcome: "done", summary: "Gym is open 6-22." },
       });
 
-      // A run that pauses on its own request resumes when the owner answers it.
-      const race = await gql<{ issueCreate: { issue: { id: string } } }>(
-        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
+      // A run that pauses on its own request resumes when the owner answers it, on its own issue
+      // whichever issue the request is filed on.
+      const race = await gql<{ issueCreate: { issue: { id: string; identifier: string } } }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier } } }",
         { input: { teamId, title: "Enter the spring race" } },
       );
       const raceId = race.data?.issueCreate.issue.id;
+      const raceKey = race.data?.issueCreate.issue.identifier;
       await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }", {
         input: { agentId: coachId, issueId: raceId, goal: "Enter the race" },
       });
@@ -1630,7 +1632,7 @@ export function hubContract(
       });
       const fee = await gql<{ requestCreate: { request: { id: string } } }>(
         'mutation($issue: String!) { requestCreate(input: { title: "Pay the race fee", action: "spend", reason: "Entry fee", issueId: $issue }) { request { id } } }',
-        { issue: raceId },
+        { issue: issue?.id },
         entering.body.token,
       );
       await runner(`/runs/${entering.body.run.id}/logs`, machine.token, {
@@ -1654,10 +1656,14 @@ export function hubContract(
         id: fee.data?.requestCreate.request.id,
       });
       const paid = await runner<Claim>("/claim", machine.token, {});
-      expect(paid.body.run).toMatchObject({ kind: "work", sessionId: "session-race" });
+      expect(paid.body.run).toMatchObject({
+        kind: "work",
+        sessionId: "session-race",
+        issue: raceKey,
+      });
       expect(paid.body.input.prompt).toContain('approved your request "Pay the race fee"');
 
-      // A run that ended without pausing is woken by the answer to its request.
+      // A session that ended without pausing picks up again with the answer to its request.
       const shoes = await gql<{ requestCreate: { request: { id: string } } }>(
         'mutation($issue: String!) { requestCreate(input: { title: "Email the shoe shop", action: "contact", reason: "Ask about race shoes", issueId: $issue }) { request { id } } }',
         { issue: raceId },
@@ -1672,11 +1678,11 @@ export function hubContract(
         { id: shoes.data?.requestCreate.request.id },
       );
       const heard = await runner<Claim>("/claim", machine.token, {});
-      expect(heard.body.run.kind).toBe("decision");
+      expect(heard.body.run).toMatchObject({ kind: "work", sessionId: "session-race" });
       expect(heard.body.input.prompt).toContain('rejected your request "Email the shoe shop"');
       await runner(`/runs/${heard.body.run.id}/complete`, machine.token, {
         status: "completed",
-        result: { action: "ignore", reason: "Nothing more to do" },
+        result: { outcome: "done", summary: "Keeping the old shoes." },
       });
       // The agent decides what deserves a reaction, so every mention reaches it, however busy.
       for (const n of [1, 2, 3, 4]) {
@@ -1691,6 +1697,23 @@ export function hubContract(
           result: { action: "ignore", reason: "Just checking in" },
         });
       }
+      // Looking again later replaces an earlier plan to, rather than adding another.
+      for (const until of ["2099-01-01T09:00:00.000Z", "2099-01-02T09:00:00.000Z"]) {
+        await gql(
+          'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "@Coach race day?" }) { success } }',
+          { id: raceId },
+        );
+        const asked = await runner<Claim>("/claim", machine.token, {});
+        await runner(`/runs/${asked.body.run.id}/complete`, machine.token, {
+          status: "completed",
+          result: { action: "wait_until", until, reason: "Ask nearer the day" },
+        });
+      }
+      const later = await gql<{ runs: { nodes: { notBefore: string }[] } }>(
+        "query($id: String!) { runs(filter: { issueId: $id, status: [queued] }) { nodes { notBefore } } }",
+        { id: raceId },
+      );
+      expect(later.data?.runs.nodes).toEqual([{ notBefore: "2099-01-02T09:00:00.000Z" }]);
 
       // Model routing: the owner pins each tier's model and routes labels; rules decide the rest.
       const routing = await gql<{

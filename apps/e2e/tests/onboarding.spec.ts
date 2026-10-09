@@ -293,12 +293,30 @@ test.describe
         seq: 0,
         events: [
           { type: "text", text: "Pulling the statements from the bank export." },
-          { type: "tool", name: "mcp__life-os__get_issue", input: '{"id":"PF-1"}' },
+          { type: "tool", id: "t1", name: "mcp__life-os__get_issue", input: '{"id":"PF-1"}' },
+          { type: "tool_result", id: "t1", error: false, text: '{"title":"Statements"}' },
+          { type: "tool", id: "t2", name: "Bash", input: '{"command":"ls exports"}' },
+          {
+            type: "permission",
+            tool: "WebFetch",
+            resource: "https://bank.example.com",
+            requestId: "r1",
+            state: "waiting",
+          },
+          { type: "permission", tool: "WebFetch", requestId: "r1", state: "rejected" },
         ],
       });
       await expect(page.getByText("Pulling the statements from the bank export.")).toBeVisible();
-      await expect(page.getByText("get_issue", { exact: true })).toBeVisible();
-      await expect(page.getByText("Running", { exact: true })).toBeVisible();
+      // Tool calls read as what they did, paired with their result and closed until opened.
+      const getIssue = page.getByRole("button", { name: /Get issue PF-1/ });
+      await expect(getIssue).toHaveAttribute("aria-expanded", "false");
+      await getIssue.click();
+      await expect(page.getByText('"title": "Statements"')).toBeVisible();
+      const ls = page.getByRole("button", { name: /Run command ls exports/ });
+      await expect(ls.getByText("Running")).toBeVisible();
+      await expect(page.getByText("Rejected", { exact: true })).toBeVisible();
+      // The run itself, besides the call still waiting on its result.
+      await expect(page.getByText("Running", { exact: true })).toHaveCount(2);
 
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       await page.getByLabel("Reason").fill("Wait until payday");

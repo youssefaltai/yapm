@@ -120,6 +120,13 @@
       "when": 1791562680252,
       "tag": "0016_mcp_servers",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1791577873684,
+      "tag": "0017_metrics",
+      "breakpoints": true
     }
   ]
 }

@@ -16,14 +16,22 @@ export interface LabelInput {
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 
+/** Linear's colours, for labels and projects made without one. */
+export const COLORS = ["#5e6ad2", "#26b5ce", "#4cb782", "#f2c94c", "#f2994a", "#eb5757", "#bb87fc"];
+
+/** The same name always gets the same colour. */
+export const colorFor = (name: string) =>
+  COLORS[[...name].reduce((sum, c) => sum + (c.codePointAt(0) ?? 0), 0) % COLORS.length] ??
+  "#5e6ad2";
+
 export function checkColor(color: string) {
-  if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #8b8b90");
+  if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #5e6ad2");
 }
 
 export async function createLabel(ctx: Ctx, input: LabelInput & { name: string }): Promise<string> {
   const { db, now } = ctx;
   const name = cleanText(input.name, "Label name", 60);
-  const color = input.color ?? "#bec2c8";
+  const color = input.color ?? colorFor(name);
   checkColor(color);
   const teamId = input.teamId ?? null;
   if (

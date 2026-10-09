@@ -374,7 +374,7 @@ function Statuses({ team }: { team: Team }) {
             .filter((s) => s.type === type)
             .map((state) => (
               <div key={state.id} className="flex min-h-11 items-center gap-3 px-4 py-1.5">
-                <StatusIcon type={state.type} />
+                <StatusIcon type={state.type} color={state.color} />
                 <span className="min-w-0 flex-1 truncate">{state.name}</span>
                 <button
                   type="button"

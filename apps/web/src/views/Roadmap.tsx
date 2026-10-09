@@ -4,7 +4,8 @@ import { useQuery } from "../data.js";
 import { Page, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton } from "../states.js";
-import { ProjectDot, ProjectsTabs } from "./Projects.js";
+import { ProjectDot, tint } from "../ui.js";
+import { ProjectsTabs } from "./Projects.js";
 
 interface RoadmapProject {
   id: string;
@@ -117,6 +118,7 @@ export function RoadmapView() {
                 {group.projects.map((p) => {
                   const start = p.startDate ? day(p.startDate) : day(p.createdAt);
                   const end = p.targetDate ? day(p.targetDate) : null;
+                  const hue = tint(p.color, "var(--color-faint)");
                   return (
                     <div key={p.id} className="flex h-10 items-center border-b border-line/60">
                       <button
@@ -124,7 +126,7 @@ export function RoadmapView() {
                         onClick={() => navigate(paths.project(p.id))}
                         className="sticky left-0 z-10 flex h-full w-[220px] shrink-0 items-center gap-2 truncate bg-canvas px-4 text-left hover:text-ink md:px-6"
                       >
-                        <ProjectDot />
+                        <ProjectDot color={p.color} />
                         <span className="truncate">{p.name}</span>
                       </button>
                       <div className="relative h-full" style={{ width }}>
@@ -137,15 +139,15 @@ export function RoadmapView() {
                             style={{
                               left: x(start),
                               width: Math.max(x(end) - x(start), 8),
-                              background: "var(--color-raised)",
-                              border: "1px solid var(--color-line)",
+                              background: `color-mix(in srgb, ${hue} 20%, transparent)`,
+                              border: `1px solid ${hue}`,
                             }}
                           >
                             <span
                               className="block h-full animate-grow-x transition-[width] duration-500 ease-snappy"
                               style={{
                                 width: `${Math.round(p.progress.progress * 100)}%`,
-                                background: "var(--color-faint)",
+                                background: `color-mix(in srgb, ${hue} 55%, transparent)`,
                               }}
                             />
                           </button>

@@ -63,7 +63,13 @@ export function useHotkeys(
   }, [enabled]);
 }
 
-/** Greys like everything else: the shape tells the states apart, as in Linear. */
+/** A stored colour, or the theme's grey when it has no hue, so greys follow light and dark. */
+export function tint(color: string | null | undefined, grey: string) {
+  const [r = 0, g = 0, b = 0] = (color?.match(/[0-9a-f]{2}/gi) ?? []).map((c) => parseInt(c, 16));
+  return color && Math.max(r, g, b) - Math.min(r, g, b) > 12 ? color : grey;
+}
+
+/** Greys for states without a colour of their own: the shape still tells them apart. */
 const STATUS_TONE: Record<StateType, string> = {
   triage: "var(--color-muted)",
   backlog: "var(--color-faint)",
@@ -73,8 +79,16 @@ const STATUS_TONE: Record<StateType, string> = {
   canceled: "var(--color-faint)",
 };
 
-export function StatusIcon({ type, size = 14 }: { type: StateType; size?: number }) {
-  const color = STATUS_TONE[type];
+export function StatusIcon({
+  type,
+  color: stored,
+  size = 14,
+}: {
+  type: StateType;
+  color?: string;
+  size?: number;
+}) {
+  const color = tint(stored, STATUS_TONE[type]);
   const r = 6;
   const common = { width: size, height: size, viewBox: "0 0 14 14", className: "shrink-0" };
   switch (type) {
@@ -143,7 +157,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
   if (priority === 1) {
     return (
       <svg {...common} aria-hidden>
-        <rect x="1" y="1" width="12" height="12" rx="3" fill="var(--color-warning)" />
+        <rect x="1" y="1" width="12" height="12" rx="3" fill="var(--color-urgent)" />
         <path
           d="M7 3.5v4.2M7 9.6v.9"
           stroke="var(--color-canvas)"
@@ -189,12 +203,22 @@ export function Avatar({
   kind?: "owner" | "agent";
   size?: number;
 }) {
+  // Each agent keeps one of Linear's hues, picked by name; the owner stays grey.
+  const hue = `var(--color-hue-${1 + ([...name].reduce((sum, c) => sum + (c.codePointAt(0) ?? 0), 0) % 7)})`;
   return (
     <span
       title={name}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.5) }}
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.5),
+        ...(kind === "agent" && {
+          color: hue,
+          background: `color-mix(in srgb, ${hue} 20%, transparent)`,
+        }),
+      }}
       className={`inline-flex shrink-0 items-center justify-center rounded-full font-medium ${
-        kind === "agent" ? "bg-accent/25 text-accent" : "bg-raised text-ink ring-1 ring-line"
+        kind === "agent" ? "" : "bg-raised text-ink ring-1 ring-line"
       }`}
     >
       {name.slice(0, 1).toUpperCase()}
@@ -212,10 +236,23 @@ export function UnassignedIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+export function ProjectDot({ color, size = 10 }: { color: string; size?: number }) {
+  return (
+    <span
+      className="inline-block shrink-0 rounded-[3px]"
+      style={{ width: size, height: size, background: tint(color, "var(--color-muted)") }}
+      aria-hidden
+    />
+  );
+}
+
 export function LabelChip({ label }: { label: Label }) {
   return (
     <span className="inline-flex max-w-40 items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[12px] text-muted">
-      <span className="size-2 shrink-0 rounded-full bg-muted" />
+      <span
+        className="size-2 shrink-0 rounded-full"
+        style={{ background: tint(label.color, "var(--color-muted)") }}
+      />
       <span className="truncate">{label.name}</span>
     </span>
   );

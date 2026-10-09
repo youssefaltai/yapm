@@ -27,6 +27,21 @@ six-digit code to approve in the app (or pass `--token`), then `life-os-runner s
 
 Settings live in `~/.life-os-runner/config.json`.
 
+Agents connect the MCP servers they need themselves: you approve each one, and sign in to it, from
+its request in the app. The hub hands a run the servers its agent may use. Your own Claude Code
+setup is never read or changed. To give every agent on this machine a server by hand, add it under
+`"mcpServers"` in Claude Code's format. Agents still ask you before using a server's tools.
+
+```json
+"mcpServers": {
+  "github": {
+    "type": "http",
+    "url": "https://api.githubcopilot.com/mcp/",
+    "headers": { "Authorization": "Bearer github_pat_…" }
+  }
+}
+```
+
 The runner also tells the hub which Claude login it uses and how full your plan's usage windows
 are (the same numbers as Claude Code's `/usage`), for the Usage page. It reads them when a run
 ends and, while idle, every 10 minutes by opening Claude Code without a prompt, which calls no

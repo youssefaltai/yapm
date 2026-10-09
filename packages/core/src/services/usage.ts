@@ -7,7 +7,7 @@ import {
   runs,
   users,
 } from "@life-os/schema";
-import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import type { HubDb } from "../db.js";
 import { localDate } from "../time.js";
 import { companyTimeZone } from "./cycles.js";
@@ -247,7 +247,7 @@ export async function usageHistory(
         costUsd: sql<number>`sum(${runs.costUsd})`,
       })
       .from(runs)
-      .where(and(gte(runs.endedAt, from), lt(runs.endedAt, to)))
+      .where(and(gte(runs.endedAt, from), lte(runs.endedAt, to)))
       .groupBy(sql`1`, sql`2`)
       .all(),
   ]);

@@ -1,5 +1,5 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { fromBase64Url } from "../crypto.js";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { fromBase64Url, toBase64Url } from "../crypto.js";
 import { encryptPayload } from "../push.js";
 import { SoftwareAuthenticator } from "./authenticator.js";
 import { TestPushReceiver, verifyVapid } from "./webpush.js";
@@ -25,6 +25,7 @@ export class TestClient {
     if (!headers.has("origin")) headers.set("origin", this.origin);
     const response = await this.send(
       new Request(new URL(path, this.origin), {
+        redirect: "manual",
         ...init,
         headers,
         body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
@@ -2787,6 +2788,311 @@ export function hubContract(
         await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
           id: machine.id,
         });
+    });
+
+    /** Pretend MCP providers, reached through the hub's outgoing fetch. */
+    const tokenForms: URLSearchParams[] = [];
+    function fakeProviders(): typeof fetch {
+      return async (input, init) => {
+        const request = new Request(input, init);
+        const url = new URL(request.url);
+        switch (`${request.method} ${url.origin}${url.pathname}`) {
+          // Signs in with OAuth, and accepts the hub's client ID metadata document.
+          case "POST https://mcp.example.com/mcp":
+            return new Response(null, {
+              status: 401,
+              headers: {
+                "www-authenticate":
+                  'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", scope="files:read"',
+              },
+            });
+          case "GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp":
+            return Response.json({
+              resource: "https://mcp.example.com/mcp",
+              authorization_servers: ["https://auth.example.com"],
+            });
+          case "GET https://auth.example.com/.well-known/oauth-authorization-server":
+            return Response.json({
+              issuer: "https://auth.example.com",
+              authorization_endpoint: "https://auth.example.com/authorize",
+              token_endpoint: "https://auth.example.com/token",
+              client_id_metadata_document_supported: true,
+            });
+          case "POST https://auth.example.com/token": {
+            const form = new URLSearchParams(await request.text());
+            tokenForms.push(form);
+            if (form.get("grant_type") === "refresh_token")
+              return Response.json({ access_token: "drive-2", expires_in: 3600 });
+            if (form.get("code") !== "good-code")
+              return Response.json({ error: "invalid_grant" }, { status: 400 });
+            // Expires soon, so the next claim refreshes it.
+            return Response.json({
+              access_token: "drive-1",
+              refresh_token: "drive-refresh",
+              expires_in: 60,
+            });
+          }
+          // Needs a token, with no OAuth to get one.
+          case "POST https://tokens.example.com/mcp":
+            return new Response(null, { status: 401 });
+          case "POST https://open.example.com/mcp":
+            return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+        }
+        return new Response("Not found", { status: 404 });
+      };
+    }
+
+    /** Calls a hub MCP tool as an agent. */
+    async function callTool(token: string, name: string, args: Record<string, unknown>) {
+      const response = await client.request("/mcp", {
+        method: "POST",
+        json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+        token,
+      });
+      const { result } = (await response.json()) as {
+        result: { isError?: boolean; content: { text: string }[] };
+      };
+      const text = result.content[0]?.text ?? "";
+      return { isError: result.isError === true, text, json: () => JSON.parse(text) };
+    }
+
+    async function agentToken(name: string) {
+      const people = await client.graphql<{ users: { nodes: { id: string; name: string }[] } }>(
+        "{ users { nodes { id name } } }",
+      );
+      const id = people.data?.users.nodes.find((u) => u.name === name)?.id ?? "";
+      const made = await client.graphql<{ apiTokenCreate: { token: string } }>(
+        "mutation($id: String!) { apiTokenCreate(name: $id, userId: $id) { token } }",
+        { id },
+      );
+      return { id, token: made.data?.apiTokenCreate.token ?? "" };
+    }
+
+    /** Starts a work run for the agent on a fresh machine and claims it. */
+    async function claimFor(agentId: string) {
+      const queued = await client.graphql<{ runs: { nodes: { id: string }[] } }>(
+        "{ runs(filter: { status: [queued, running] }) { nodes { id } } }",
+      );
+      for (const run of queued.data?.runs.nodes ?? [])
+        await client.graphql(
+          'mutation($id: String!) { runStop(id: $id, reason: "Clearing") { success } }',
+          { id: run.id },
+        );
+      const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+        "mutation { machineSetupTokenCreate { token } }",
+      );
+      const machine = await client.json<{ token: string }>("/api/runner/enrol", {
+        method: "POST",
+        json: {
+          name: "MCP box",
+          tags: ["personal", "gym"],
+          setupToken: made.data?.machineSetupTokenCreate.token,
+        },
+      });
+      await client.graphql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+        { input: { agentId, goal: "Use the outside tools" } },
+      );
+      const claim = await client.json<{
+        mcpServers: Record<string, unknown>;
+        input: { systemPrompt: string };
+      }>("/api/runner/claim", { method: "POST", json: {}, token: machine.body.token });
+      return claim.body;
+    }
+
+    it("connects an outside MCP server an agent asks for, once the owner signs in and approves", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        const coach = await agentToken("Coach");
+        const asked = await callTool(coach.token, "create_mcp_server", {
+          name: "Drive",
+          url: "https://mcp.example.com/mcp",
+          reason: "The training logs live in Drive.",
+        });
+        expect(asked.isError).toBe(false);
+        const requestId = asked.json().id as string;
+        type Server = { id: string; name: string; auth: string; status: string; url: string };
+        const request = async () =>
+          (
+            await client.graphql<{
+              request: { action: string; resource: string; details: string; mcpServer: Server };
+            }>(
+              "query($id: String!) { request(id: $id) { action resource details mcpServer { id name auth status url } } }",
+              { id: requestId },
+            )
+          ).data?.request;
+        const filed = await request();
+        expect(filed).toMatchObject({
+          action: "mcp.use",
+          resource: "drive",
+          mcpServer: { name: "drive", auth: "oauth", status: "pending" },
+        });
+        expect(filed?.details).toContain("https://mcp.example.com/mcp");
+
+        const approve = (alwaysAllow?: unknown) =>
+          client.graphql(
+            "mutation($id: String!, $a: AlwaysAllowInput) { requestApprove(id: $id, alwaysAllow: $a) { success } }",
+            { id: requestId, a: alwaysAllow },
+          );
+        expect((await approve()).errors?.[0]?.message).toBe("Connect drive first");
+
+        // The owner signs in with the provider, which accepts the hub's client metadata.
+        const connected = await client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
+          "mutation($id: String!) { mcpServerConnect(id: $id) { authorizationUrl } }",
+          { id: filed?.mcpServer.id },
+        );
+        const authorize = new URL(connected.data?.mcpServerConnect.authorizationUrl ?? "");
+        const clientId = "http://localhost/api/mcp/oauth/client.json";
+        expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
+          response_type: "code",
+          client_id: clientId,
+          redirect_uri: "http://localhost/api/mcp/oauth/callback",
+          code_challenge_method: "S256",
+          resource: "https://mcp.example.com/mcp",
+          scope: "files:read",
+        });
+        const metadata = await client.json("/api/mcp/oauth/client.json");
+        expect(metadata.body).toMatchObject({
+          client_id: clientId,
+          redirect_uris: ["http://localhost/api/mcp/oauth/callback"],
+          token_endpoint_auth_method: "none",
+        });
+
+        const back = await client.request(
+          `/api/mcp/oauth/callback?code=good-code&state=${authorize.searchParams.get("state")}`,
+        );
+        expect(back.status).toBe(302);
+        expect(back.headers.get("location")).toBe(`http://localhost/request/${requestId}`);
+        const exchange = tokenForms.at(-1);
+        expect(exchange?.get("client_id")).toBe(clientId);
+        const challenge = toBase64Url(
+          new Uint8Array(
+            await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(exchange?.get("code_verifier") ?? ""),
+            ),
+          ),
+        );
+        expect(challenge).toBe(authorize.searchParams.get("code_challenge"));
+        expect((await request())?.mcpServer.status).toBe("ready");
+        const stale = await client.request("/api/mcp/oauth/callback?code=x&state=nope");
+        expect(stale.headers.get("location")).toMatch(/^http:\/\/localhost\/approvals\?error=/);
+
+        expect((await approve({ scope: "user" })).errors).toBeUndefined();
+        // Its claim carries the server with a freshly refreshed token; others' don't.
+        const claim = await claimFor(coach.id);
+        expect(claim.input.systemPrompt).toContain("create_mcp_server");
+        expect(claim.mcpServers).toEqual({
+          drive: {
+            type: "http",
+            url: "https://mcp.example.com/mcp",
+            headers: { Authorization: "Bearer drive-2" },
+          },
+        });
+        expect(tokenForms.at(-1)?.get("refresh_token")).toBe("drive-refresh");
+        expect((await claimFor((await agentToken("Chef")).id)).mcpServers).toEqual({});
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("connects MCP servers with a pasted token, a local command, or no sign-in", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        const coach = await agentToken("Coach");
+        const ask = async (args: Record<string, unknown>) =>
+          (
+            await callTool(coach.token, "create_mcp_server", { reason: "Need it.", ...args })
+          ).json() as { id: string };
+        const server = async (requestId: string) =>
+          (
+            await client.graphql<{
+              request: { details: string; mcpServer: { id: string; auth: string; status: string } };
+            }>(
+              "query($id: String!) { request(id: $id) { details mcpServer { id auth status } } }",
+              { id: requestId },
+            )
+          ).data?.request;
+        const connect = (id: string | undefined, token: string) =>
+          client.graphql<{ mcpServerConnect: { mcpServer: { status: string } } }>(
+            "mutation($id: String!, $t: String) { mcpServerConnect(id: $id, token: $t) { mcpServer { status } } }",
+            { id, t: token },
+          );
+        const approve = (id: string, always: boolean) =>
+          client.graphql(
+            "mutation($id: String!, $a: AlwaysAllowInput) { requestApprove(id: $id, alwaysAllow: $a) { success } }",
+            { id, a: always ? { scope: "user" } : null },
+          );
+
+        const notion = await ask({
+          name: "notion",
+          url: "https://tokens.example.com/mcp",
+          howToConnect: "Create an internal integration token at notion.so/my-integrations.",
+        });
+        expect((await server(notion.id))?.mcpServer).toMatchObject({ auth: "token" });
+        const pasted = await connect((await server(notion.id))?.mcpServer.id, "notion-token");
+        expect(pasted.data?.mcpServerConnect.mcpServer.status).toBe("ready");
+        await approve(notion.id, false);
+
+        const github = await ask({
+          name: "github",
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-github"],
+          secretEnv: "GITHUB_TOKEN",
+        });
+        const local = await server(github.id);
+        expect(local?.mcpServer.auth).toBe("token");
+        expect(local?.details).toContain("npx -y @modelcontextprotocol/server-github");
+        await connect(local?.mcpServer.id, "ghp_123");
+        await approve(github.id, true);
+
+        const weather = await ask({ name: "weather", url: "https://open.example.com/mcp" });
+        expect((await server(weather.id))?.mcpServer).toMatchObject({
+          auth: "none",
+          status: "ready",
+        });
+        await approve(weather.id, true);
+
+        // A name already taken: others ask to use it; its user already has it.
+        const chef = await agentToken("Chef");
+        const shared = (
+          await callTool(chef.token, "create_mcp_server", {
+            name: "github",
+            command: "uvx",
+            reason: "Recipes repo.",
+          })
+        ).json();
+        expect(shared).toMatchObject({ action: "mcp.use", resource: "github", requester: "Chef" });
+        expect((await server(shared.id))?.mcpServer.id).toBe(local?.mcpServer.id);
+        expect((await ask({ name: "github", command: "npx" })) as unknown).toMatchObject({
+          message: expect.stringContaining("already yours"),
+        });
+
+        const servers = (await claimFor(coach.id)).mcpServers;
+        expect(servers).toMatchObject({
+          notion: {
+            type: "http",
+            url: "https://tokens.example.com/mcp",
+            headers: { Authorization: "Bearer notion-token" },
+          },
+          github: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-github"],
+            env: { GITHUB_TOKEN: "ghp_123" },
+          },
+          weather: { type: "http", url: "https://open.example.com/mcp" },
+        });
+        expect(servers.weather).not.toHaveProperty("headers");
+        // The one-time approval for notion was used up by that claim.
+        expect(Object.keys((await claimFor(coach.id)).mcpServers).sort()).toEqual([
+          "drive",
+          "github",
+          "weather",
+        ]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
     });
   });
 }

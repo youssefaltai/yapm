@@ -1,3 +1,4 @@
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { RunInput, Usage } from "./hub.js";
 import type { ToolDecision } from "./permissions.js";
 import type { PlanUpdate } from "./plan.js";
@@ -11,6 +12,8 @@ export interface EngineRun {
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** The hub's MCP server, reached with the run's token. */
   hubMcp: { url: string; token: string };
+  /** Outside MCP servers, the machine's own and the hub's, in Claude Code's `mcpServers` shape. */
+  mcpServers?: Options["mcpServers"];
   /** Continue this session instead of starting fresh. */
   resume: string | null;
   cwd: string;

@@ -81,6 +81,7 @@ describe("runner daemon", () => {
       engine,
       capacity: 2,
       version: "test",
+      mcpServers: { notes: { type: "stdio", command: "notes-mcp" } },
       workDir: await mkdtemp(join(tmpdir(), "runner-test-")),
       pollMs: 10,
       logFlushMs: 10,
@@ -157,6 +158,7 @@ describe("runner daemon", () => {
     expect(work?.input.tools).toBe(true);
     expect(work?.hubMcp.url).toBe("http://localhost/mcp");
     expect(work?.hubMcp.token).toMatch(/^los_/);
+    expect(work?.mcpServers?.notes).toEqual({ type: "stdio", command: "notes-mcp" });
 
     type Pending = {
       requests: { nodes: { id: string; title: string; issue: { id: string } | null }[] };

@@ -144,5 +144,6 @@ node apps/runner/dist/main.js start
 |---|---|---|
 | `ORIGIN` | the request's origin | Public origin of the app; set it when behind a proxy that changes the host or scheme |
 | `RP_NAME` | `Life OS` | Name shown by the browser when creating a passkey |
+| `LIFE_OS_SECRET` | none | Encrypts the sign-ins of MCP servers agents connect; without it the hub stores none. Any long random string (on Workers, `wrangler secret put LIFE_OS_SECRET`) |
 | `PORT` (Node) | `8787` | HTTP port |
 | `DATABASE_URL` (Node) | `file:./data/life-os.db` | libSQL URL; any `file:` path or a libSQL server |

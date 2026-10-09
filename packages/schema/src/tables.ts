@@ -960,3 +960,33 @@ export const metricSnapshots = sqliteTable(
   },
   (t) => [uniqueIndex("metric_snapshots_day_idx").on(t.scope, t.scopeId, t.date)],
 );
+
+export const MCP_AUTHS = ["none", "oauth", "token"] as const;
+export type McpAuth = (typeof MCP_AUTHS)[number];
+export const MCP_SERVER_STATUSES = ["pending", "ready"] as const;
+
+/**
+ * An outside MCP server an agent asked to connect: a remote `url`, or a local `command` the
+ * runner starts. Agents get it in their runs once the owner connected it and allowed `mcp.use`.
+ */
+export const mcpServers = sqliteTable("mcp_servers", {
+  id: text("id").primaryKey(),
+  /** How agents see its tools: `mcp__<name>__<tool>`. */
+  name: text("name").notNull().unique(),
+  url: text("url"),
+  command: text("command"),
+  args: text("args", { mode: "json" }).$type<string[]>(),
+  auth: text("auth", { enum: MCP_AUTHS }).notNull(),
+  /** For a local server, the env var its token goes in. */
+  secretEnv: text("secret_env"),
+  /** The agent's instructions for the owner, e.g. where to create the token. */
+  howToConnect: text("how_to_connect"),
+  status: text("status", { enum: MCP_SERVER_STATUSES }).notNull().default("pending"),
+  /** The sign-in, encrypted under `LIFE_OS_SECRET`: tokens and when they expire. */
+  secret: text("secret"),
+  /** What the OAuth flow needs: endpoints, client ID, and the pending PKCE verifier and state. */
+  oauth: text("oauth", { mode: "json" }).$type<Record<string, string>>(),
+  /** The request that asked for it, where the owner returns after signing in. */
+  requestId: text("request_id"),
+  ...timestamps,
+});

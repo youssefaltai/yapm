@@ -23,6 +23,7 @@ import { event } from "../services/common.js";
 import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
 import { cleanTags } from "../services/machines.js";
+import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
 import { cleanAccount, cleanPlanUsage, runUsageSet } from "../services/usage.js";
 import {
   type Decision,
@@ -245,6 +246,8 @@ export interface ClaimedRun {
   /** Acts as the agent on the hub, for this run only. */
   token: string;
   input: RunInput;
+  /** Outside MCP servers the agent may use, in Claude Code's shape; work runs only. */
+  mcpServers: Record<string, McpServerConfig>;
 }
 
 /** Gives a machine the oldest queued run it may take, or null. */
@@ -301,12 +304,13 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
       .all();
     const mine = won[0];
     if (!mine) continue; // another machine got it first
-    return prepare(db, mine, at);
+    return prepare(deps, mine, at);
   }
   return null;
 }
 
-async function prepare(db: HubDb, run: RunRow, at: number): Promise<ClaimedRun> {
+async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedRun> {
+  const { db } = deps;
   const agent = await db.select().from(users).where(eq(users.id, run.agentId)).get();
   if (!agent) throw notFound("Agent");
   const issue = run.issueId ? await findIssue(db, run.issueId) : null;
@@ -342,6 +346,7 @@ async function prepare(db: HubDb, run: RunRow, at: number): Promise<ClaimedRun> 
     agent: { id: agent.id, name: agent.name },
     token,
     input,
+    mcpServers: run.kind === "work" ? await mcpServersFor(deps, agent.id, run.id, at) : {},
   };
 }
 

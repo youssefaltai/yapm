@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { type Engine, MODELS, type PlanProbe } from "./engine.js";
+import { type Engine, type EngineRun, MODELS, type PlanProbe } from "./engine.js";
 import { type Claim, type Completion, type HubClient, HubError, type Usage } from "./hub.js";
 import { decideTool } from "./permissions.js";
 import { PlanTracker } from "./plan.js";
@@ -12,6 +12,8 @@ export interface RunnerOptions {
   engine: Engine;
   capacity: number;
   version: string;
+  /** The machine's own MCP servers, from its config; the hub's for the run come on top. */
+  mcpServers?: EngineRun["mcpServers"];
   /** Where agents work; each gets its own folder, so resumed sessions find their files. */
   workDir: string;
   /** Reads the plan's limits while no session is running; left out, only sessions read them. */
@@ -167,6 +169,7 @@ export class Runner {
         model: claim.run.model ?? MODELS[claim.run.modelTier] ?? MODELS.standard,
         ...(claim.run.effort ? { effort: claim.run.effort } : {}),
         hubMcp: { url: claim.mcpUrl, token: claim.token },
+        mcpServers: { ...this.options.mcpServers, ...claim.mcpServers },
         resume: claim.run.sessionId,
         cwd,
         signal: abort.signal,

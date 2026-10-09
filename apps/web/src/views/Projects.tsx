@@ -13,6 +13,7 @@ import { type ContextEntry, contextMenu } from "../contextMenu.js";
 import { confirmDialog, DatePicker, Select } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
+import { icon } from "../icons.js";
 import {
   Breadcrumbs,
   button,
@@ -387,6 +388,7 @@ export function projectContextMenu(p: ProjectRow): ContextEntry[] {
     },
     {
       id: "target",
+      icon: icon("calendar"),
       label: "Target date",
       submenu: () =>
         dateMenu({
@@ -397,6 +399,7 @@ export function projectContextMenu(p: ProjectRow): ContextEntry[] {
     },
     {
       id: "initiative",
+      icon: icon("initiative"),
       label: "Initiative",
       submenu: async () => {
         const data = await graphql<{ initiatives: { nodes: { id: string; name: string }[] } }>(
@@ -424,18 +427,20 @@ export function projectContextMenu(p: ProjectRow): ContextEntry[] {
     "divider",
     {
       id: "new-issue",
+      icon: icon("newIssue"),
       label: "New issue in project",
       onSelect: () => createIssueStore.set({ projectId: p.id }),
     },
     {
       id: "new-document",
+      icon: icon("document"),
       label: "New document in project",
       onSelect: () => createDocument(p.id),
     },
     "divider",
     ...linkEntries(paths.project(p.id)),
     "divider",
-    { id: "archive", label: "Archive…", onSelect: () => archiveProject(p) },
+    { id: "archive", icon: icon("archive"), label: "Archive…", onSelect: () => archiveProject(p) },
   ];
 }
 

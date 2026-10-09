@@ -468,9 +468,8 @@ test.describe
     test("coaches an agent with feedback, lessons and the handbook", async () => {
       // Feedback on the issue where the work happened, from Ada's comment.
       await page.goto("/issue/PF-1");
-      const comment = page.getByText("@Youssef the bill is paid, receipt attached.", {
-        exact: true,
-      });
+      // Matches the comment both as plain text and once the editor renders the mention.
+      const comment = page.getByText("the bill is paid, receipt attached.");
       await comment.hover();
       await page.getByRole("button", { name: "Give feedback" }).first().click();
       await page

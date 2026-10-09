@@ -11,6 +11,7 @@ import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type { HubDb } from "../db.js";
 import { localDate } from "../time.js";
 import { companyTimeZone } from "./cycles.js";
+import { machineName } from "./machines.js";
 
 // What the owner's Claude subscription is doing. Claude Code tells each runner how full the
 // plan's windows are (as percentages, with reset times) and what each session would cost at
@@ -261,11 +262,11 @@ export async function usageHistory(
       labels.set(u.id, u.name);
   if (groupBy === "machine" && keys.length)
     for (const m of await db
-      .select({ id: machines.id, name: machines.name })
+      .select({ id: machines.id, name: machines.name, displayName: machines.displayName })
       .from(machines)
       .where(inArray(machines.id, keys.slice(0, 90)))
       .all())
-      labels.set(m.id, m.name);
+      labels.set(m.id, machineName(m));
   const points = new Map<string, UsagePoint>();
   for (const r of rows) {
     const date = localDate(Number(r.hour) * HOUR, timeZone);

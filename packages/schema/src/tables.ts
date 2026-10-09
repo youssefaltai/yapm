@@ -566,7 +566,10 @@ export const machines = sqliteTable(
   "machines",
   {
     id: text("id").primaryKey(),
+    /** What the machine calls itself when it enrols, e.g. its host name. */
     name: text("name").notNull(),
+    /** The owner's name for it, shown instead of `name` when set. */
+    displayName: text("display_name"),
     status: text("status", { enum: MACHINE_STATUSES }).notNull().default("pending"),
     /** Shown on the machine and in the app; the owner approves when they match. */
     pairingCode: text("pairing_code").notNull(),

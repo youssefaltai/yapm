@@ -12,6 +12,7 @@ import type { Viewer } from "./api.js";
 import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { EmojiPickerHost } from "./emoji/EmojiPicker.js";
+import { AppIcon, type IconName, icon } from "./icons.js";
 import { eyebrow, TabLink, TabRow } from "./layout.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
@@ -98,16 +99,16 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
             onClick={() => setDrawer(true)}
             className="text-muted"
           >
-            ☰
+            <AppIcon name="menu" />
           </button>
           <span className="truncate font-medium">{workspace?.organization.name}</span>
           <button
             type="button"
             aria-label="New issue"
             onClick={() => createIssueStore.set(currentTeam ? { teamId: currentTeam.id } : {})}
-            className="ml-auto text-lg text-muted"
+            className="ml-auto text-muted"
           >
-            +
+            <AppIcon name="newIssue" />
           </button>
         </div>
         <div className="min-h-0 flex-1">
@@ -281,31 +282,37 @@ function Sidebar({
               teamFor(workspace, route) ? { teamId: teamFor(workspace, route)?.id } : {},
             )
           }
-          className="flex flex-1 items-center justify-between rounded-md border border-line bg-raised px-2 py-1.5 text-muted hover:text-ink"
+          className="flex flex-1 items-center gap-2 rounded-md border border-line bg-raised px-2 py-1.5 text-muted hover:text-ink"
         >
-          New issue <Kbd>C</Kbd>
+          <AppIcon name="newIssue" />
+          New issue
+          <span className="ml-auto">
+            <Kbd>C</Kbd>
+          </span>
         </button>
         <button
           type="button"
           aria-label="Search and commands"
           onClick={() => openMenu(commandPalette())}
-          className="flex items-center rounded-md border border-line bg-raised px-2 py-1.5 text-muted hover:text-ink"
+          className="flex items-center gap-1.5 rounded-md border border-line bg-raised px-2 py-1.5 text-muted hover:text-ink"
         >
+          <AppIcon name="search" />
           <Kbd>⌘K</Kbd>
         </button>
       </div>
       <nav className="mt-4 space-y-0.5">
-        <NavLink to={paths.inbox()} active={route.name === "inbox"}>
+        <NavLink to={paths.inbox()} icon="inbox" active={route.name === "inbox"}>
           <span className="flex w-full items-center justify-between">
             Inbox
             {unread > 0 && <span className="animate-fade-in text-[11px] text-muted">{unread}</span>}
           </span>
         </NavLink>
-        <NavLink to={paths.myIssues()} active={route.name === "myIssues"}>
+        <NavLink to={paths.myIssues()} icon="myIssues" active={route.name === "myIssues"}>
           My issues
         </NavLink>
         <NavLink
           to={paths.requests()}
+          icon="approval"
           active={route.name === "requests" || route.name === "request"}
         >
           <span className="flex w-full items-center justify-between">
@@ -319,6 +326,7 @@ function Sidebar({
         </NavLink>
         <NavLink
           to={paths.projects()}
+          icon="project"
           active={
             route.name === "projects" ||
             route.name === "project" ||
@@ -330,12 +338,14 @@ function Sidebar({
         </NavLink>
         <NavLink
           to={paths.documents()}
+          icon="document"
           active={route.name === "documents" || route.name === "document"}
         >
           Documents
         </NavLink>
         <NavLink
           to={paths.runs()}
+          icon="run"
           active={route.name === "runs" || route.name === "run" || route.name === "machines"}
         >
           <span className="flex w-full items-center justify-between">
@@ -345,14 +355,15 @@ function Sidebar({
             )}
           </span>
         </NavLink>
-        <NavLink to={paths.insights()} active={route.name === "insights"}>
+        <NavLink to={paths.insights()} icon="insights" active={route.name === "insights"}>
           Insights
         </NavLink>
-        <NavLink to={paths.usage()} active={route.name === "usage"}>
+        <NavLink to={paths.usage()} icon="usage" active={route.name === "usage"}>
           Usage
         </NavLink>
         <NavLink
           to={paths.company()}
+          icon="company"
           active={route.name === "company" || route.name === "handbook"}
         >
           Company
@@ -366,7 +377,7 @@ function Sidebar({
           onClick={() => createTeamStore.set(true)}
           className="ml-auto text-faint hover:text-ink"
         >
-          +
+          <AppIcon name="plus" />
         </button>
       </div>
       <nav className="mt-1 min-h-0 space-y-0.5 overflow-y-auto">
@@ -378,6 +389,7 @@ function Sidebar({
             <div key={team.id}>
               <NavLink
                 to={paths.team(team.key)}
+                icon="team"
                 active={active && view === "all"}
                 menu={() => teamMenu(team)}
               >
@@ -389,22 +401,42 @@ function Sidebar({
               {active && (
                 <div className="ml-3 animate-reveal space-y-0.5 border-l border-line pl-2">
                   {team.triageEnabled && (
-                    <NavLink to={paths.team(team.key, "triage")} active={view === "triage"}>
+                    <NavLink
+                      to={paths.team(team.key, "triage")}
+                      icon="triage"
+                      active={view === "triage"}
+                    >
                       Triage
                     </NavLink>
                   )}
-                  <NavLink to={paths.team(team.key, "active")} active={view === "active"}>
+                  <NavLink
+                    to={paths.team(team.key, "active")}
+                    icon="active"
+                    active={view === "active"}
+                  >
                     Active
                   </NavLink>
-                  <NavLink to={paths.team(team.key, "backlog")} active={view === "backlog"}>
+                  <NavLink
+                    to={paths.team(team.key, "backlog")}
+                    icon="backlog"
+                    active={view === "backlog"}
+                  >
                     Backlog
                   </NavLink>
                   {team.cyclesEnabled && (
-                    <NavLink to={paths.cycles(team.key)} active={route.name === "cycles"}>
+                    <NavLink
+                      to={paths.cycles(team.key)}
+                      icon="cycle"
+                      active={route.name === "cycles"}
+                    >
                       Cycles
                     </NavLink>
                   )}
-                  <NavLink to={paths.teamSettings(team.key)} active={route.name === "teamSettings"}>
+                  <NavLink
+                    to={paths.teamSettings(team.key)}
+                    icon="settings"
+                    active={route.name === "teamSettings"}
+                  >
                     Settings
                   </NavLink>
                 </div>
@@ -421,10 +453,22 @@ function Sidebar({
               <NavLink
                 key={v.id}
                 to={paths.view(v.id)}
+                icon="view"
                 active={route.name === "view" && route.id === v.id}
                 menu={() => [
-                  { id: "rename", label: "Rename…", onSelect: () => renameView(v) },
-                  { id: "delete", label: "Delete…", danger: true, onSelect: () => deleteView(v) },
+                  {
+                    id: "rename",
+                    icon: icon("edit"),
+                    label: "Rename…",
+                    onSelect: () => renameView(v),
+                  },
+                  {
+                    id: "delete",
+                    icon: icon("trash"),
+                    label: "Delete…",
+                    danger: true,
+                    onSelect: () => deleteView(v),
+                  },
                 ]}
               >
                 <span className="truncate">{v.name}</span>
@@ -435,7 +479,12 @@ function Sidebar({
       )}
       <div className="mt-auto flex items-center justify-between px-2 pt-3">
         <span className="truncate text-muted">{viewer.displayName}</span>
-        <button type="button" onClick={onSignOut} className="text-faint hover:text-ink">
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="flex items-center gap-1.5 text-faint hover:text-ink"
+        >
+          <AppIcon name="signOut" />
           Sign out
         </button>
       </div>
@@ -452,6 +501,7 @@ function teamMenu(team: Team): ContextEntry[] {
   return [
     {
       id: "new-issue",
+      icon: icon("newIssue"),
       label: "New issue",
       hint: "C",
       onSelect: () => createIssueStore.set({ teamId: team.id }),
@@ -459,33 +509,53 @@ function teamMenu(team: Team): ContextEntry[] {
     "divider",
     team.triageEnabled && {
       id: "triage",
+      icon: icon("triage"),
       label: "Triage",
       onSelect: () => navigate(paths.team(team.key, "triage")),
     },
-    { id: "active", label: "Active", onSelect: () => navigate(paths.team(team.key, "active")) },
-    { id: "backlog", label: "Backlog", onSelect: () => navigate(paths.team(team.key, "backlog")) },
+    {
+      id: "active",
+      icon: icon("active"),
+      label: "Active",
+      onSelect: () => navigate(paths.team(team.key, "active")),
+    },
+    {
+      id: "backlog",
+      icon: icon("backlog"),
+      label: "Backlog",
+      onSelect: () => navigate(paths.team(team.key, "backlog")),
+    },
     team.cyclesEnabled && {
       id: "cycles",
+      icon: icon("cycle"),
       label: "Cycles",
       onSelect: () => navigate(paths.cycles(team.key)),
     },
     {
       id: "settings",
+      icon: icon("settings"),
       label: "Team settings",
       onSelect: () => navigate(paths.teamSettings(team.key)),
     },
     "divider",
-    { id: "copy-key", label: "Copy identifier", onSelect: () => copyText(team.key, team.key) },
+    {
+      id: "copy-key",
+      icon: icon("copy"),
+      label: "Copy identifier",
+      onSelect: () => copyText(team.key, team.key),
+    },
   ];
 }
 
 function NavLink({
   to,
+  icon,
   active,
   menu,
   children,
 }: {
   to: string;
+  icon: IconName;
   active: boolean;
   /** Entries for its right-click menu, after opening it in a new tab and copying its link. */
   menu?: () => ContextEntry[];
@@ -500,11 +570,14 @@ function NavLink({
       }}
       onContextMenu={contextMenu(() => [...(menu?.() ?? []), "divider", ...linkEntries(to)])}
       aria-current={active ? "page" : undefined}
-      className={`relative flex items-center rounded-md px-2 py-1.5 ${
+      className={`relative flex items-center gap-2 rounded-md px-2 py-1.5 ${
         active ? "text-ink" : "text-muted hover:bg-raised/60 hover:text-ink"
       }`}
     >
       {active && <SelectedPill group="sidebar" />}
+      <span className={`relative ${active ? "text-ink" : "text-faint"}`}>
+        <AppIcon name={icon} />
+      </span>
       {children}
     </a>
   );
@@ -542,7 +615,7 @@ function ToastHost() {
         onClick={dismiss}
         className="text-faint hover:text-ink"
       >
-        ✕
+        <AppIcon name="close" />
       </button>
     </div>
   );

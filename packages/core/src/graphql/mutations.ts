@@ -18,6 +18,7 @@ import {
   updateIssues,
 } from "../services/issues.js";
 import { createLabel, deleteLabel, updateLabel } from "../services/labels.js";
+import { archiveState, createState, updateState } from "../services/states.js";
 import { createTeam, updateTeam } from "../services/teams.js";
 import { hireAgent, retireAgent, revokeApiToken, updateUser } from "../services/users.js";
 import { act, builder, db, notFoundError, requireOwner, type Types } from "./builder.js";
@@ -31,6 +32,8 @@ import {
   Team,
   User,
   type UserRow,
+  WorkflowState,
+  WorkflowStateType,
 } from "./types.js";
 
 /** Linear's mutation payloads: `{ success, <entity> }`. */
@@ -47,6 +50,7 @@ export function payload<T>(name: string, field: string, type: ObjectRef<Types, T
 const TeamPayload = payload("TeamPayload", "team", Team);
 export const IssuePayload = payload("IssuePayload", "issue", Issue);
 const IssueLabelPayload = payload("IssueLabelPayload", "issueLabel", IssueLabel);
+const WorkflowStatePayload = payload("WorkflowStatePayload", "workflowState", WorkflowState);
 const CommentPayload = payload("CommentPayload", "comment", Comment);
 const ReactionPayload = payload("ReactionPayload", "reaction", Reaction);
 const IssueRelationPayload = payload("IssueRelationPayload", "issueRelation", IssueRelation);
@@ -182,6 +186,29 @@ const IssueLabelUpdateInput = builder.inputType("IssueLabelUpdateInput", {
     name: t.string({ required: false }),
     color: t.string({ required: false }),
     description: t.string({ required: false }),
+  }),
+});
+
+const WorkflowStateCreateInput = builder.inputType("WorkflowStateCreateInput", {
+  fields: (t) => ({
+    teamId: t.string({ required: true }),
+    name: t.string({ required: true }),
+    type: t.field({ type: WorkflowStateType, required: true }),
+    color: t.string({ required: false }),
+    description: t.string({ required: false }),
+    position: t.int({
+      required: false,
+      description: "Place in the team's list, from 0. Defaults to after the others of its type.",
+    }),
+  }),
+});
+
+const WorkflowStateUpdateInput = builder.inputType("WorkflowStateUpdateInput", {
+  fields: (t) => ({
+    name: t.string({ required: false }),
+    color: t.string({ required: false }),
+    description: t.string({ required: false }),
+    position: t.int({ required: false, description: "Place in the team's list, from 0." }),
   }),
 });
 
@@ -378,6 +405,40 @@ builder.mutationType({
       args: { id: t.arg.string({ required: true }) },
       resolve: async (_root, args, ctx) => {
         await act(ctx, (s) => deleteLabel(s, args.id));
+        return { entityId: args.id };
+      },
+    }),
+
+    workflowStateCreate: t.field({
+      type: WorkflowStatePayload,
+      args: { input: t.arg({ type: WorkflowStateCreateInput, required: true }) },
+      resolve: async (_root, args, ctx) => {
+        const id = await act(ctx, (s) => createState(s, args.input));
+        const state = await ctx.loaders.state.load(id);
+        if (!state) throw notFoundError("Status");
+        return { entity: state };
+      },
+    }),
+    workflowStateUpdate: t.field({
+      type: WorkflowStatePayload,
+      args: {
+        id: t.arg.string({ required: true }),
+        input: t.arg({ type: WorkflowStateUpdateInput, required: true }),
+      },
+      resolve: async (_root, args, ctx) => {
+        const id = await act(ctx, (s) => updateState(s, args.id, args.input));
+        ctx.loaders.state.clear(id);
+        const state = await ctx.loaders.state.load(id);
+        if (!state) throw notFoundError("Status");
+        return { entity: state };
+      },
+    }),
+    workflowStateArchive: t.field({
+      type: DeletePayload,
+      description: "Removes a status no issue uses. Each team keeps at least one of every type.",
+      args: { id: t.arg.string({ required: true }) },
+      resolve: async (_root, args, ctx) => {
+        await act(ctx, (s) => archiveState(s, args.id));
         return { entityId: args.id };
       },
     }),

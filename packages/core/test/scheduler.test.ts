@@ -18,6 +18,7 @@ import {
   metricHistory,
   snapshotMetrics,
 } from "../src/services/metrics.js";
+import { archiveState, createState } from "../src/services/states.js";
 import { createTeam, updateTeam } from "../src/services/teams.js";
 import { createRecurringIssues, createTemplate } from "../src/services/templates.js";
 import { addDays, localDate, nextOccurrence, weekday, zonedTime } from "../src/time.js";
@@ -213,6 +214,31 @@ describe("recurring issues", () => {
     expect(woke.map((n) => n.type)).toEqual(["issueAssignedToYou"]);
     await createRecurringIssues(deps, start + DAY + 61 * 60_000);
     expect(await db.select().from(schema.issues).all()).toHaveLength(2);
+  });
+
+  it("falls back to the team's default status when the template's is gone", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const owner = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(owner, { name: "Home", key: "HOM" });
+    const stateId = await createState(owner, { teamId, name: "Weekly", type: "unstarted" });
+    await createTemplate(owner, {
+      teamId,
+      templateData: { title: "Water the plants", stateId },
+      schedule: { frequency: "daily", time: "08:00" },
+    });
+    await archiveState(owner, stateId);
+    await createRecurringIssues(
+      { db, config: { platform: "node" as const, version: "test" } },
+      start + 61 * 60_000,
+    );
+    const [issue] = await db.select().from(schema.issues).all();
+    const backlog = await db
+      .select()
+      .from(schema.workflowStates)
+      .where(eq(schema.workflowStates.id, issue?.stateId ?? ""))
+      .get();
+    expect(backlog?.name).toBe("Backlog");
   });
 });
 

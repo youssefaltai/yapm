@@ -483,6 +483,24 @@ test.describe
       await expect(page.getByRole("button", { name: "Pay off the car" })).toBeVisible();
     });
 
+    test("adds, renames and removes the team's statuses", async () => {
+      await page.getByRole("link", { name: /Personal Finance/ }).click();
+      await page.getByRole("link", { name: "Settings" }).click();
+      await page.getByRole("button", { name: "Add started status" }).click();
+      await page.getByLabel("Status name").fill("Waiting");
+      await page.keyboard.press("Enter");
+      await expect(page.getByText("Waiting", { exact: true })).toBeVisible();
+
+      await page.getByRole("button", { name: "Rename Waiting" }).click();
+      await page.getByLabel("Status name").fill("On hold");
+      await page.keyboard.press("Enter");
+      await expect(page.getByText("On hold", { exact: true })).toBeVisible();
+
+      await page.getByRole("button", { name: "Remove On hold" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Remove" }).click();
+      await expect(page.getByText("On hold", { exact: true })).toBeHidden();
+    });
+
     test("coaches an agent with feedback, lessons and the handbook", async () => {
       // Feedback on the issue where the work happened, from Ada's comment.
       await page.goto("/issue/PF-1");

@@ -12,6 +12,8 @@ import {
   requests,
   teams,
   users,
+  WORKFLOW_STATE_TYPES,
+  type WorkflowStateType,
   workflowStates,
 } from "@life-os/schema";
 import { and, asc, desc, eq, isNull, or, type SQL, sql } from "drizzle-orm";
@@ -50,6 +52,7 @@ import {
   createRequest,
   rejectRequest,
 } from "../services/requests.js";
+import { archiveState, createState, updateState } from "../services/states.js";
 import { createTeam, updateTeam } from "../services/teams.js";
 import { hireAgent, retireAgent, updateUser } from "../services/users.js";
 import { type Tool, ToolError } from "./protocol.js";
@@ -557,6 +560,78 @@ export const tools: Tool<McpContext>[] = [
         name: s.name,
         type: s.type,
       }));
+    },
+  },
+  {
+    name: "create_issue_status",
+    title: "Create issue status",
+    description:
+      "Add a workflow status to a team. It goes after the team's other statuses of its type unless you give a position.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        team: { type: "string", description: "Team name, key or id" },
+        name: { type: "string" },
+        type: { type: "string", enum: [...WORKFLOW_STATE_TYPES] },
+        color: { type: "string", description: "Hex color, e.g. #8b8b90" },
+        description: { type: "string" },
+        position: { type: "integer", description: "Place in the team's list, from 0" },
+      },
+      required: ["team", "name", "type"],
+    },
+    async run(args, c) {
+      const team = await resolveTeam(c, String(args.team));
+      const id = await c.act((s) =>
+        createState(s, {
+          teamId: team.id,
+          name: String(args.name),
+          type: args.type as WorkflowStateType,
+          color: str(args.color) ?? null,
+          description: str(args.description) ?? null,
+          position: typeof args.position === "number" ? args.position : null,
+        }),
+      );
+      return { id, name: args.name };
+    },
+  },
+  {
+    name: "update_issue_status",
+    title: "Update issue status",
+    description: "Rename a workflow status, change its color or description, or move it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        color: { type: "string", description: "Hex color" },
+        description: { type: ["string", "null"] },
+        position: { type: "integer", description: "Place in the team's list, from 0" },
+      },
+      required: ["id"],
+    },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) =>
+        updateState(s, id, {
+          name: str(args.name),
+          color: str(args.color),
+          position: typeof args.position === "number" ? args.position : null,
+          ...(args.description !== undefined ? { description: str(args.description) ?? null } : {}),
+        }),
+      );
+      return { id };
+    },
+  },
+  {
+    name: "archive_issue_status",
+    title: "Archive issue status",
+    description:
+      "Remove a workflow status. Move its issues elsewhere first; a team keeps at least one status of every type.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => archiveState(s, id));
+      return { id, archived: true };
     },
   },
   {

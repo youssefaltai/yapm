@@ -1,4 +1,4 @@
-import { notifications, teams, templates } from "@life-os/schema";
+import { notifications, teams, templates, workflowStates } from "@life-os/schema";
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { audit } from "../audit.js";
 import type { HubDeps } from "../context.js";
@@ -158,6 +158,17 @@ function fill(text: unknown, date: string) {
   return typeof text === "string" ? text.replaceAll("{date}", date) : text;
 }
 
+/** The template's status, or null for the team's default once that status is removed. */
+async function stillThere(db: HubDb, teamId: string, stateId: unknown) {
+  if (typeof stateId !== "string") return null;
+  const state = await db
+    .select({ id: workflowStates.id })
+    .from(workflowStates)
+    .where(and(eq(workflowStates.id, stateId), eq(workflowStates.teamId, teamId)))
+    .get();
+  return state?.id ?? null;
+}
+
 /** Creates the issue for each recurring template that is due. Returns whether any notified. */
 export async function createRecurringIssues(deps: HubDeps, at: number) {
   const { db } = deps;
@@ -197,7 +208,7 @@ export async function createRecurringIssues(deps: HubDeps, at: number) {
         assigneeId: typeof data.assigneeId === "string" ? data.assigneeId : null,
         labelIds: Array.isArray(data.labelIds) ? data.labelIds.map(String) : null,
         projectId: typeof data.projectId === "string" ? data.projectId : null,
-        stateId: typeof data.stateId === "string" ? data.stateId : null,
+        stateId: await stillThere(db, template.teamId, data.stateId),
       });
       // An agent's recurring issue for itself still has to wake it: the hub is the one asking.
       if (data.assigneeId && data.assigneeId === template.creatorId) {

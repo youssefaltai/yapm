@@ -33,7 +33,6 @@ const TABLES: Record<string, SQLiteTable> = {
   grants: schema.grants,
   notifications: schema.notifications,
   machines: schema.machines,
-  mcpServers: schema.mcpServers,
   runs: schema.runs,
   feedback: schema.feedback,
   revisions: schema.revisions,
@@ -44,7 +43,6 @@ const TABLES: Record<string, SQLiteTable> = {
 /** Columns that would let someone act as the company. */
 const SECRET_COLUMNS: Record<string, string[]> = {
   machines: ["tokenHash", "pairingCode"],
-  mcpServers: ["authState", "authCode"],
 };
 
 export async function exportCompany(db: HubDb, actorId: string, at: number) {

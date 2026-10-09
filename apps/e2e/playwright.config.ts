@@ -16,6 +16,10 @@ export default defineConfig({
     command: `rm -rf ${dataDir} && node ../hub-node/dist/main.js`,
     url: `http://localhost:${port}/api/health`,
     reuseExistingServer: false,
-    env: { PORT: String(port), DATABASE_URL: `file:${dataDir}life-os.db` },
+    env: {
+      PORT: String(port),
+      DATABASE_URL: `file:${dataDir}life-os.db`,
+      LIFE_OS_SECRET: "e2e secret",
+    },
   },
 });

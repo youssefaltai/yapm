@@ -4,10 +4,10 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { claudeLogin } from "./claude.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
-import { McpManager } from "./mcp.js";
 import { probePlan, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
@@ -19,12 +19,14 @@ interface Config {
   machineId: string;
   name: string;
   capacity: number;
-  /** The machine's own MCP servers, in Claude Code's `mcpServers` shape. */
-  mcpServers: Record<string, unknown>;
+  /** The machine's own MCP servers for agents, in Claude Code's `mcpServers` shape. */
+  mcpServers?: Options["mcpServers"];
 }
 
 const home = process.env.LIFE_OS_RUNNER_HOME ?? join(homedir(), ".life-os-runner");
 const configPath = join(home, "config.json");
+// Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
+process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
 
 async function loadConfig(): Promise<Config> {
   try {
@@ -70,9 +72,7 @@ const USAGE = `life-os-runner: runs your company's agents on this machine.
         Shows this machine as the hub sees it.
 
 The install command on the Machines page does enrol, login and service install for you.
-Settings live in ${configPath}; add your own MCP servers under "mcpServers".
-Servers the hub adds (approved in the app) sign in through your browser; their tokens stay
-in ${join(home, "mcp-auth.json")}.`;
+Settings live in ${configPath}; give agents MCP servers under "mcpServers".`;
 
 async function main() {
   const { positionals, values } = parseArgs({
@@ -94,18 +94,15 @@ async function main() {
 
   if (command === "enrol" || command === "enroll") {
     if (!values.hub) throw new Error("Say which hub: --hub https://your-hub.example");
-    const existing = await loadConfig().catch(() => null);
     const hub = new HubClient(values.hub);
     const name = values.name ?? machineName();
     const capacity = Number(values.capacity ?? 2) || 2;
-    const mcpServers = existing?.mcpServers ?? {};
     const enrolment = await hub.enrol({
       name,
       tags: (values.tags ?? "")
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean),
-      mcps: Object.keys(mcpServers),
       capacity,
       version: VERSION,
       ...(values.token ? { setupToken: values.token } : {}),
@@ -116,7 +113,6 @@ async function main() {
       machineId: enrolment.id,
       name,
       capacity,
-      mcpServers,
     });
     if (enrolment.status === "active") {
       say(`"${name}" is connected to ${hub.url}.`);
@@ -171,17 +167,11 @@ async function main() {
       hub,
       token: config.token,
       engine: sdkEngine,
+      mcpServers: config.mcpServers,
       probe: probePlan,
       capacity: config.capacity,
       version: VERSION,
-      mcpServers: config.mcpServers ?? {},
-      mcp: new McpManager({
-        hubUrl: config.hub,
-        machineName: config.name,
-        file: join(home, "mcp-auth.json"),
-        log: (line) => console.log(`${new Date().toISOString()} ${line}`),
-      }),
-      workDir: join(home, "work"),
+      cwd: homedir(),
       log: (line) => console.log(`${new Date().toISOString()} ${line}`),
     });
     let stopping = false;

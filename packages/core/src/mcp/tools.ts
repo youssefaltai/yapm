@@ -15,7 +15,7 @@ import {
   workflowStates,
 } from "@life-os/schema";
 import { and, asc, desc, eq, isNull, or, type SQL, sql } from "drizzle-orm";
-import type { User } from "../context.js";
+import type { HubDeps, User } from "../context.js";
 import type { HubDb } from "../db.js";
 import { type IssueFilterShape, queryIssues } from "../graphql/filters.js";
 import type { Loaders } from "../loaders.js";
@@ -37,6 +37,8 @@ import { type Tool, ToolError } from "./protocol.js";
 
 export interface McpContext {
   db: HubDb;
+  /** Outgoing HTTP and config, for tools that reach outside the hub. */
+  deps: HubDeps;
   viewer: User;
   loaders: Loaders;
   /** The web app's origin, for issue links. */
@@ -908,7 +910,7 @@ export const tools: Tool<McpContext>[] = [
     name: "create_request",
     title: "Ask for approval",
     description:
-      "Ask the owner for permission to do something you aren't allowed to do yet. The owner approves once, always allows it, or rejects it with a reason. Then poll get_request (or wait for its answer) before acting. Asking again while one is pending returns the pending one.",
+      "Ask the owner for permission to do something you aren't allowed to do yet. One request covers one action: its title names only that action, so ask separately for each. The owner approves once, always allows it, or rejects it with a reason. Do what doesn't need it meanwhile; if you can't go on without the answer, finish with needs_input and you're woken when it comes. Asking again while one is pending returns the pending one.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1095,7 +1097,7 @@ export const tools: Tool<McpContext>[] = [
   },
 ];
 
-async function requestSummary(c: McpContext, id: string) {
+export async function requestSummary(c: McpContext, id: string) {
   const r = await c.db.select().from(requests).where(eq(requests.id, id)).get();
   if (!r) throw new ToolError(`No request ${id}`);
   const requester = await c.loaders.user.load(r.requesterId);

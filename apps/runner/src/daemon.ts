@@ -1,8 +1,5 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { type Engine, MODELS, type PlanProbe } from "./engine.js";
+import { type Engine, type EngineRun, MODELS, type PlanProbe } from "./engine.js";
 import { type Claim, type Completion, type HubClient, HubError, type Usage } from "./hub.js";
-import { McpManager } from "./mcp.js";
 import { decideTool } from "./permissions.js";
 import { PlanTracker } from "./plan.js";
 
@@ -13,12 +10,10 @@ export interface RunnerOptions {
   engine: Engine;
   capacity: number;
   version: string;
-  /** Names of the machine's own MCP servers, and their configs. */
-  mcpServers: Record<string, unknown>;
-  /** Runs the servers the hub manages; keeps sign-ins in memory when omitted. */
-  mcp?: McpManager;
-  /** Where agents work; each gets its own folder, so resumed sessions find their files. */
-  workDir: string;
+  /** The machine's own MCP servers, from its config; the hub's for the run come on top. */
+  mcpServers?: EngineRun["mcpServers"];
+  /** Where agents start; they may work anywhere on the machine. */
+  cwd: string;
   /** Reads the plan's limits while no session is running; left out, only sessions read them. */
   probe?: PlanProbe;
   /** How often to take a full reading of the plan's limits. */
@@ -36,12 +31,6 @@ interface Active {
   done: Promise<void>;
 }
 
-const slug = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "") || "agent";
-
 /**
  * The runner daemon: checks in, claims what this machine may run, runs it, streams the
  * transcript, and reports the result. The hub decides everything else.
@@ -54,7 +43,6 @@ export class Runner {
   private readonly heartbeatMs: number;
   private readonly logFlushMs: number;
   private readonly log: (line: string) => void;
-  private readonly mcp: McpManager;
   readonly plan: PlanTracker;
   private probing = false;
 
@@ -64,9 +52,6 @@ export class Runner {
     this.logFlushMs = options.logFlushMs ?? 2000;
     this.log = options.log ?? ((line) => console.log(line));
     this.plan = new PlanTracker(options.planEveryMs);
-    this.mcp =
-      options.mcp ??
-      new McpManager({ hubUrl: options.hub.url, machineName: "this machine", log: this.log });
   }
 
   get running() {
@@ -76,23 +61,15 @@ export class Runner {
   /** One check-in: stops what the hub wants stopped, then claims up to capacity. */
   async heartbeat() {
     const { hub, token } = this.options;
-    const beat = async () => {
-      const plan = this.plan.pending();
-      const answer = await hub.heartbeat(token, {
-        mcps: Object.keys(this.options.mcpServers),
-        capacity: this.options.capacity,
-        version: this.options.version,
-        runIds: this.running,
-        mcpServers: this.mcp.reports(),
-        ...plan,
-      });
-      this.plan.sent(plan);
-      return answer;
-    };
-    const answer = await beat();
+    const plan = this.plan.pending();
+    const answer = await hub.heartbeat(token, {
+      capacity: this.options.capacity,
+      version: this.options.version,
+      runIds: this.running,
+      ...plan,
+    });
+    this.plan.sent(plan);
     for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
-    // Tell the hub straight away when a server needs a sign-in or became ready.
-    if (answer?.mcpServers && (await this.mcp.sync(answer.mcpServers))) await beat();
     return answer?.status ?? "active";
   }
 
@@ -175,8 +152,6 @@ export class Runner {
       if (buffer.length >= 50) void flush();
     };
 
-    const cwd = join(this.options.workDir, slug(claim.agent.name));
-    await mkdir(cwd, { recursive: true });
     let completion: Completion;
     try {
       const result = await this.options.engine({
@@ -184,12 +159,9 @@ export class Runner {
         model: claim.run.model ?? MODELS[claim.run.modelTier] ?? MODELS.standard,
         ...(claim.run.effort ? { effort: claim.run.effort } : {}),
         hubMcp: { url: claim.mcpUrl, token: claim.token },
-        mcpServers: {
-          ...this.options.mcpServers,
-          ...(await this.mcp.configFor(claim.mcpServers ?? [])),
-        },
+        mcpServers: { ...this.options.mcpServers, ...claim.mcpServers },
         resume: claim.run.sessionId,
-        cwd,
+        cwd: this.options.cwd,
         signal: abort.signal,
         canUseTool: (tool, input) =>
           decideTool(

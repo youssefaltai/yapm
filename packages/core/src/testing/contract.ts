@@ -1,5 +1,5 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { fromBase64Url } from "../crypto.js";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { fromBase64Url, toBase64Url } from "../crypto.js";
 import { encryptPayload } from "../push.js";
 import { SoftwareAuthenticator } from "./authenticator.js";
 import { TestPushReceiver, verifyVapid } from "./webpush.js";
@@ -25,6 +25,7 @@ export class TestClient {
     if (!headers.has("origin")) headers.set("origin", this.origin);
     const response = await this.send(
       new Request(new URL(path, this.origin), {
+        redirect: "manual",
         ...init,
         headers,
         body: init.json !== undefined ? JSON.stringify(init.json) : init.body,
@@ -1275,7 +1276,6 @@ export function hubContract(
         runner<{ id: string; token: string; pairingCode: string }>("/enrol", "", {
           name: "Youssef's MacBook",
           tags: ["personal"],
-          mcps: ["slack"],
           capacity: 2,
         }),
       );
@@ -1356,8 +1356,8 @@ export function hubContract(
         run: {
           kind: "decision",
           modelTier: "small",
-          model: "claude-haiku-5-5",
-          effort: "low",
+          model: "claude-sonnet-5-5",
+          effort: "medium",
           issue: issue?.identifier,
         },
         agent: { name: "Coach" },
@@ -1606,6 +1606,116 @@ export function hubContract(
         result: { outcome: "done", summary: "Gym is open 6-22." },
       });
 
+      // A run that pauses on its own request resumes when the owner answers it, on its own issue
+      // whichever issue the request is filed on.
+      const race = await gql<{ issueCreate: { issue: { id: string; identifier: string } } }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier } } }",
+        { input: { teamId, title: "Enter the spring race" } },
+      );
+      const raceId = race.data?.issueCreate.issue.id;
+      const raceKey = race.data?.issueCreate.issue.identifier;
+      await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }", {
+        input: { agentId: coachId, issueId: raceId, goal: "Enter the race" },
+      });
+      const entering = await runner<Claim>("/claim", machine.token, {});
+      await client.request("/mcp", {
+        method: "POST",
+        token: entering.body.token,
+        json: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "create_comment",
+            arguments: { issueId: raceId, body: "Found the race; the fee needs your approval." },
+          },
+        },
+      });
+      const fee = await gql<{ requestCreate: { request: { id: string } } }>(
+        'mutation($issue: String!) { requestCreate(input: { title: "Pay the race fee", action: "spend", reason: "Entry fee", issueId: $issue }) { request { id } } }',
+        { issue: issue?.id },
+        entering.body.token,
+      );
+      await runner(`/runs/${entering.body.run.id}/logs`, machine.token, {
+        seq: 0,
+        events: [],
+        sessionId: "session-race",
+      });
+      await runner(`/runs/${entering.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "needs_input", summary: "Asked to pay the fee." },
+      });
+      // The agent already said so; its summary isn't posted again.
+      const raceComments = await gql<{ issue: { comments: { nodes: { body: string }[] } } }>(
+        "query($id: String!) { issue(id: $id) { comments { nodes { body } } } }",
+        { id: raceId },
+      );
+      expect(raceComments.data?.issue.comments.nodes.map((c) => c.body)).toEqual([
+        "Found the race; the fee needs your approval.",
+      ]);
+      await gql("mutation($id: String!) { requestApprove(id: $id) { success } }", {
+        id: fee.data?.requestCreate.request.id,
+      });
+      const paid = await runner<Claim>("/claim", machine.token, {});
+      expect(paid.body.run).toMatchObject({
+        kind: "work",
+        sessionId: "session-race",
+        issue: raceKey,
+      });
+      expect(paid.body.input.prompt).toContain('approved your request "Pay the race fee"');
+
+      // A session that ended without pausing picks up again with the answer to its request.
+      const shoes = await gql<{ requestCreate: { request: { id: string } } }>(
+        'mutation($issue: String!) { requestCreate(input: { title: "Email the shoe shop", action: "contact", reason: "Ask about race shoes", issueId: $issue }) { request { id } } }',
+        { issue: raceId },
+        paid.body.token,
+      );
+      await runner(`/runs/${paid.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "blocked", summary: "Entered; the shop email waits on approval." },
+      });
+      await gql(
+        'mutation($id: String!) { requestReject(id: $id, reason: "Keep the old shoes") { success } }',
+        { id: shoes.data?.requestCreate.request.id },
+      );
+      const heard = await runner<Claim>("/claim", machine.token, {});
+      expect(heard.body.run).toMatchObject({ kind: "work", sessionId: "session-race" });
+      expect(heard.body.input.prompt).toContain('rejected your request "Email the shoe shop"');
+      await runner(`/runs/${heard.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "done", summary: "Keeping the old shoes." },
+      });
+      // The agent decides what deserves a reaction, so every mention reaches it, however busy.
+      for (const n of [1, 2, 3, 4]) {
+        await gql(
+          "mutation($id: String!, $body: String!) { commentCreate(input: { issueId: $id, body: $body }) { success } }",
+          { id: raceId, body: `@Coach check-in ${n}` },
+        );
+        const checkIn = await runner<Claim>("/claim", machine.token, {});
+        expect(checkIn.body.input.prompt).toContain(`check-in ${n}`);
+        await runner(`/runs/${checkIn.body.run.id}/complete`, machine.token, {
+          status: "completed",
+          result: { action: "ignore", reason: "Just checking in" },
+        });
+      }
+      // Looking again later replaces an earlier plan to, rather than adding another.
+      for (const until of ["2099-01-01T09:00:00.000Z", "2099-01-02T09:00:00.000Z"]) {
+        await gql(
+          'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "@Coach race day?" }) { success } }',
+          { id: raceId },
+        );
+        const asked = await runner<Claim>("/claim", machine.token, {});
+        await runner(`/runs/${asked.body.run.id}/complete`, machine.token, {
+          status: "completed",
+          result: { action: "wait_until", until, reason: "Ask nearer the day" },
+        });
+      }
+      const later = await gql<{ runs: { nodes: { notBefore: string }[] } }>(
+        "query($id: String!) { runs(filter: { issueId: $id, status: [queued] }) { nodes { notBefore } } }",
+        { id: raceId },
+      );
+      expect(later.data?.runs.nodes).toEqual([{ notBefore: "2099-01-02T09:00:00.000Z" }]);
+
       // Model routing: the owner pins each tier's model and routes labels; rules decide the rest.
       const routing = await gql<{
         organizationUpdate: { organization: { modelRouting: Record<string, unknown> } };
@@ -1620,7 +1730,7 @@ export function hubContract(
       );
       expect(routing.data?.organizationUpdate.organization.modelRouting).toEqual({
         tiers: {
-          small: { model: "claude-haiku-5-5", effort: "low" },
+          small: { model: "claude-sonnet-5-5", effort: "medium" },
           standard: { model: "claude-sonnet-5-5", effort: "high" },
           top: { model: "claude-opus-5-5", effort: "high" },
         },
@@ -2348,135 +2458,6 @@ export function hubContract(
       expect(metrics.current.requestsAnswered).toBeGreaterThan(0);
       expect(metrics.previous.requestsAnswered).toBe(0);
     });
-    it("installs MCP servers on machines, with approval and sign-in through the hub", async () => {
-      const runner = async <T = Record<string, unknown>>(
-        path: string,
-        token: string,
-        json: unknown,
-      ) => {
-        const response = await client.request(`/api/runner${path}`, {
-          method: "POST",
-          json,
-          token,
-        });
-        const text = await response.text();
-        return { status: response.status, body: (text ? JSON.parse(text) : null) as T };
-      };
-      const gql = async <T = Record<string, unknown>>(
-        query: string,
-        variables?: Record<string, unknown>,
-        token?: string,
-      ) => client.graphql<T>(query, variables, token);
-      const enrol = await runner<{ id: string; token: string; pairingCode: string }>("/enrol", "", {
-        name: "Work laptop",
-        tags: ["employer-a"],
-        mcps: [],
-        capacity: 1,
-      });
-      const machine = enrol.body;
-      await gql(
-        "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
-        { id: machine.id, code: machine.pairingCode },
-      );
-
-      // An agent needs mcp.install on the machine; the owner doesn't.
-      const asCeo = await gql(
-        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "slack-a", url: "https://slack.example/mcp" }) { success } }',
-        { id: machine.id },
-        ceoToken,
-      );
-      expect(asCeo.errors?.[0]?.message).toContain("mcp.install");
-      const bad = await gql(
-        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "Slack A!", url: "https://slack.example/mcp" }) { success } }',
-        { id: machine.id },
-      );
-      expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
-      const insecure = await gql(
-        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "slack-a", url: "http://slack.example/mcp" }) { success } }',
-        { id: machine.id },
-      );
-      expect(insecure.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
-      const created = await gql<{
-        mcpServerCreate: { mcpServer: { id: string; status: string; allAgents: boolean } };
-      }>(
-        'mutation($id: String!) { mcpServerCreate(input: { machineId: $id, name: "slack-a", url: "https://slack.example/mcp" }) { mcpServer { id status allAgents } } }',
-        { id: machine.id },
-      );
-      const server = created.data?.mcpServerCreate.mcpServer;
-      expect(server).toMatchObject({ status: "installing", allAgents: true });
-
-      // The machine learns about it on check-in and says it needs a sign-in.
-      const beat = await runner<{ mcpServers: { id: string; name: string; url: string }[] }>(
-        "/heartbeat",
-        machine.token,
-        { runIds: [] },
-      );
-      expect(beat.body.mcpServers).toMatchObject([
-        { id: server?.id, name: "slack-a", url: "https://slack.example/mcp" },
-      ]);
-      const state = `${server?.id}.abc123`;
-      await expectQuiet(() => runner("/heartbeat", machine.token, { runIds: [] }));
-      await expectAnnounced(() =>
-        runner("/heartbeat", machine.token, {
-          runIds: [],
-          mcpServers: [
-            {
-              id: server?.id,
-              status: "needs_auth",
-              authUrl: "https://slack.example/authorize?state=x",
-              authState: state,
-            },
-          ],
-        }),
-      );
-      const listed = await gql<{
-        machines: { id: string; mcpServers: { status: string; authUrl: string }[] }[];
-      }>("{ machines { id mcpServers { status authUrl } } }");
-      expect(listed.data?.machines.find((m) => m.id === machine.id)?.mcpServers).toEqual([
-        { status: "needs_auth", authUrl: "https://slack.example/authorize?state=x" },
-      ]);
-
-      // The provider sends the owner back to the hub; the code waits for the machine.
-      const back = await expectAnnounced(() =>
-        client.request(`/api/mcp/oauth/callback?state=${encodeURIComponent(state)}&code=c0de`),
-      );
-      expect(back.status).toBe(200);
-      const handed = await runner<{ mcpServers: { authCode?: string }[] }>(
-        "/heartbeat",
-        machine.token,
-        {
-          runIds: [],
-        },
-      );
-      expect(handed.body.mcpServers[0]?.authCode).toBe("c0de");
-      await expectAnnounced(() =>
-        runner("/heartbeat", machine.token, {
-          runIds: [],
-          mcpServers: [{ id: server?.id, status: "ready" }],
-        }),
-      );
-      const ready = await runner<{ mcpServers: { status: string; authCode?: string }[] }>(
-        "/heartbeat",
-        machine.token,
-        { runIds: [] },
-      );
-      expect(ready.body.mcpServers[0]).toMatchObject({ status: "ready" });
-      expect(ready.body.mcpServers[0]?.authCode).toBeUndefined();
-      expect(
-        (
-          await client.request(
-            `/api/mcp/oauth/callback?state=${encodeURIComponent(state)}&code=again`,
-          )
-        ).status,
-      ).toBe(400);
-
-      await gql("mutation($id: String!) { mcpServerDelete(id: $id) { success } }", {
-        id: server?.id,
-      });
-      await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
-        id: machine.id,
-      });
-    });
     it("exports the company without secrets and checks Linear imports", async () => {
       const dump = await client.request("/api/export");
       expect(dump.status).toBe(200);
@@ -2561,6 +2542,9 @@ export function hubContract(
       expect(text).not.toContain("__HUB__");
       // macOS sh reads non-ASCII bytes after a variable as part of its name.
       expect(text).not.toMatch(/[^\t\n -~]/);
+      // Claude Code (built on Bun) crashes with "EINVAL ... kqueue" reading /dev/tty on macOS;
+      // the sign-in reads the terminal's own device instead.
+      expect(text).not.toContain("</dev/tty");
 
       await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
         id: joined.body.id,
@@ -2807,6 +2791,416 @@ export function hubContract(
         await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
           id: machine.id,
         });
+    });
+
+    /** Pretend MCP providers, reached through the hub's outgoing fetch. */
+    const tokenForms: URLSearchParams[] = [];
+    function fakeProviders(): typeof fetch {
+      return async (input, init) => {
+        const request = new Request(input, init);
+        const url = new URL(request.url);
+        switch (`${request.method} ${url.origin}${url.pathname}`) {
+          // Signs in with OAuth, and accepts the hub's client ID metadata document.
+          case "POST https://mcp.example.com/mcp":
+            return new Response(null, {
+              status: 401,
+              headers: {
+                "www-authenticate":
+                  'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", scope="files:read"',
+              },
+            });
+          case "GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp":
+            return Response.json({
+              resource: "https://mcp.example.com/mcp",
+              authorization_servers: ["https://auth.example.com"],
+            });
+          case "GET https://auth.example.com/.well-known/oauth-authorization-server":
+            return Response.json({
+              issuer: "https://auth.example.com",
+              authorization_endpoint: "https://auth.example.com/authorize",
+              token_endpoint: "https://auth.example.com/token",
+              client_id_metadata_document_supported: true,
+            });
+          case "POST https://auth.example.com/token": {
+            const form = new URLSearchParams(await request.text());
+            tokenForms.push(form);
+            if (form.get("grant_type") === "refresh_token")
+              return Response.json({ access_token: "drive-2", expires_in: 3600 });
+            if (form.get("code") !== "good-code")
+              return Response.json({ error: "invalid_grant" }, { status: 400 });
+            // Expires soon, so the next claim refreshes it.
+            return Response.json({
+              access_token: "drive-1",
+              refresh_token: "drive-refresh",
+              expires_in: 60,
+            });
+          }
+          // Needs a token, with no OAuth to get one.
+          case "POST https://tokens.example.com/mcp":
+            return new Response(null, { status: 401 });
+          case "POST https://open.example.com/mcp":
+            return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+          // Like Slack: OAuth with the owner's own app, and errors as HTTP 200 with ok: false.
+          case "POST https://chat.example.com/mcp":
+            return new Response(null, {
+              status: 401,
+              headers: {
+                "www-authenticate":
+                  'Bearer resource_metadata="https://chat.example.com/.well-known/oauth-protected-resource"',
+              },
+            });
+          case "GET https://chat.example.com/.well-known/oauth-protected-resource":
+            return Response.json({
+              resource: "https://chat.example.com",
+              authorization_servers: ["https://chat.example.com"],
+              scopes_supported: ["channels:history", "chat:write", "users:read"],
+            });
+          case "GET https://chat.example.com/.well-known/oauth-authorization-server":
+            return Response.json({
+              issuer: "https://chat.example.com",
+              authorization_endpoint: "https://chat.example.com/oauth/authorize",
+              token_endpoint: "https://chat.example.com/api/oauth.access",
+            });
+          case "POST https://chat.example.com/api/oauth.access": {
+            const form = new URLSearchParams(await request.text());
+            tokenForms.push(form);
+            if (form.get("code") !== "good-code")
+              return Response.json({ ok: false, error: "invalid_code" });
+            return Response.json({ ok: true, access_token: "xoxp-1" });
+          }
+        }
+        return new Response("Not found", { status: 404 });
+      };
+    }
+
+    /** Calls a hub MCP tool as an agent. */
+    async function callTool(token: string, name: string, args: Record<string, unknown>) {
+      const response = await client.request("/mcp", {
+        method: "POST",
+        json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+        token,
+      });
+      const { result } = (await response.json()) as {
+        result: { isError?: boolean; content: { text: string }[] };
+      };
+      const text = result.content[0]?.text ?? "";
+      return { isError: result.isError === true, text, json: () => JSON.parse(text) };
+    }
+
+    async function agentToken(name: string) {
+      const people = await client.graphql<{ users: { nodes: { id: string; name: string }[] } }>(
+        "{ users { nodes { id name } } }",
+      );
+      const id = people.data?.users.nodes.find((u) => u.name === name)?.id ?? "";
+      const made = await client.graphql<{ apiTokenCreate: { token: string } }>(
+        "mutation($id: String!) { apiTokenCreate(name: $id, userId: $id) { token } }",
+        { id },
+      );
+      return { id, token: made.data?.apiTokenCreate.token ?? "" };
+    }
+
+    /** Starts a work run for the agent on a fresh machine and claims it. */
+    async function claimFor(agentId: string) {
+      const queued = await client.graphql<{ runs: { nodes: { id: string }[] } }>(
+        "{ runs(filter: { status: [queued, running] }) { nodes { id } } }",
+      );
+      for (const run of queued.data?.runs.nodes ?? [])
+        await client.graphql(
+          'mutation($id: String!) { runStop(id: $id, reason: "Clearing") { success } }',
+          { id: run.id },
+        );
+      const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+        "mutation { machineSetupTokenCreate { token } }",
+      );
+      const machine = await client.json<{ token: string }>("/api/runner/enrol", {
+        method: "POST",
+        json: {
+          name: "MCP box",
+          tags: ["personal", "gym"],
+          setupToken: made.data?.machineSetupTokenCreate.token,
+        },
+      });
+      await client.graphql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+        { input: { agentId, goal: "Use the outside tools" } },
+      );
+      const claim = await client.json<{
+        mcpServers: Record<string, unknown>;
+        input: { systemPrompt: string };
+      }>("/api/runner/claim", { method: "POST", json: {}, token: machine.body.token });
+      return claim.body;
+    }
+
+    it("connects an outside MCP server an agent asks for, once the owner signs in and approves", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        const coach = await agentToken("Coach");
+        const asked = await callTool(coach.token, "create_mcp_server", {
+          name: "Drive",
+          url: "https://mcp.example.com/mcp",
+          reason: "The training logs live in Drive.",
+        });
+        expect(asked.isError).toBe(false);
+        const requestId = asked.json().id as string;
+        type Server = { id: string; name: string; auth: string; status: string; url: string };
+        const request = async () =>
+          (
+            await client.graphql<{
+              request: { action: string; resource: string; details: string; mcpServer: Server };
+            }>(
+              "query($id: String!) { request(id: $id) { action resource details mcpServer { id name auth status url } } }",
+              { id: requestId },
+            )
+          ).data?.request;
+        const filed = await request();
+        expect(filed).toMatchObject({
+          action: "mcp.use",
+          resource: "drive",
+          mcpServer: { name: "drive", auth: "oauth", status: "pending" },
+        });
+        expect(filed?.details).toContain("https://mcp.example.com/mcp");
+
+        const approve = (alwaysAllow?: unknown) =>
+          client.graphql(
+            "mutation($id: String!, $a: AlwaysAllowInput) { requestApprove(id: $id, alwaysAllow: $a) { success } }",
+            { id: requestId, a: alwaysAllow },
+          );
+        expect((await approve()).errors?.[0]?.message).toBe("Connect drive first");
+
+        // The owner signs in with the provider, which accepts the hub's client metadata.
+        const connected = await client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
+          "mutation($id: String!) { mcpServerConnect(id: $id) { authorizationUrl } }",
+          { id: filed?.mcpServer.id },
+        );
+        const authorize = new URL(connected.data?.mcpServerConnect.authorizationUrl ?? "");
+        const clientId = "http://localhost/api/mcp/oauth/client.json";
+        expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
+          response_type: "code",
+          client_id: clientId,
+          redirect_uri: "http://localhost/api/mcp/oauth/callback",
+          code_challenge_method: "S256",
+          resource: "https://mcp.example.com/mcp",
+          scope: "files:read",
+        });
+        const metadata = await client.json("/api/mcp/oauth/client.json");
+        expect(metadata.body).toMatchObject({
+          client_id: clientId,
+          redirect_uris: ["http://localhost/api/mcp/oauth/callback"],
+          token_endpoint_auth_method: "none",
+        });
+
+        const back = await client.request(
+          `/api/mcp/oauth/callback?code=good-code&state=${authorize.searchParams.get("state")}`,
+        );
+        expect(back.status).toBe(302);
+        expect(back.headers.get("location")).toBe(`http://localhost/request/${requestId}`);
+        const exchange = tokenForms.at(-1);
+        expect(exchange?.get("client_id")).toBe(clientId);
+        const challenge = toBase64Url(
+          new Uint8Array(
+            await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(exchange?.get("code_verifier") ?? ""),
+            ),
+          ),
+        );
+        expect(challenge).toBe(authorize.searchParams.get("code_challenge"));
+        expect((await request())?.mcpServer.status).toBe("ready");
+        const stale = await client.request("/api/mcp/oauth/callback?code=x&state=nope");
+        expect(stale.headers.get("location")).toMatch(/^http:\/\/localhost\/approvals\?error=/);
+
+        expect((await approve({ scope: "user" })).errors).toBeUndefined();
+        // Its claim carries the server with a freshly refreshed token; others' don't.
+        const claim = await claimFor(coach.id);
+        expect(claim.input.systemPrompt).toContain("create_mcp_server");
+        expect(claim.mcpServers).toEqual({
+          drive: {
+            type: "http",
+            url: "https://mcp.example.com/mcp",
+            headers: { Authorization: "Bearer drive-2" },
+          },
+        });
+        expect(tokenForms.at(-1)?.get("refresh_token")).toBe("drive-refresh");
+        expect((await claimFor((await agentToken("Chef")).id)).mcpServers).toEqual({});
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("connects MCP servers with a pasted token, a local command, or no sign-in", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        const coach = await agentToken("Coach");
+        const ask = async (args: Record<string, unknown>) =>
+          (
+            await callTool(coach.token, "create_mcp_server", { reason: "Need it.", ...args })
+          ).json() as { id: string };
+        const server = async (requestId: string) =>
+          (
+            await client.graphql<{
+              request: { details: string; mcpServer: { id: string; auth: string; status: string } };
+            }>(
+              "query($id: String!) { request(id: $id) { details mcpServer { id auth status } } }",
+              { id: requestId },
+            )
+          ).data?.request;
+        const connect = (id: string | undefined, token: string) =>
+          client.graphql<{ mcpServerConnect: { mcpServer: { status: string } } }>(
+            "mutation($id: String!, $t: String) { mcpServerConnect(id: $id, token: $t) { mcpServer { status } } }",
+            { id, t: token },
+          );
+        const approve = (id: string, always: boolean) =>
+          client.graphql(
+            "mutation($id: String!, $a: AlwaysAllowInput) { requestApprove(id: $id, alwaysAllow: $a) { success } }",
+            { id, a: always ? { scope: "user" } : null },
+          );
+
+        const notion = await ask({
+          name: "notion",
+          url: "https://tokens.example.com/mcp",
+          howToConnect: "Create an internal integration token at notion.so/my-integrations.",
+        });
+        expect((await server(notion.id))?.mcpServer).toMatchObject({ auth: "token" });
+        const pasted = await connect((await server(notion.id))?.mcpServer.id, "notion-token");
+        expect(pasted.data?.mcpServerConnect.mcpServer.status).toBe("ready");
+        await approve(notion.id, false);
+
+        const github = await ask({
+          name: "github",
+          command: "npx",
+          args: ["-y", "@modelcontextprotocol/server-github"],
+          secretEnv: "GITHUB_TOKEN",
+        });
+        const local = await server(github.id);
+        expect(local?.mcpServer.auth).toBe("token");
+        expect(local?.details).toContain("npx -y @modelcontextprotocol/server-github");
+        await connect(local?.mcpServer.id, "ghp_123");
+        await approve(github.id, true);
+
+        const weather = await ask({ name: "weather", url: "https://open.example.com/mcp" });
+        expect((await server(weather.id))?.mcpServer).toMatchObject({
+          auth: "none",
+          status: "ready",
+        });
+        await approve(weather.id, true);
+
+        // A name already taken: others ask to use it; its user already has it.
+        const chef = await agentToken("Chef");
+        const shared = (
+          await callTool(chef.token, "create_mcp_server", {
+            name: "github",
+            command: "uvx",
+            reason: "Recipes repo.",
+          })
+        ).json();
+        expect(shared).toMatchObject({ action: "mcp.use", resource: "github", requester: "Chef" });
+        expect((await server(shared.id))?.mcpServer.id).toBe(local?.mcpServer.id);
+        expect((await ask({ name: "github", command: "npx" })) as unknown).toMatchObject({
+          message: expect.stringContaining("already yours"),
+        });
+
+        const servers = (await claimFor(coach.id)).mcpServers;
+        expect(servers).toMatchObject({
+          notion: {
+            type: "http",
+            url: "https://tokens.example.com/mcp",
+            headers: { Authorization: "Bearer notion-token" },
+          },
+          github: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-github"],
+            env: { GITHUB_TOKEN: "ghp_123" },
+          },
+          weather: { type: "http", url: "https://open.example.com/mcp" },
+        });
+        expect(servers.weather).not.toHaveProperty("headers");
+        // The one-time approval for notion was used up by that claim.
+        expect(Object.keys((await claimFor(coach.id)).mcpServers).sort()).toEqual([
+          "drive",
+          "github",
+          "weather",
+        ]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("signs in with a provider's published client, the owner pasting the address they land on", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        const coach = await agentToken("Coach");
+        const ask = (args: Record<string, unknown>) =>
+          callTool(coach.token, "create_mcp_server", {
+            name: "chat",
+            url: "https://chat.example.com/mcp",
+            scopes: ["channels:history"],
+            reason: "Read the team's channel.",
+            ...args,
+          });
+        const unregistered = await ask({});
+        expect(unregistered.isError).toBe(true);
+        expect(unregistered.text).toContain("callbackPort");
+
+        const asked = await ask({ oauth: { clientId: "app-1", callbackPort: 3118 } });
+        const requestId = asked.json().id as string;
+        const filed = await client.graphql<{
+          request: { mcpServer: { id: string; auth: string; pastesCallback: boolean } };
+        }>("query($id: String!) { request(id: $id) { mcpServer { id auth pastesCallback } } }", {
+          id: requestId,
+        });
+        const server = filed.data?.request.mcpServer;
+        expect(server).toMatchObject({ auth: "oauth", pastesCallback: true });
+
+        const connect = (callbackUrl?: string) =>
+          client.graphql<{
+            mcpServerConnect: { authorizationUrl: string | null; mcpServer: { status: string } };
+          }>(
+            "mutation($id: String!, $url: String) { mcpServerConnect(id: $id, callbackUrl: $url) { authorizationUrl mcpServer { status } } }",
+            { id: server?.id, url: callbackUrl },
+          );
+        const started = await connect();
+        const authorize = new URL(started.data?.mcpServerConnect.authorizationUrl ?? "");
+        const redirectUri = "http://localhost:3118/callback";
+        expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
+          client_id: "app-1",
+          redirect_uri: redirectUri,
+          scope: "channels:history",
+          code_challenge_method: "S256",
+        });
+
+        const state = authorize.searchParams.get("state");
+        const wrong = await connect(`${redirectUri}?code=good-code&state=other`);
+        expect(wrong.errors?.[0]?.message).toContain("another sign-in");
+        const refused = await connect(`${redirectUri}?code=bad&state=${state}`);
+        expect(refused.errors?.[0]?.message).toContain("invalid_code");
+        const pasted = await connect(`${redirectUri}?code=good-code&state=${state}`);
+        expect(pasted.data?.mcpServerConnect.mcpServer.status).toBe("ready");
+        const exchange = tokenForms.at(-1);
+        expect(exchange?.get("redirect_uri")).toBe(redirectUri);
+        expect(exchange?.has("client_secret")).toBe(false);
+        const challenge = toBase64Url(
+          new Uint8Array(
+            await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(exchange?.get("code_verifier") ?? ""),
+            ),
+          ),
+        );
+        expect(challenge).toBe(authorize.searchParams.get("code_challenge"));
+
+        await client.graphql(
+          "mutation($id: String!) { requestApprove(id: $id, alwaysAllow: { scope: user }) { success } }",
+          { id: requestId },
+        );
+        expect((await claimFor(coach.id)).mcpServers.chat).toEqual({
+          type: "http",
+          url: "https://chat.example.com/mcp",
+          headers: { Authorization: "Bearer xoxp-1" },
+        });
+      } finally {
+        fetchSpy.mockRestore();
+      }
     });
   });
 }

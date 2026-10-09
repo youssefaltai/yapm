@@ -23,8 +23,7 @@ type NotificationType =
   | "requestCreated"
   | "requestAnswered"
   | "projectUpdateCreated"
-  | "issueSlaBreached"
-  | "mcpServerNeedsAuth";
+  | "issueSlaBreached";
 
 interface Notification {
   id: string;
@@ -81,8 +80,6 @@ function describe(n: Notification): string {
       return `${who} posted an update: ${snippet(n.projectUpdate?.body)}`;
     case "issueSlaBreached":
       return "Missed its SLA";
-    case "mcpServerNeedsAuth":
-      return `Sign in so agents on ${String(n.data?.machine ?? "a machine")} can use it`;
   }
 }
 
@@ -95,7 +92,6 @@ function heading(n: Notification) {
   if (n.request) return n.request.title;
   if (n.issue) return n.issue.title;
   if (n.project) return n.project.name;
-  if (n.type === "mcpServerNeedsAuth") return `Connect ${String(n.data?.name ?? "an MCP server")}`;
   return "Notification";
 }
 
@@ -104,7 +100,6 @@ function pathOf(n: Notification): string | null {
   if (n.request) return paths.request(n.request.id);
   if (n.issue) return paths.issue(n.issue.identifier);
   if (n.project) return paths.project(n.project.id);
-  if (n.type === "mcpServerNeedsAuth") return paths.machines();
   return null;
 }
 

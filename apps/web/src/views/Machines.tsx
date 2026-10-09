@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { copyText, workspaceStore } from "../actions.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
-import { button, eyebrow, field, Page, PageBody, PageHeader, PageTitle } from "../layout.js";
+import { button, field, Page, PageBody, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
-import { openMenu, timeAgo, useStore } from "../ui.js";
+import { timeAgo, useStore } from "../ui.js";
 import { RunsTabs } from "./Runs.js";
 
 interface Machine {
@@ -16,14 +16,12 @@ interface Machine {
   originalName: string;
   status: "pending" | "active" | "revoked";
   tags: string[];
-  mcps: string[];
   capacity: number;
   version: string | null;
   online: boolean;
   lastSeenAt: string | null;
   createdAt: string;
   runningCount: number;
-  mcpServers: McpServer[];
   claudeAccount: { email: string | null; subscriptionType: string | null } | null;
   planUsage: {
     available: boolean;
@@ -31,24 +29,10 @@ interface Machine {
   } | null;
 }
 
-interface McpServer {
-  id: string;
-  name: string;
-  url: string | null;
-  command: string | null;
-  args: string[];
-  status: "installing" | "needs_auth" | "ready" | "failed";
-  statusDetail: string | null;
-  authUrl: string | null;
-  allAgents: boolean;
-  agents: { id: string; name: string }[];
-}
-
 const MACHINES = `{ machines {
-  id name originalName status tags mcps capacity version online lastSeenAt createdAt runningCount
+  id name originalName status tags capacity version online lastSeenAt createdAt runningCount
   claudeAccount { email subscriptionType }
   planUsage { available limits { kind utilization resetsAt } }
-  mcpServers { id name url command args status statusDetail authUrl allAgents agents { id name } }
 } }`;
 
 interface SetupCommand {
@@ -292,12 +276,6 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
             className="w-full bg-transparent outline-none placeholder:text-faint"
           />
         </dd>
-        {m.mcps.length > 0 && (
-          <>
-            <dt className="text-faint">Own servers</dt>
-            <dd className="text-muted">{m.mcps.join(", ")}</dd>
-          </>
-        )}
         {m.claudeAccount && (
           <>
             <dt className="text-faint">Claude</dt>
@@ -319,7 +297,6 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
           </>
         )}
       </dl>
-      {m.status === "active" && <McpServers machine={m} canEdit={canEdit} />}
       {canEdit && (
         <div className="mt-2 flex justify-end">
           <button
@@ -347,195 +324,6 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
   );
 }
 
-const STATUS_TEXT: Record<McpServer["status"], string> = {
-  installing: "Setting up",
-  needs_auth: "Needs sign-in",
-  ready: "Ready",
-  failed: "Failed",
-};
-
-/** Servers the hub runs on this machine: sign in, choose who gets them, add and remove. */
-function McpServers({ machine, canEdit }: { machine: Machine; canEdit: boolean }) {
-  const workspace = useStore(workspaceStore);
-  const [adding, setAdding] = useState(false);
-  const agents = (workspace?.users.nodes ?? []).filter((u) => u.kind === "agent");
-  const setAgents = (server: McpServer, agentIds: string[] | null) =>
-    void mutate(
-      "mutation($id: String!, $input: McpServerUpdateInput!) { mcpServerUpdate(id: $id, input: $input) { success } }",
-      { id: server.id, input: { agentIds } },
-    );
-  return (
-    <section
-      className="mt-3 border-t border-line pt-3"
-      aria-label={`MCP servers on ${machine.name}`}
-    >
-      <div className="flex items-center">
-        <h3 className={eyebrow}>MCP servers</h3>
-        {canEdit && !adding && (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className={`ml-auto ${button("ghost", "sm")}`}
-          >
-            + Add server
-          </button>
-        )}
-      </div>
-      {machine.mcpServers.length === 0 && !adding && (
-        <p className="mt-1 text-[13px] text-faint">
-          None yet. Agents ask for the ones they need; you approve them.
-        </p>
-      )}
-      <div className="mt-1 divide-y divide-line">
-        {machine.mcpServers.map((server) => (
-          <div
-            key={server.id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-[13px]"
-          >
-            <span className="font-medium">{server.name}</span>
-            <span className="min-w-0 flex-1 truncate text-faint">
-              {server.url ?? [server.command, ...server.args].join(" ")}
-            </span>
-            <span
-              className={
-                server.status === "ready"
-                  ? "text-emerald-400"
-                  : server.status === "failed"
-                    ? "text-red-400"
-                    : "text-amber-400"
-              }
-              title={server.statusDetail ?? undefined}
-            >
-              {STATUS_TEXT[server.status]}
-            </span>
-            {server.status === "needs_auth" && server.authUrl && canEdit && (
-              <a
-                href={server.authUrl}
-                target="_blank"
-                rel="noreferrer"
-                className={button("primary", "sm")}
-              >
-                Connect
-              </a>
-            )}
-            <button
-              type="button"
-              disabled={!canEdit}
-              onClick={() =>
-                openMenu({
-                  placeholder: `Who gets ${server.name}?`,
-                  items: [
-                    {
-                      id: "all",
-                      label: "Every agent",
-                      checked: server.allAgents,
-                      onSelect: () => setAgents(server, null),
-                    },
-                    ...agents.map((a) => {
-                      const has = !server.allAgents && server.agents.some((x) => x.id === a.id);
-                      const current = server.allAgents ? [] : server.agents.map((x) => x.id);
-                      return {
-                        id: a.id,
-                        label: a.name,
-                        checked: has,
-                        onSelect: () =>
-                          setAgents(
-                            server,
-                            has ? current.filter((id) => id !== a.id) : [...current, a.id],
-                          ),
-                      };
-                    }),
-                  ],
-                })
-              }
-              className="rounded-md px-1 text-muted hover:bg-raised hover:text-ink"
-            >
-              {server.allAgents
-                ? "Every agent"
-                : server.agents.map((a) => a.name).join(", ") || "No agents"}
-            </button>
-            {canEdit && (
-              <button
-                type="button"
-                aria-label={`Remove ${server.name}`}
-                onClick={async () => {
-                  if (
-                    await confirmDialog({
-                      title: `Remove ${server.name}?`,
-                      body: `It's removed from ${machine.name}.`,
-                      confirmLabel: "Remove",
-                      destructive: true,
-                    })
-                  )
-                    void mutate("mutation($id: String!) { mcpServerDelete(id: $id) { success } }", {
-                      id: server.id,
-                    });
-                }}
-                className="text-faint hover:text-red-400"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-      {adding && <AddServer machine={machine} onDone={() => setAdding(false)} />}
-    </section>
-  );
-}
-
-function AddServer({ machine, onDone }: { machine: Machine; onDone: () => void }) {
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const remote = /^https?:\/\//.test(address.trim());
-  return (
-    <form
-      className="mt-2 flex flex-wrap gap-2"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const [command = "", ...args] = address.trim().split(/\s+/);
-        const result = await mutate(
-          "mutation($input: McpServerCreateInput!) { mcpServerCreate(input: $input) { success } }",
-          {
-            input: {
-              machineId: machine.id,
-              name,
-              ...(remote ? { url: address.trim() } : { command, args }),
-            },
-          },
-        );
-        if (result) onDone();
-      }}
-    >
-      <input
-        aria-label="Server name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="name, e.g. slack-acme"
-        className={`w-40 ${field}`}
-      />
-      <input
-        aria-label="Server address"
-        value={address}
-        onChange={(e) => setAddress(e.target.value)}
-        placeholder="https://… or a command, e.g. npx some-mcp"
-        className={`flex-1 ${field}`}
-      />
-      <button
-        type="submit"
-        disabled={!name.trim() || !address.trim()}
-        className={button("primary")}
-      >
-        Add
-      </button>
-      <button type="button" onClick={onDone} className={button("ghost")}>
-        Cancel
-      </button>
-    </form>
-  );
-}
-
-/** The login and how full its main windows are, e.g. "you@example.com · max · session 42%". */
 function planSummary(m: Machine) {
   const parts = [m.claudeAccount?.email, m.claudeAccount?.subscriptionType].filter(Boolean);
   const live = (kind: string) =>

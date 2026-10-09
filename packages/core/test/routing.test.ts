@@ -17,8 +17,8 @@ describe("model routing", () => {
   it("runs decisions on the small tier whatever else is true", () => {
     expect(route({ ...work({ priority: 1, estimate: 8 }), kind: "decision" }, routing)).toEqual({
       modelTier: "small",
-      model: "claude-haiku-5-5",
-      effort: "low",
+      model: "claude-sonnet-5-5",
+      effort: "medium",
       routeRule: "decision",
     });
   });
@@ -101,7 +101,7 @@ describe("model routing", () => {
   it("takes the decision's request, then caps it to the agent's limits", () => {
     expect(route(work({ requestedTier: "small" }), routing)).toMatchObject({
       modelTier: "small",
-      model: "claude-haiku-5-5",
+      model: "claude-sonnet-5-5",
       routeRule: "requested",
     });
     const capped = work({

@@ -5,7 +5,16 @@ import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import { PageSkeleton } from "../states.js";
-import { Avatar, openMenu, timeAgo, useStore } from "../ui.js";
+import {
+  Avatar,
+  DetailLayout,
+  openMenu,
+  Property,
+  PropertyList,
+  propertyButton,
+  timeAgo,
+  useStore,
+} from "../ui.js";
 import { FeedbackSection, Prose, RevisionList } from "./Learning.js";
 import { RunsSection } from "./Runs.js";
 
@@ -74,9 +83,13 @@ export function MemberPage({ id }: { id: string }) {
       },
     );
 
+  const editable = canEdit && member.active;
+  const field =
+    "rounded-md px-2 py-1 text-ink hover:bg-raised focus:bg-raised disabled:hover:bg-transparent";
+
   return (
-    <div className="h-full animate-fade-in overflow-y-auto">
-      <header className="flex h-11 items-center gap-2 border-b border-line px-4 md:px-6">
+    <div className="flex h-full min-h-0 animate-fade-in flex-col">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
         <button
           type="button"
           onClick={() => navigate(paths.company())}
@@ -85,272 +98,292 @@ export function MemberPage({ id }: { id: string }) {
           Company
         </button>
         <span className="text-faint">›</span>
-        <span className="font-medium">{member.name}</span>
+        <span className="truncate font-medium">{member.name}</span>
         {!member.active && (
           <span className="rounded bg-raised px-1.5 text-[12px] text-muted">Retired</span>
         )}
+        {canEdit && member.kind === "agent" && member.active && (
+          <button
+            type="button"
+            onClick={async () => {
+              if (
+                await confirmDialog({
+                  title: `Retire ${member.name}?`,
+                  body: "Its tokens stop working and its reports move to its manager.",
+                  confirmLabel: "Retire",
+                  destructive: true,
+                })
+              ) {
+                void mutate("mutation($id: String!) { agentRetire(id: $id) { success } }", {
+                  id: member.id,
+                });
+              }
+            }}
+            className="ml-auto rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-red-400"
+          >
+            Retire
+          </button>
+        )}
       </header>
-      <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">
-        <div className="flex items-center gap-3">
-          <Avatar name={member.name} kind={member.kind} size={40} />
-          <div className="min-w-0 flex-1">
-            <EditableLine
-              label="Name"
-              value={member.name}
-              disabled={!canEdit || !member.active}
-              onSave={(name) => update({ name })}
-              className="text-lg font-medium"
-            />
-            <EditableLine
-              label="Title"
-              value={member.title ?? ""}
-              placeholder="Add a title"
-              disabled={!canEdit || !member.active}
-              onSave={(title) => update({ title })}
-              className="text-muted"
-            />
-          </div>
-          {canEdit && member.kind === "agent" && member.active && (
-            <button
-              type="button"
-              onClick={async () => {
-                if (
-                  await confirmDialog({
-                    title: `Retire ${member.name}?`,
-                    body: "Its tokens stop working and its reports move to its manager.",
-                    confirmLabel: "Retire",
-                    destructive: true,
-                  })
-                ) {
-                  void mutate("mutation($id: String!) { agentRetire(id: $id) { success } }", {
-                    id: member.id,
-                  });
-                }
-              }}
-              className="rounded-md border border-line px-3 py-1.5 text-muted hover:text-red-400"
-            >
-              Retire
-            </button>
-          )}
-        </div>
-
-        <dl className="mt-6 grid grid-cols-[8rem_1fr] gap-y-2">
-          <dt className="text-faint">Reports to</dt>
-          <dd>
-            {member.kind === "owner" ? (
-              <span className="text-muted">No one</span>
-            ) : (
-              <button
-                type="button"
-                disabled={!canEdit || !member.active}
-                onClick={() =>
-                  openMenu({
-                    placeholder: `Who does ${member.name} report to?`,
-                    items: workspace.users.nodes
-                      .filter((u) => u.id !== member.id)
-                      .map((u) => ({
-                        id: u.id,
-                        label: u.name,
-                        hint: u.title ?? undefined,
-                        icon: <Avatar name={u.name} kind={u.kind} size={16} />,
-                        checked: u.id === member.manager?.id,
-                        onSelect: () => void update({ managerId: u.id }),
-                      })),
-                  })
-                }
-                className="rounded-md px-1 hover:bg-raised"
-              >
-                {member.manager?.name ?? "No one"}
-              </button>
-            )}
-          </dd>
-          <dt className="text-faint">Direct reports</dt>
-          <dd className="flex flex-wrap gap-2">
-            {member.directReports.nodes.length === 0 && <span className="text-muted">None</span>}
-            {member.directReports.nodes.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => navigate(paths.member(r.id))}
-                className="hover:underline"
-              >
-                {r.name}
-              </button>
-            ))}
-          </dd>
-          <dt className="text-faint">Open issues</dt>
-          <dd className="text-muted">{member.assignedIssues.nodes.length}</dd>
-          <dt className="text-faint">Joined</dt>
-          <dd className="text-muted">{timeAgo(member.createdAt)}</dd>
-          {member.kind === "agent" && (
-            <>
-              <dt className="text-faint">Runs on</dt>
-              <dd>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <DetailLayout
+          head={
+            <div className="flex items-center gap-3">
+              <Avatar name={member.name} kind={member.kind} size={40} />
+              <div className="min-w-0 flex-1">
                 <EditableLine
-                  label="Runner tags"
-                  value={member.runnerTags.join(", ")}
-                  placeholder="Any machine"
-                  disabled={!canEdit || !member.active}
-                  allowEmpty
-                  onSave={(value) =>
-                    update({
-                      runnerTags: value
-                        .split(",")
-                        .map((t) => t.trim().toLowerCase())
-                        .filter(Boolean),
-                    })
-                  }
+                  label="Name"
+                  value={member.name}
+                  disabled={!editable}
+                  onSave={(name) => update({ name })}
+                  className="text-xl font-semibold"
+                />
+                <EditableLine
+                  label="Title"
+                  value={member.title ?? ""}
+                  placeholder="Add a title"
+                  disabled={!editable}
+                  onSave={(title) => update({ title })}
                   className="text-muted"
                 />
-              </dd>
-              <dt className="text-faint">Model tiers</dt>
-              <dd className="flex items-center gap-2 text-muted">
-                {canEdit && member.active ? (
-                  <>
-                    <Select
-                      aria-label="Cheapest tier"
-                      value={member.modelFloor}
-                      options={TIERS}
-                      onChange={(modelFloor) => update({ modelFloor })}
-                    />
-                    <span className="text-faint">to</span>
-                    <Select
-                      aria-label="Dearest tier"
-                      value={member.modelCeiling}
-                      options={TIERS}
-                      onChange={(modelCeiling) => update({ modelCeiling })}
-                    />
-                  </>
-                ) : (
-                  `${member.modelFloor} to ${member.modelCeiling}`
-                )}
-              </dd>
-              <dt className="text-faint">Top runs a week</dt>
-              <dd>
-                <EditableLine
-                  label="Top runs a week"
-                  value={String(member.topRunsPerWeek)}
-                  disabled={!canEdit || !member.active}
-                  onSave={(value) => {
-                    const n = Number(value);
-                    if (Number.isInteger(n) && n >= 0) update({ topRunsPerWeek: n });
-                  }}
-                  className="text-muted"
-                />
-              </dd>
-            </>
-          )}
-        </dl>
-
-        {member.kind === "agent" && canEdit && member.active && <GiveWork agent={member} />}
-
-        {member.kind === "agent" && (
-          <section className="mt-8">
-            <h2 className="mb-2 font-medium">Charter</h2>
-            <p className="mb-2 text-faint">
-              The agent's job: what it owns, how it works, and when it escalates to you.
-            </p>
-            <Prose
-              label="Charter"
-              value={member.charter ?? ""}
-              placeholder="Responsibilities, ownership, and when to escalate…"
-              disabled={!canEdit || !member.active}
-              onSave={(charter) => update({ charter })}
-            />
-            <RevisionList subject="charter" entityId={member.id} />
-          </section>
-        )}
-
-        {member.kind === "agent" && (
-          <section className="mt-8">
-            <h2 className="mb-2 font-medium">Lessons</h2>
-            <p className="mb-2 text-faint">
-              What {member.name} has learned, in its own words. It reads them on every run and
-              rewrites them as it learns.
-            </p>
-            <Prose
-              label="Lessons"
-              value={member.lessons ?? ""}
-              placeholder="Nothing learned yet."
-              disabled={!canEdit || !member.active}
-              onSave={(lessons) => update({ lessons })}
-            />
-            <RevisionList subject="lessons" entityId={member.id} />
-          </section>
-        )}
-
-        {member.kind === "agent" && (
-          <FeedbackSection agent={member} canGive={canEdit && member.active} />
-        )}
-
-        {member.kind === "agent" && <RunsSection agentId={member.id} />}
-
-        {(canEdit || member.isMe) && (
-          <section className="mt-8">
-            <div className="mb-2 flex items-center">
-              <h2 className="font-medium">API tokens</h2>
-              {canEdit && member.active && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const name = await promptDialog({
-                      title: "New API token",
-                      label: "Token name",
-                      placeholder: "The machine it runs on",
-                      initial: "Claude Code",
-                      confirmLabel: "Create token",
-                    });
-                    if (!name) return;
-                    const result = await mutate<{ apiTokenCreate: { token: string } }>(
-                      "mutation($name: String!, $userId: String) { apiTokenCreate(name: $name, userId: $userId) { token } }",
-                      { name, userId: member.id },
-                    );
-                    if (result) setNewToken(result.apiTokenCreate.token);
-                  }}
-                  className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
-                >
-                  + New token
-                </button>
-              )}
+              </div>
             </div>
-            {newToken && (
-              <NewToken token={newToken} name={member.name} onDone={() => setNewToken(null)} />
-            )}
-            <div className="divide-y divide-line rounded-lg border border-line empty:hidden">
-              {member.apiTokens.map((token) => (
-                <div key={token.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="min-w-0 flex-1 truncate">{token.name}</span>
-                  <code className="text-[12px] text-faint">{token.prefix}…</code>
-                  <span className="text-[12px] text-faint max-sm:hidden">
-                    {token.revokedAt
-                      ? "Revoked"
-                      : token.lastUsedAt
-                        ? `Used ${timeAgo(token.lastUsedAt)}`
-                        : "Never used"}
-                  </span>
-                  {canEdit && !token.revokedAt && (
+          }
+          side={
+            <>
+              <PropertyList>
+                <Property label="Reports to" control={member.kind !== "owner"}>
+                  {member.kind === "owner" ? (
+                    "No one"
+                  ) : (
                     <button
                       type="button"
+                      disabled={!editable}
                       onClick={() =>
-                        void mutate(
-                          "mutation($id: String!) { apiTokenRevoke(id: $id) { success } }",
-                          { id: token.id },
-                        )
+                        openMenu({
+                          placeholder: `Who does ${member.name} report to?`,
+                          items: workspace.users.nodes
+                            .filter((u) => u.id !== member.id)
+                            .map((u) => ({
+                              id: u.id,
+                              label: u.name,
+                              hint: u.title ?? undefined,
+                              icon: <Avatar name={u.name} kind={u.kind} size={16} />,
+                              checked: u.id === member.manager?.id,
+                              onSelect: () => void update({ managerId: u.id }),
+                            })),
+                        })
                       }
-                      className="text-faint hover:text-red-400"
+                      className={propertyButton}
                     >
-                      Revoke
+                      {member.manager ? (
+                        <>
+                          <Avatar name={member.manager.name} size={16} />
+                          {member.manager.name}
+                        </>
+                      ) : (
+                        <span className="text-faint">No one</span>
+                      )}
                     </button>
                   )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+                </Property>
+                <Property label="Direct reports">
+                  {member.directReports.nodes.length === 0 ? (
+                    <span className="text-faint">None</span>
+                  ) : (
+                    <span className="flex flex-wrap gap-x-2 gap-y-1">
+                      {member.directReports.nodes.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => navigate(paths.member(r.id))}
+                          className="flex items-center gap-1.5 text-ink hover:underline"
+                        >
+                          <Avatar name={r.name} kind={r.kind} size={16} />
+                          {r.name}
+                        </button>
+                      ))}
+                    </span>
+                  )}
+                </Property>
+                <Property label="Open issues">{member.assignedIssues.nodes.length}</Property>
+                <Property label="Joined">{timeAgo(member.createdAt)}</Property>
+              </PropertyList>
+              {member.kind === "agent" && (
+                <PropertyList title="How it runs">
+                  <Property label="Runs on" control>
+                    <EditableLine
+                      label="Runner tags"
+                      value={member.runnerTags.join(", ")}
+                      placeholder="Any machine"
+                      disabled={!editable}
+                      allowEmpty
+                      onSave={(value) =>
+                        update({
+                          runnerTags: value
+                            .split(",")
+                            .map((t) => t.trim().toLowerCase())
+                            .filter(Boolean),
+                        })
+                      }
+                      className={field}
+                    />
+                  </Property>
+                  <Property label="Cheapest tier" control={editable}>
+                    {editable ? (
+                      <Select
+                        aria-label="Cheapest tier"
+                        value={member.modelFloor}
+                        options={TIERS}
+                        onChange={(modelFloor) => update({ modelFloor })}
+                      />
+                    ) : (
+                      tierLabel(member.modelFloor)
+                    )}
+                  </Property>
+                  <Property label="Dearest tier" control={editable}>
+                    {editable ? (
+                      <Select
+                        aria-label="Dearest tier"
+                        value={member.modelCeiling}
+                        options={TIERS}
+                        onChange={(modelCeiling) => update({ modelCeiling })}
+                      />
+                    ) : (
+                      tierLabel(member.modelCeiling)
+                    )}
+                  </Property>
+                  <Property label="Top runs/week" control>
+                    <EditableLine
+                      label="Top runs a week"
+                      value={String(member.topRunsPerWeek)}
+                      disabled={!editable}
+                      onSave={(value) => {
+                        const n = Number(value);
+                        if (Number.isInteger(n) && n >= 0) update({ topRunsPerWeek: n });
+                      }}
+                      className={field}
+                    />
+                  </Property>
+                </PropertyList>
+              )}
+            </>
+          }
+        >
+          {member.kind === "agent" && canEdit && member.active && <GiveWork agent={member} />}
+
+          {member.kind === "agent" && (
+            <section className="mt-8">
+              <h2 className="mb-2 font-medium">Charter</h2>
+              <p className="mb-2 text-faint">
+                The agent's job: what it owns, how it works, and when it escalates to you.
+              </p>
+              <Prose
+                label="Charter"
+                value={member.charter ?? ""}
+                placeholder="Responsibilities, ownership, and when to escalate…"
+                disabled={!canEdit || !member.active}
+                onSave={(charter) => update({ charter })}
+                className="min-h-16"
+              />
+              <RevisionList subject="charter" entityId={member.id} />
+            </section>
+          )}
+
+          {member.kind === "agent" && (
+            <section className="mt-8">
+              <h2 className="mb-2 font-medium">Lessons</h2>
+              <p className="mb-2 text-faint">
+                What {member.name} has learned, in its own words. It reads them on every run and
+                rewrites them as it learns.
+              </p>
+              <Prose
+                label="Lessons"
+                value={member.lessons ?? ""}
+                placeholder="Nothing learned yet."
+                disabled={!canEdit || !member.active}
+                onSave={(lessons) => update({ lessons })}
+                className="min-h-16"
+              />
+              <RevisionList subject="lessons" entityId={member.id} />
+            </section>
+          )}
+
+          {member.kind === "agent" && (
+            <FeedbackSection agent={member} canGive={canEdit && member.active} />
+          )}
+
+          {member.kind === "agent" && <RunsSection agentId={member.id} />}
+
+          {(canEdit || member.isMe) && (
+            <section className="mt-8">
+              <div className="mb-2 flex items-center">
+                <h2 className="font-medium">API tokens</h2>
+                {canEdit && member.active && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const name = await promptDialog({
+                        title: "New API token",
+                        label: "Token name",
+                        placeholder: "The machine it runs on",
+                        initial: "Claude Code",
+                        confirmLabel: "Create token",
+                      });
+                      if (!name) return;
+                      const result = await mutate<{ apiTokenCreate: { token: string } }>(
+                        "mutation($name: String!, $userId: String) { apiTokenCreate(name: $name, userId: $userId) { token } }",
+                        { name, userId: member.id },
+                      );
+                      if (result) setNewToken(result.apiTokenCreate.token);
+                    }}
+                    className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+                  >
+                    + New token
+                  </button>
+                )}
+              </div>
+              {newToken && (
+                <NewToken token={newToken} name={member.name} onDone={() => setNewToken(null)} />
+              )}
+              <div className="divide-y divide-line rounded-lg border border-line empty:hidden">
+                {member.apiTokens.map((token) => (
+                  <div key={token.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="min-w-0 flex-1 truncate">{token.name}</span>
+                    <code className="text-[12px] text-faint">{token.prefix}…</code>
+                    <span className="text-[12px] text-faint max-sm:hidden">
+                      {token.revokedAt
+                        ? "Revoked"
+                        : token.lastUsedAt
+                          ? `Used ${timeAgo(token.lastUsedAt)}`
+                          : "Never used"}
+                    </span>
+                    {canEdit && !token.revokedAt && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void mutate(
+                            "mutation($id: String!) { apiTokenRevoke(id: $id) { success } }",
+                            { id: token.id },
+                          )
+                        }
+                        className="text-faint hover:text-red-400"
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </DetailLayout>
       </div>
     </div>
   );
 }
+
+const tierLabel = (tier: Tier) => TIERS.find((t) => t.value === tier)?.label ?? tier;
 
 function EditableLine(props: {
   label: string;

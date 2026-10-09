@@ -57,7 +57,6 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 
 **Phase 6: polish** (done).
 
-- Import from Linear with a personal API key: teams keep their keys and issues their numbers. Export everything as JSON, or issues as CSV in Linear's columns, from the Company page.
 - Light and dark themes (or follow the system) from `⌘K`.
 - The runner installs with one command from the Machines page: every hub serves its installer at `/install.sh` and the matching runner package at `/downloads/life-os-runner.tgz`. It is also packaged for npm as `@life-os/runner` (see `apps/runner/README.md` for releasing).
 

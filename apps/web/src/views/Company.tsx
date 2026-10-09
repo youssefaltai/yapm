@@ -1,16 +1,7 @@
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { createTeamStore, hireAgentStore } from "../actions.js";
-import { type Member, mutate, type Workspace } from "../data.js";
-import {
-  button,
-  field,
-  Page,
-  PageBody,
-  PageHeader,
-  PageTitle,
-  pageHeading,
-  Section,
-} from "../layout.js";
+import type { Member, Workspace } from "../data.js";
+import { button, Page, PageBody, PageHeader, PageTitle, pageHeading, Section } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
 import { Avatar } from "../ui.js";
@@ -91,7 +82,6 @@ export function Company({ workspace }: { workspace: Workspace }) {
                 Handbook
               </button>
             </SideCard>
-            {isOwner && <MoveData />}
           </aside>
         </div>
       </PageBody>
@@ -158,80 +148,6 @@ function TeamList({ teams, members }: { teams: Workspace["teams"]["nodes"]; memb
         );
       })}
     </div>
-  );
-}
-
-/** Moving in from Linear, and taking everything out. */
-function MoveData() {
-  const [apiKey, setApiKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  return (
-    <>
-      <SideCard
-        title="Import from Linear"
-        body={
-          <>
-            Brings over teams, workflows, labels, projects, issues with their numbers, and comments.
-            Create a personal API key in Linear under Settings › Security &amp; access; it's used
-            once and not kept.
-          </>
-        }
-      >
-        <form
-          className="flex gap-2"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            setResult(null);
-            const done = await mutate<{
-              linearImport: { teams: number; projects: number; issues: number; comments: number };
-            }>(
-              "mutation($key: String!) { linearImport(apiKey: $key) { teams projects issues comments } }",
-              { key: apiKey },
-            );
-            setBusy(false);
-            if (done) {
-              const r = done.linearImport;
-              setApiKey("");
-              setResult(
-                `Imported ${r.teams} teams, ${r.projects} projects, ${r.issues} issues and ${r.comments} comments.`,
-              );
-            }
-          }}
-        >
-          <input
-            aria-label="Linear API key"
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="lin_api_…"
-            className={`flex-1 ${field}`}
-          />
-          <button type="submit" disabled={!apiKey.trim() || busy} className={button("primary")}>
-            {busy ? "Importing…" : "Import"}
-          </button>
-        </form>
-        {result && (
-          <p className="mt-2 text-muted" role="status">
-            {result}
-          </p>
-        )}
-      </SideCard>
-      <SideCard
-        title="Export"
-        body="Everything as JSON, or issues as CSV in Linear's columns. Passkeys, tokens and machine secrets are left out."
-      >
-        <div className="flex gap-2">
-          <a href="/api/export" download className={button("secondary")}>
-            Export JSON
-          </a>
-          <a href="/api/export?format=csv" download className={button("secondary")}>
-            Export CSV
-          </a>
-        </div>
-      </SideCard>
-    </>
   );
 }
 

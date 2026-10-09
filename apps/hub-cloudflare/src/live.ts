@@ -36,7 +36,8 @@ export class LiveHub extends DurableObject<Env> {
   }
 
   override async webSocketClose(ws: WebSocket, code: number) {
-    ws.close(code === 1005 ? 1000 : code);
+    // 1005, 1006 and 1015 only describe a close (no code, dropped, TLS); they can't be sent.
+    ws.close([1005, 1006, 1015].includes(code) ? 1000 : code);
   }
 }
 

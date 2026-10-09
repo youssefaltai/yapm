@@ -3339,5 +3339,117 @@ export function hubContract(
       );
       expect(routing.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
     });
+
+    it("lets agents edit, archive and delete what members can, through MCP", async () => {
+      const mcp = async (name: string, args: Record<string, unknown>) => {
+        const result = await callTool(ceoToken, name, args);
+        if (result.isError) throw new Error(result.text);
+        return result.json();
+      };
+      await client.graphql(
+        'mutation { teamCreate(input: { name: "Travel", key: "TRV" }) { success } }',
+      );
+
+      // Teams and cycles: any member may change a team's settings.
+      expect(
+        await mcp("update_team", { id: "TRV", description: "Trips", cyclesEnabled: true }),
+      ).toMatchObject({ key: "TRV", description: "Trips", cyclesEnabled: true });
+      await mcp("update_cycle", { team: "TRV", cycle: "current", name: "Planning" });
+      expect((await mcp("list_cycles", { team: "TRV" })).cycles).toContainEqual(
+        expect.objectContaining({ name: "Planning", status: "current" }),
+      );
+
+      // Issues: relate and unrelate, archive and restore, unfollow and follow.
+      const a = await mcp("create_issue", { title: "Renew passport", team: "TRV" });
+      const b = await mcp("create_issue", { title: "Book flights", team: "TRV" });
+      const relation = await mcp("create_issue_relation", {
+        issueId: a.identifier,
+        relatedIssueId: b.identifier,
+        type: "blocks",
+      });
+      await mcp("delete_issue_relation", { id: relation.id });
+      expect((await mcp("get_issue", { id: a.identifier })).relations).toEqual([]);
+      expect((await mcp("update_issue", { id: b.identifier, archived: true })).archivedAt).toEqual(
+        expect.any(String),
+      );
+      expect((await mcp("update_issue", { id: b.identifier, archived: false })).archivedAt).toBe(
+        null,
+      );
+      const followers = async () =>
+        (
+          await client.graphql<{ issue: { subscribers: { nodes: { name: string }[] } } }>(
+            "query($id: String!) { issue(id: $id) { subscribers { nodes { name } } } }",
+            { id: a.identifier },
+          )
+        ).data?.issue.subscribers.nodes.map((u) => u.name);
+      await mcp("update_issue", { id: a.identifier, subscribed: false });
+      expect(await followers()).not.toContain("CEO");
+      await mcp("update_issue", { id: a.identifier, subscribed: true });
+      expect(await followers()).toContain("CEO");
+
+      // Comments and reactions.
+      const comment = await mcp("create_comment", { issueId: a.identifier, body: "Tpyo" });
+      await mcp("update_comment", { id: comment.id, body: "Typo fixed" });
+      expect((await mcp("list_comments", { issueId: a.identifier }))[0].body).toBe("Typo fixed");
+      const reaction = await mcp("create_reaction", { emoji: "👍", commentId: comment.id });
+      await mcp("delete_reaction", { id: reaction.id });
+      await mcp("delete_comment", { id: comment.id });
+      expect(await mcp("list_comments", { issueId: a.identifier })).toEqual([]);
+
+      // Labels.
+      const label = await mcp("create_issue_label", { name: "Visa", team: "TRV" });
+      await mcp("update_issue_label", { id: label.id, name: "Visas" });
+      const labelNames = async () =>
+        (await mcp("list_issue_labels", { team: "TRV" })).map((l: { name: string }) => l.name);
+      expect(await labelNames()).toContain("Visas");
+      await mcp("delete_issue_label", { id: label.id });
+      expect(await labelNames()).not.toContain("Visas");
+
+      // Initiatives.
+      const initiative = await mcp("save_initiative", { name: "See the world", status: "active" });
+      await mcp("save_initiative", { id: "See the world", targetDate: "2027-06-01" });
+      expect((await mcp("list_initiatives", {})).initiatives).toContainEqual(
+        expect.objectContaining({ name: "See the world", targetDate: "2027-06-01" }),
+      );
+      await mcp("save_initiative", { id: initiative.id, archived: true });
+      expect(JSON.stringify(await mcp("list_initiatives", {}))).not.toContain("See the world");
+
+      // Projects: archive, updates and milestones.
+      await mcp("create_project", { name: "Japan", teams: ["TRV"] });
+      expect((await mcp("update_project", { id: "Japan", archived: true })).archivedAt).toEqual(
+        expect.any(String),
+      );
+      await mcp("update_project", { id: "Japan", archived: false });
+      const update = await mcp("create_project_update", { project: "Japan", body: "Booked" });
+      await mcp("update_project_update", {
+        id: update.id,
+        body: "Flights booked",
+        health: "atRisk",
+      });
+      expect((await mcp("get_project", { query: "Japan" })).latestUpdates).toEqual([
+        expect.objectContaining({ body: "Flights booked", health: "atRisk" }),
+      ]);
+      await mcp("delete_project_update", { id: update.id });
+      const milestone = await mcp("save_milestone", { project: "Japan", name: "Visa" });
+      await mcp("delete_milestone", { id: milestone.id });
+      expect(await mcp("get_project", { query: "Japan" })).toMatchObject({
+        latestUpdates: [],
+        milestones: [],
+      });
+
+      // Documents and templates.
+      const doc = await mcp("create_document", { title: "Packing list", project: "Japan" });
+      await mcp("update_document", { id: doc.id, archived: true });
+      const titles = async () =>
+        (await mcp("list_documents", { project: "Japan" })).documents.map(
+          (d: { title: string }) => d.title,
+        );
+      expect(await titles()).toEqual([]);
+      await mcp("update_document", { id: doc.id, archived: false });
+      expect(await titles()).toEqual(["Packing list"]);
+      const template = await mcp("save_template", { team: "TRV", name: "Trip", title: "Trip" });
+      await mcp("delete_template", { id: template.id });
+      expect((await mcp("list_templates", { team: "TRV" })).templates).toEqual([]);
+    });
   });
 }

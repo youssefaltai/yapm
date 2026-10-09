@@ -20,6 +20,7 @@ import {
   createMetric,
   deriveMetrics,
   emptyCounts,
+  lastDays,
   type MetricInput,
   type Metrics,
   metricHistory,
@@ -86,15 +87,16 @@ export const learningTools: Tool<McpContext>[] = [
       if (team && member) throw new ToolError("Pass a team or a member, not both");
       const days = Math.min(Math.max(Number(args.days) || 7, 1), 180);
       const at = Date.now();
+      const [from, to] = lastDays(at, days);
       const key = team
         ? scopeKey("team", team.id)
         : member
           ? scopeKey("user", member.id)
           : scopeKey("company");
       const [current, previous, custom] = await Promise.all([
-        countAll(c.db, at - days * DAY, at),
-        countAll(c.db, at - 2 * days * DAY, at - days * DAY),
-        team ? [] : metricValues(c.db, at - days * DAY, at, member?.id ?? null),
+        countAll(c.db, from, to),
+        countAll(c.db, from - days * DAY, from),
+        team ? [] : metricValues(c.db, from, to, member?.id ?? null),
       ]);
       const result: Record<string, unknown> = {
         scope: team ? `team ${team.name}` : member ? member.name : "company",

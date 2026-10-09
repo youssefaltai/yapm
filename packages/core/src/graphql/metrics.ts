@@ -7,6 +7,7 @@ import {
   createMetric,
   deriveMetrics,
   emptyCounts,
+  lastDays,
   listMetrics,
   type MetricRow,
   type Metrics,
@@ -22,8 +23,6 @@ import {
 import { act, builder, db, now, requireViewer } from "./builder.js";
 import { payload } from "./mutations.js";
 import { Team, User } from "./types.js";
-
-const DAY = 86_400_000;
 
 const MetricsRef = builder.objectRef<Metrics>("Metrics").implement({
   description:
@@ -207,9 +206,8 @@ builder.queryFields((t) => ({
     args: { days: t.arg.int({ required: false }) },
     resolve: async (_root, args, ctx) => {
       requireViewer(ctx);
-      const to = now(ctx);
       const days = Math.min(Math.max(args.days ?? 7, 1), 365);
-      const from = to - days * DAY;
+      const [from, to] = lastDays(now(ctx), days);
       const [all, routes] = await Promise.all([
         countAll(db(ctx), from, to),
         routeStats(db(ctx), from, to),

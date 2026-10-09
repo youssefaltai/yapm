@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "55bd914f-a582-433b-920d-e702c010b797",
-  "prevId": "1c7800f1-0f50-4611-8a1d-7d592fe95270",
+  "id": "685de76c-efdc-48de-927c-75a87e51fe06",
+  "prevId": "55bd914f-a582-433b-920d-e702c010b797",
   "tables": {
     "api_tokens": {
       "name": "api_tokens",
@@ -1514,13 +1514,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "mcps": {
-          "name": "mcps",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "capacity": {
           "name": "capacity",
           "type": "integer",
@@ -1603,22 +1596,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "machine_id": {
-          "name": "machine_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "name": {
           "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "transport": {
-          "name": "transport",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -1645,8 +1624,22 @@
           "notNull": false,
           "autoincrement": false
         },
-        "agent_ids": {
-          "name": "agent_ids",
+        "auth": {
+          "name": "auth",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "secret_env": {
+          "name": "secret_env",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "how_to_connect": {
+          "name": "how_to_connect",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1658,38 +1651,24 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'installing'"
+          "default": "'pending'"
         },
-        "status_detail": {
-          "name": "status_detail",
+        "secret": {
+          "name": "secret",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "auth_url": {
-          "name": "auth_url",
+        "oauth": {
+          "name": "oauth",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "auth_state": {
-          "name": "auth_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "auth_code": {
-          "name": "auth_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_by_id": {
-          "name": "created_by_id",
+        "request_id": {
+          "name": "request_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1711,20 +1690,12 @@
         }
       },
       "indexes": {
-        "mcp_servers_machine_name_idx": {
-          "name": "mcp_servers_machine_name_idx",
+        "mcp_servers_name_unique": {
+          "name": "mcp_servers_name_unique",
           "columns": [
-            "machine_id",
             "name"
           ],
           "isUnique": true
-        },
-        "mcp_servers_state_idx": {
-          "name": "mcp_servers_state_idx",
-          "columns": [
-            "auth_state"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},

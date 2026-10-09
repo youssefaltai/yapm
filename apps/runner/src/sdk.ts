@@ -78,6 +78,7 @@ export const sdkEngine: Engine = async (run) => {
     ...(run.input.tools
       ? {
           mcpServers: {
+            ...run.mcpServers,
             [HUB_MCP]: {
               type: "http",
               url: run.hubMcp.url,

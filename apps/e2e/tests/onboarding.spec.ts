@@ -862,4 +862,54 @@ test.describe
       await page.keyboard.press("Enter");
       await expect(page.getByRole("button", { name: /🚀 1/ })).toBeVisible();
     });
+
+    test("connects an agent's MCP server with a pasted token, then approves it", async () => {
+      const asked = await mcp("create_mcp_server", {
+        name: "notion",
+        url: "https://mcp.example.com/mcp",
+        auth: "token",
+        howToConnect: "Create an integration token in Notion settings.",
+        reason: "I need to read the team wiki.",
+      });
+      await page.goto(`/request/${asked.id}`);
+      await expect(page.getByText("Create an integration token in Notion settings.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Always allow" })).toBeDisabled();
+
+      await page.getByLabel("Token").fill("secret-token");
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await expect(page.getByText("Approved once by Youssef")).toBeVisible();
+      expect(await mcp("get_request", { id: asked.id })).toMatchObject({
+        status: "approved",
+      });
+    });
+
+    test("sends the owner to the provider to sign in to an OAuth server", async () => {
+      // The hub can't reach a provider from here, so the server is a token one that the page is
+      // told signs in with OAuth, and the hub's answer to connecting is a fixed URL.
+      const asked = await mcp("create_mcp_server", {
+        name: "linear",
+        url: "https://mcp.example.com/linear",
+        auth: "token",
+        reason: "I need to read tickets.",
+      });
+      await page.route("**/graphql", async (route) => {
+        const query: string = route.request().postDataJSON().query;
+        if (query.includes("mcpServerConnect"))
+          return route.fulfill({
+            json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-elsewhere" } } },
+          });
+        const response = await route.fetch();
+        const body = await response.json();
+        if (body.data?.request?.mcpServer) body.data.request.mcpServer.auth = "oauth";
+        return route.fulfill({ response, json: body });
+      });
+      await page.goto(`/request/${asked.id}`);
+      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+      await page.getByRole("button", { name: "Sign in to linear" }).click();
+      await page.waitForURL("**/signed-in-elsewhere");
+      await page.unroute("**/graphql");
+    });
   });

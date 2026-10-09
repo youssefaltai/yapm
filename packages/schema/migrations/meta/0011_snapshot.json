@@ -1440,13 +1440,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "mcps": {
-          "name": "mcps",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "capacity": {
           "name": "capacity",
           "type": "integer",

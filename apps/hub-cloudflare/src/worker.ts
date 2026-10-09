@@ -13,6 +13,8 @@ export interface Env {
   /** Public origin, when the app is served from a custom domain behind another proxy. */
   ORIGIN?: string;
   RP_NAME?: string;
+  /** Encrypts MCP sign-ins; set with `wrangler secret put LIFE_OS_SECRET`. */
+  LIFE_OS_SECRET?: string;
 }
 
 let hub: Hub | undefined;
@@ -25,6 +27,7 @@ function depsOf(env: Env): HubDeps {
       version: env.LIFE_OS_VERSION ?? "dev",
       ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
       ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
+      ...(env.LIFE_OS_SECRET ? { secret: env.LIFE_OS_SECRET } : {}),
     },
     realtime: durableObjectRealtime(env.LIVE),
   };

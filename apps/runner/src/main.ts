@@ -4,6 +4,7 @@ import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { claudeLogin } from "./claude.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
@@ -18,6 +19,8 @@ interface Config {
   machineId: string;
   name: string;
   capacity: number;
+  /** The machine's own MCP servers for agents, in Claude Code's `mcpServers` shape. */
+  mcpServers?: Options["mcpServers"];
 }
 
 const home = process.env.LIFE_OS_RUNNER_HOME ?? join(homedir(), ".life-os-runner");
@@ -67,7 +70,7 @@ const USAGE = `life-os-runner: runs your company's agents on this machine.
         Shows this machine as the hub sees it.
 
 The install command on the Machines page does enrol, login and service install for you.
-Settings live in ${configPath}.`;
+Settings live in ${configPath}; give agents MCP servers under "mcpServers".`;
 
 async function main() {
   const { positionals, values } = parseArgs({
@@ -162,6 +165,7 @@ async function main() {
       hub,
       token: config.token,
       engine: sdkEngine,
+      mcpServers: config.mcpServers,
       probe: probePlan,
       capacity: config.capacity,
       version: VERSION,

@@ -5,6 +5,7 @@ import { RichEditor, RichText } from "../editor/index.js";
 import {
   Breadcrumbs,
   button,
+  dialogField,
   listItem,
   listRow,
   PageHeader,
@@ -47,6 +48,12 @@ interface RequestDetail extends RequestSummary {
   used: boolean;
   answeredBy: Person | null;
   issue: { identifier: string; title: string } | null;
+  mcpServer: {
+    id: string;
+    name: string;
+    auth: "none" | "oauth" | "token";
+    status: "pending" | "ready";
+  } | null;
   requester: Person & { title: string | null; teams: { nodes: { id: string; name: string }[] } };
 }
 
@@ -238,6 +245,7 @@ const DETAIL = `query($id: String!) { request(id: $id) {
   ${SUMMARY} resource reason details answer used
   answeredBy { id name kind }
   issue { identifier title }
+  mcpServer { id name auth status }
   requester { id name kind title teams { nodes { id name } } }
 } }`;
 
@@ -250,11 +258,26 @@ export function RequestPage({ id }: { id: string }) {
   const [reason, setReason] = useState("");
   const [scope, setScope] = useState<string>("user");
   const [anyResource, setAnyResource] = useState(false);
+  const [token, setToken] = useState("");
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
+  const server = r.mcpServer?.status === "pending" ? r.mcpServer : null;
+  const connectError = new URLSearchParams(window.location.search).get("error");
+
+  async function connect(token?: string) {
+    if (!server) return;
+    setBusy(true);
+    const result = await mutate<{ mcpServerConnect: { authorizationUrl: string | null } }>(
+      "mutation($id: String!, $token: String) { mcpServerConnect(id: $id, token: $token) { authorizationUrl } }",
+      { id: server.id, token },
+    );
+    setBusy(false);
+    const url = result?.mcpServerConnect.authorizationUrl;
+    if (url) window.location.assign(url);
+  }
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
     setBusy(true);
@@ -380,11 +403,48 @@ export function RequestPage({ id }: { id: string }) {
           }
         >
           <div className="space-y-6">
+            {canAnswer && server && (
+              <section className="rounded-lg border border-line p-4">
+                {connectError && <p className="mb-3 text-red-400">{connectError}</p>}
+                {server.auth === "oauth" ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => connect()}
+                    className={button("primary")}
+                  >
+                    Sign in to {server.name}
+                  </button>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      connect(token);
+                    }}
+                  >
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        aria-label="Token"
+                        autoComplete="off"
+                        value={token}
+                        onChange={(e) => setToken(e.target.value)}
+                        className={`${dialogField} flex-1`}
+                      />
+                      <button type="submit" disabled={busy || !token} className={button("primary")}>
+                        Connect
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            )}
+
             {canAnswer && mode === "idle" && (
               <div className="sticky bottom-0 grid grid-cols-3 gap-2 bg-canvas py-3">
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !!server}
                   onClick={approveOnce}
                   className="rounded-lg bg-accent px-3 py-3 font-medium text-white disabled:opacity-40"
                 >
@@ -392,7 +452,7 @@ export function RequestPage({ id }: { id: string }) {
                 </button>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !!server}
                   onClick={() => setMode("always")}
                   className="rounded-lg border border-line px-3 py-3 font-medium hover:bg-raised"
                 >

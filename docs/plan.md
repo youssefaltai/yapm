@@ -20,20 +20,18 @@ Each row is a moment from the scenario, what v1 of the plan was missing, and how
 | 5 | Stop a misbehaving agent, add a reason note | Missing | **Stop** button sends a kill to the runner within seconds; a stop reason is required and becomes a feedback record that feeds self-improvement |
 | 6 | Agents "running on my Mac", dispatched while I'm AFK | Built-in dispatcher lived in the server, phase 4 | Dispatcher on the hub decides who should wake; runners claim and execute runs locally with the Claude Agent SDK. Built in the agent phase, not last |
 | 7 | Structured output, decide to reply, react, ignore or wait | Missing | **Decision step** before every run: a cheap model call with a strict JSON schema chooses `ignore`, `react`, `reply`, `wait_until`, `work`, `delegate` or `escalate`. Only `work` starts an expensive full session (section 7) |
-| 8 | Agent asks to add a Slack MCP for one employer | Removed | Connecting external MCP servers was removed; it will be redesigned from scratch |
-| 9 | MCP login: link in a comment, paste back the localhost URL | Removed | Part of row 8 |
-| 10 | Company restructures: new teams, hiring, firing | Agents could only work issues | Org changes are API actions (`teamCreate`, `agentHire`, `agentRetire`, `charterUpdate`) governed by grants, so the CEO can restructure within what you've allowed |
-| 11 | Events log of what happened | Only per-issue activity | Workspace-wide **audit log**: every mutation by anyone, with actor, run, reason. Queryable by agents |
-| 12 | CEO explains how and why the business self-improved with metrics | Missing | **Metrics engine**: metrics are defined as data (a query over the event log), computed deterministically on a schedule, stored as snapshots per agent and team. Agents read them; they never invent numbers |
-| 13 | Owner and CEO agree on a new metric | Missing | Metric definitions are versioned records; adding or changing one is a normal change the CEO can make (with your grant) and it's in the audit log |
-| 14 | CEO suggests revoking an "always allow" grant | Missing | Grants are visible to the CEO; a weekly governance ritual reviews grant usage and proposes revocations as Requests to you |
-| 15 | CEO decides no team fits a research task and builds one | Missing pieces covered by rows 10 and 7 | Covered by org actions plus delegation; the new team's lead breaks the issue into sub-issues |
-| 16 | Another employer's corporate Mac joins | Missing | Machine enrolment: run the runner, get a pairing code, approve it as a Request. Each machine has **tags** (e.g. `employer-a`) and runs are routed only to machines whose tags match the work |
-| 17 | Agents on different machines coordinate | Covered by design | Hub is the only shared state; agents talk only through issues, comments, mentions and reactions |
-| 18 | Agents mentioning each other all day | Risk not addressed | Loop and cost guards: per-agent wake budget, cooldowns, a "don't wake on your own events" rule, and the decision step's `ignore`/`react` options |
+| 8 | Company restructures: new teams, hiring, firing | Agents could only work issues | Org changes are API actions (`teamCreate`, `agentHire`, `agentRetire`, `charterUpdate`) governed by grants, so the CEO can restructure within what you've allowed |
+| 9 | Events log of what happened | Only per-issue activity | Workspace-wide **audit log**: every mutation by anyone, with actor, run, reason. Queryable by agents |
+| 10 | CEO explains how and why the business self-improved with metrics | Missing | **Metrics engine**: metrics are defined as data (a query over the event log), computed deterministically on a schedule, stored as snapshots per agent and team. Agents read them; they never invent numbers |
+| 11 | Owner and CEO agree on a new metric | Missing | Metric definitions are versioned records; adding or changing one is a normal change the CEO can make (with your grant) and it's in the audit log |
+| 12 | CEO suggests revoking an "always allow" grant | Missing | Grants are visible to the CEO; a weekly governance ritual reviews grant usage and proposes revocations as Requests to you |
+| 13 | CEO decides no team fits a research task and builds one | Missing pieces covered by rows 8 and 7 | Covered by org actions plus delegation; the new team's lead breaks the issue into sub-issues |
+| 14 | Another employer's corporate Mac joins | Missing | Machine enrolment: run the runner, get a pairing code, approve it as a Request. Each machine has **tags** (e.g. `employer-a`) and runs are routed only to machines whose tags match the work |
+| 15 | Agents on different machines coordinate | Covered by design | Hub is the only shared state; agents talk only through issues, comments, mentions and reactions |
+| 16 | Agents mentioning each other all day | Risk not addressed | Loop and cost guards: per-agent wake budget, cooldowns, a "don't wake on your own events" rule, and the decision step's `ignore`/`react` options |
 
 Two items need your attention beyond the design:
-- **Employer data and devices.** Running agents on a corporate Mac and reading an employer's Slack is your call against your employers' policies. The system will keep each employer's machine, MCP connections and tagged issues separate, but it can't decide what's allowed.
+- **Employer data and devices.** Running agents on a corporate Mac and reading an employer's Slack is your call against your employers' policies. The system will keep each employer's machine and tagged issues separate, but it can't decide what's allowed.
 - **iPhone notifications.** iOS supports Web Push for a PWA added to the home screen, but not action buttons on the notification. Tapping opens a one-screen approval view, so approving is two taps. A native app could add buttons later.
 
 ## 3. The key design bet: make it Linear-shaped for agents too
@@ -60,7 +58,7 @@ Surfaces over one core:
 
 **Agents.** Linear's own "agents" model (delegate an issue to an agent, agent session activity on the issue) extended into the runs, requests and grants described below.
 
-**Skip.** SSO, billing, multiple workspaces, guests, Linear's built-in Slack/GitHub integrations (agents use MCPs instead), customer requests.
+**Skip.** SSO, billing, multiple workspaces, guests, Linear's built-in Slack/GitHub integrations, customer requests.
 
 ## 5. Architecture: hub and runners
 
@@ -75,7 +73,7 @@ Surfaces over one core:
 ```
 
 - **Hub** holds all shared state: issues, comments, org, runs and their transcripts, requests, grants, audit log, metrics. It runs the dispatcher (who should wake for an event), the scheduler (rituals), the metrics engine and push notifications. **The hub never calls a model**: it's fully deterministic and needs no AI credentials, so it costs nothing beyond hosting.
-- **Runner** is a small Node daemon on each machine. It enrols with a pairing code (approved by you), advertises its tags and capacity, claims runs the hub assigns it, runs the agent locally with the **Claude Agent SDK** on the owner's subscription (section 5b), streams every event back, and obeys stop signals. Secrets (employer credentials, files, the Claude login) never leave the machine.
+- **Runner** is a small Node daemon on each machine. It enrols with a pairing code (approved by you), advertises its tags and capacity, claims runs the hub assigns it, runs the agent locally with the **Claude Agent SDK** on the owner's subscription (section 5b), streams every event back, and obeys stop signals. Secrets (employer credentials, files, the Claude login) never leave the machine. MCP sign-ins are the exception: the hub keeps them encrypted so you can connect from anywhere (section 6a).
 
 ## 5a. Self-hosting on any platform
 
@@ -106,7 +104,7 @@ What the SDK gives us, mapped to the scenario:
 | Strict JSON decisions and run results | Structured output: `outputFormat: { type: "json_schema", schema }`, validated again on the hub |
 | Cheap decisions | Decision step is a short `query()` on a small model with no tools and a decision schema; work runs use a larger model |
 | Grants enforced on every tool call | `canUseTool` callback checks the agent's grants with the hub, or opens a Request and waits for your answer; `PreToolUse` hooks for audit logging |
-| The hub as the agent's tracker | `mcpServers` has only our hub MCP server |
+| The hub as the agent's tracker, plus outside tools | `mcpServers` has our hub MCP server, the servers the hub hands out with the run (section 6a), and any from the runner's own `config.json`. The owner's own Claude Code setup is never read (`settingSources: []`) |
 | Pause for input, then continue | Run ends in `needs_input`; later `resume: <session id>` when you reply |
 | Stop immediately | `AbortController` on the query; stop reason recorded |
 | Agent identity and context | `systemPrompt` built from charter, handbook and lessons; per-agent working directory via `cwd` |
@@ -123,6 +121,17 @@ Subscription limits replace dollar budgets. Max has usage windows rather than a 
 - An **always allow** creates a **Grant**. Grants have scope, creator, usage counts and last-used time. You can revoke any grant; the CEO reviews them weekly and proposes revocations.
 - Every rejection reason and stop reason becomes a **feedback record** linked to the agent, run and issue.
 - The runner enforces grants before executing a tool call, so permission isn't only a prompt instruction.
+
+## 6a. External MCP servers
+
+Agents connect outside tools themselves; you only answer requests.
+
+1. An agent that needs a service researches its MCP server (WebSearch, WebFetch) and calls `create_mcp_server` (GraphQL `mcpServerCreate`) with a name and either a remote `url` or a local `command` and `args`, plus `howToConnect` for you when a token is needed (where to create it, which scopes).
+2. The hub stores the server and, in the same batch, files a Request for `mcp.use` on the server's name. For a `url` it works out the sign-in: OAuth when the provider accepts the hub as a client (a client ID metadata document at `/api/mcp/oauth/client.json`, else dynamic registration), a pasted token otherwise. A local server that needs a secret names the env var it goes in (`secretEnv`).
+3. On the request you sign in (the provider sends you back to `/api/mcp/oauth/callback`) or paste the token, then answer as usual: **Approve once** (this agent's next run), **Always allow** (a grant whose scope says which agents get it) or **Reject**. Approval waits until the server is connected.
+4. The answer resumes the agent. Each claim hands the run the connected servers its agent may use, in Claude Code's `mcpServers` shape with the secret filled in; the hub refreshes OAuth tokens as it hands them out. Every tool call on them still goes through tool grants.
+
+Sign-ins are encrypted on the hub with AES-GCM under `LIFE_OS_SECRET`; without it the hub refuses to store one.
 
 ## 7. How agents think: event-driven, structured, cheap
 

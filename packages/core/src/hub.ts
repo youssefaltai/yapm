@@ -9,9 +9,10 @@ import { installScript } from "./install.js";
 import { createLoaders } from "./loaders.js";
 import { mcpHandler } from "./mcp/index.js";
 import { waitUntilOf } from "./push.js";
-import { CLIENT_ID_HEADER } from "./realtime.js";
+import { announce, CLIENT_ID_HEADER } from "./realtime.js";
 import { runnerRoutes } from "./runs/routes.js";
 import { exportCompany, exportIssuesCsv } from "./services/export.js";
+import { clientMetadata, finishOAuth } from "./services/mcpServers.js";
 
 /** Error messages along an error's cause chain (Drizzle wraps the driver's error). */
 function messagesOf(error: unknown) {
@@ -77,6 +78,22 @@ export function createHub(deps: HubDeps) {
   app.use("/mcp", resolveViewer);
 
   app.route("/api/runner", runnerRoutes);
+
+  /** The hub as an OAuth client of MCP providers that read client ID metadata documents. */
+  app.get("/api/mcp/oauth/client.json", (c) => c.json(clientMetadata(relyingParty(c).origin)));
+
+  /** Where providers send the owner back after signing in: back to the request, or why not. */
+  app.get("/api/mcp/oauth/callback", async (c) => {
+    const at = deps.now?.() ?? Date.now();
+    const { requestId, error } = await finishOAuth(deps, c.req.query(), at);
+    if (!error) await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
+    const back = new URL(
+      requestId ? `/request/${requestId}` : "/approvals",
+      relyingParty(c).origin,
+    );
+    if (error) back.searchParams.set("error", error);
+    return c.redirect(back.href);
+  });
 
   app.route("/api", authRoutes);
 

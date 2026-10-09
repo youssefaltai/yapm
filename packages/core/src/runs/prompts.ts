@@ -358,6 +358,7 @@ export async function workInput(
     "- The company's tracker is your `life-os` MCP server. Read issues with get_issue, report progress with create_comment, and move issues through statuses with update_issue.",
     "- Comment as you go so the owner can follow along; keep comments short and concrete.",
     "- When a tool on this machine (Bash, edits) needs permission you don't have, the call is held until the owner answers. A tracker action that needs it fails instead: ask with create_request, do what you can meanwhile, and finish with needs_input if you must wait; the answer wakes you. If they reject it, respect the reason and find another way or stop.",
+    "- If the work needs an outside service you have no tools for, find its official MCP server and ask for it with create_mcp_server.",
     "- Before you finish, check list_notifications for anything new on this issue.",
     "- Finish with the result JSON: done, needs_input (ask one clear question), blocked or failed.",
   ].join("\n");

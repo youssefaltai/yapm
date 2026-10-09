@@ -75,7 +75,7 @@ export function RoadmapView() {
       <PageHeader tabs={<ProjectsTabs active="roadmap" />}>
         <PageTitle>Projects</PageTitle>
       </PageHeader>
-      {error && <p className="p-6 text-red-400">{error}</p>}
+      {error && <p className="p-6 text-critical">{error}</p>}
       {!data && !error && <ListSkeleton rows={5} />}
       {data && projects.length === 0 && (
         <EmptyState
@@ -124,7 +124,7 @@ export function RoadmapView() {
                         onClick={() => navigate(paths.project(p.id))}
                         className="sticky left-0 z-10 flex h-full w-[220px] shrink-0 items-center gap-2 truncate bg-canvas px-4 text-left hover:text-ink md:px-6"
                       >
-                        <ProjectDot color={p.color} />
+                        <ProjectDot />
                         <span className="truncate">{p.name}</span>
                       </button>
                       <div className="relative h-full" style={{ width }}>
@@ -137,15 +137,15 @@ export function RoadmapView() {
                             style={{
                               left: x(start),
                               width: Math.max(x(end) - x(start), 8),
-                              background: `${p.color}33`,
-                              border: `1px solid ${p.color}`,
+                              background: "var(--color-raised)",
+                              border: "1px solid var(--color-line)",
                             }}
                           >
                             <span
                               className="block h-full animate-grow-x transition-[width] duration-500 ease-snappy"
                               style={{
                                 width: `${Math.round(p.progress.progress * 100)}%`,
-                                background: `${p.color}88`,
+                                background: "var(--color-faint)",
                               }}
                             />
                           </button>

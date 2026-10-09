@@ -584,7 +584,7 @@ function Calendar({
               }}
               className={`h-8 rounded-md text-[12px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${
                 selected
-                  ? "bg-accent text-white"
+                  ? "bg-accent text-on-accent"
                   : `hover:bg-raised ${iso === today ? "font-semibold text-accent" : outside ? "text-faint" : "text-ink"}`
               }`}
             >
@@ -769,7 +769,7 @@ function Dialog({ spec }: { spec: DialogSpec }) {
             disabled={spec.kind === "prompt" && !text.trim()}
             className={`${button(spec.kind === "confirm" && spec.destructive ? "destructive" : "primary")} outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-panel ${
               spec.kind === "confirm" && spec.destructive
-                ? "focus-visible:ring-red-400"
+                ? "focus-visible:ring-critical"
                 : "focus-visible:ring-accent"
             }`}
           >

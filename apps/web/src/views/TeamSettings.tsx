@@ -51,7 +51,7 @@ function Toggle({
       className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? "bg-accent" : "bg-line"}`}
     >
       <span
-        className={`absolute top-0.5 size-4 rounded-full bg-white transition-all ${checked ? "left-4.5" : "left-0.5"}`}
+        className={`absolute top-0.5 size-4 rounded-full transition-all ${checked ? "left-4.5 bg-on-accent" : "left-0.5 bg-muted"}`}
       />
     </button>
   );

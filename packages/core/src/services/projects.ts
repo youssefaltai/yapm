@@ -28,18 +28,9 @@ import { notify, ownerId } from "./notifications.js";
 // group projects, and documents.
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
-const PROJECT_COLORS = [
-  "#5e6ad2",
-  "#26b5ce",
-  "#4cb782",
-  "#f2c94c",
-  "#f2994a",
-  "#eb5757",
-  "#bb87fc",
-];
 
 function checkColor(color: string) {
-  if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #5e6ad2");
+  if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #8b8b90");
 }
 
 function checkDate(date: string, label: string) {
@@ -148,7 +139,7 @@ export async function createProject(ctx: Ctx, input: ProjectInput & { name: stri
     ...fields,
     id,
     name: fields.name ?? "",
-    color: fields.color ?? PROJECT_COLORS[count % PROJECT_COLORS.length] ?? "#5e6ad2",
+    color: fields.color ?? "#8b8b90",
     state,
     creatorId: ctx.actorId,
     sortOrder: fields.sortOrder ?? count,

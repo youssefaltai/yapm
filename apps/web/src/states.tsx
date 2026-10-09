@@ -314,11 +314,11 @@ export function EmptyState({
             <button
               type="button"
               onClick={action.onClick}
-              className="flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 font-medium text-white shadow-sm hover:bg-accent-hover"
+              className="flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 font-medium text-on-accent shadow-sm hover:bg-accent-hover"
             >
               {action.label}
               {action.shortcut && (
-                <kbd className="rounded border border-white/25 bg-white/15 px-1 font-sans text-[11px] text-white/85">
+                <kbd className="rounded border border-on-accent/25 bg-on-accent/15 px-1 font-sans text-[11px] text-on-accent/85">
                   {action.shortcut}
                 </kbd>
               )}

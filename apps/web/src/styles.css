@@ -18,24 +18,28 @@
 }
 
 @theme {
-  --color-canvas: #0f0f11;
-  --color-panel: #161618;
-  --color-raised: #1c1c1f;
-  --color-line: #26262a;
-  --color-ink: #eeeef0;
-  --color-muted: #8a8f98;
-  --color-faint: #5c6068;
-  --color-accent: #5e6ad2;
-  --color-accent-hover: #6e79d6;
-  /* Chart series, in fixed order, and status colors that only ever mean status. */
-  --color-series-1: #3987e5;
-  --color-series-2: #d95926;
-  --color-series-3: #199e70;
-  --color-series-4: #c98500;
-  --color-series-5: #d55181;
-  --color-series-other: #6b6f78;
-  --color-warning: #fab219;
-  --color-critical: #d03b3b;
+  /* Greys only, like Linear. Colour is reserved for meaning, and even then it stays soft. */
+  --color-canvas: #0f0f10;
+  --color-panel: #161617;
+  --color-raised: #1c1c1e;
+  --color-line: #262628;
+  --color-ink: #ededee;
+  --color-muted: #8b8b90;
+  --color-faint: #5e5e63;
+  --color-accent: #ededee;
+  --color-accent-hover: #ffffff;
+  --color-on-accent: #0f0f10;
+  /* Chart series, in fixed order: a grey ramp, brightest first. */
+  --color-series-1: #ededee;
+  --color-series-2: #aaaaae;
+  --color-series-3: #7c7c81;
+  --color-series-4: #5e5e63;
+  --color-series-5: #424246;
+  --color-series-other: #2e2e31;
+  /* The only colours: muted, so they read as meaning without shouting. */
+  --color-success: #8fb39a;
+  --color-warning: #c9ad7a;
+  --color-critical: #c98c88;
   --font-sans:
     "Emoji", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
@@ -43,21 +47,25 @@
 
 /* The light theme swaps the palette; components only use these tokens. */
 :root[data-theme="light"] {
-  --color-canvas: #fcfcfd;
+  --color-canvas: #fcfcfc;
   --color-panel: #ffffff;
-  --color-raised: #f1f1f4;
-  --color-line: #e4e4e9;
-  --color-ink: #1b1b1f;
-  --color-muted: #63676f;
-  --color-faint: #9a9ea6;
-  --color-accent: #5e6ad2;
-  --color-accent-hover: #4e5ac4;
-  --color-series-1: #2a78d6;
-  --color-series-2: #eb6834;
-  --color-series-3: #1baf7a;
-  --color-series-4: #eda100;
-  --color-series-5: #e87ba4;
-  --color-series-other: #a3a7ae;
+  --color-raised: #f2f2f3;
+  --color-line: #e5e5e7;
+  --color-ink: #1b1b1d;
+  --color-muted: #646469;
+  --color-faint: #9c9ca1;
+  --color-accent: #1b1b1d;
+  --color-accent-hover: #3a3a3d;
+  --color-on-accent: #ffffff;
+  --color-series-1: #1b1b1d;
+  --color-series-2: #57575c;
+  --color-series-3: #86868b;
+  --color-series-4: #ababaf;
+  --color-series-5: #cbcbce;
+  --color-series-other: #e2e2e4;
+  --color-success: #4e7a5b;
+  --color-warning: #8a6d34;
+  --color-critical: #a3524c;
   color-scheme: light;
 }
 
@@ -127,7 +135,7 @@ body {
   content: "";
   width: 7px;
   height: 4px;
-  border: solid white;
+  border: solid var(--color-on-accent);
   border-width: 0 0 1.5px 1.5px;
   transform: translateY(-1px) rotate(-45deg);
 }
@@ -136,7 +144,7 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: white;
+  background: var(--color-on-accent);
 }
 :where(input[type="checkbox"], input[type="radio"]):disabled {
   opacity: 0.4;
@@ -191,7 +199,7 @@ input[type="number"]::-webkit-outer-spin-button {
   margin-top: 0.25em;
 }
 .markdown a {
-  color: var(--color-accent-hover);
+  color: var(--color-ink);
   text-decoration: underline;
 }
 .markdown code {

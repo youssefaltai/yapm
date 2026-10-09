@@ -86,7 +86,7 @@ export function MachinesView() {
         <PageTitle>Runs</PageTitle>
       </PageHeader>
       <PageBody>
-        {error && <p className="text-red-400">{error}</p>}
+        {error && <p className="text-critical">{error}</p>}
         {setup ? (
           <SetupPanel setup={setup} added={added} onDone={() => setSetup(null)} />
         ) : (
@@ -135,7 +135,7 @@ function SetupPanel({
   const [copied, setCopied] = useState(false);
   if (added)
     return (
-      <div className="rounded-lg border border-emerald-400/40 bg-emerald-400/5 p-4">
+      <div className="rounded-lg border border-success/40 bg-success/5 p-4">
         <p className="font-medium">{added.name} is connected.</p>
         <p className="mt-1 text-muted">
           It runs in the background and starts again when the computer does. Give it tags below to
@@ -206,7 +206,7 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
     <div className="rounded-lg border border-line px-4 py-3">
       <div className="flex items-center gap-2">
         <span
-          className={`size-2 rounded-full ${m.status === "pending" ? "bg-amber-400" : m.online ? "bg-emerald-400" : "bg-faint"}`}
+          className={`size-2 rounded-full ${m.status === "pending" ? "bg-warning" : m.online ? "bg-success" : "bg-faint"}`}
           aria-hidden
         />
         <span className="min-w-0 flex-1 truncate">
@@ -314,7 +314,7 @@ function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boole
                   id: m.id,
                 });
             }}
-            className="text-[12px] text-faint hover:text-red-400"
+            className="text-[12px] text-faint hover:text-critical"
           >
             Remove
           </button>

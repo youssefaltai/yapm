@@ -73,13 +73,14 @@ export function statusMenu(issues: Issue[]): MenuSpec | undefined {
     items: states.map((state, index) => ({
       id: state.id,
       label: state.name,
-      icon: <StatusIcon type={state.type} color={state.color} />,
+      icon: <StatusIcon type={state.type} />,
       hint: String(index + 1),
       checked: issues.every((i) => i.state.id === state.id),
       onSelect: () => {
         void updateIssues(
           issues.map((i) => i.id),
           { stateId: state.id },
+          { state },
         );
       },
     })),
@@ -108,9 +109,7 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
     "{ projects(first: 100) { nodes { id name color projectMilestones { nodes { id name } } } } }",
   );
   const ids = issues.map((i) => i.id);
-  const dot = (color: string) => (
-    <span className="size-2.5 rounded-full" style={{ background: color }} aria-hidden />
-  );
+  const dot = <span className="size-2.5 rounded-full bg-muted" aria-hidden />;
   return {
     placeholder: `Move ${plural(issues)} to project…`,
     items: [
@@ -118,23 +117,34 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
         id: "none",
         label: "No project",
         checked: issues.every((i) => !i.project),
-        onSelect: () => void updateIssues(ids, { projectId: null }),
+        onSelect: () =>
+          void updateIssues(ids, { projectId: null }, { project: null, projectMilestone: null }),
       },
       ...data.projects.nodes.flatMap((p): MenuItem[] => [
         {
           id: p.id,
           label: p.name,
-          icon: dot(p.color),
+          icon: dot,
           checked: issues.every((i) => i.project?.id === p.id && !i.projectMilestone),
-          onSelect: () => void updateIssues(ids, { projectId: p.id }),
+          onSelect: () =>
+            void updateIssues(
+              ids,
+              { projectId: p.id },
+              { project: { id: p.id, name: p.name, color: p.color }, projectMilestone: null },
+            ),
         },
         ...p.projectMilestones.nodes.map((m) => ({
           id: m.id,
           label: `${p.name} › ${m.name}`,
           keywords: p.name,
-          icon: dot(p.color),
+          icon: dot,
           checked: issues.every((i) => i.projectMilestone?.id === m.id),
-          onSelect: () => void updateIssues(ids, { projectMilestoneId: m.id }),
+          onSelect: () =>
+            void updateIssues(
+              ids,
+              { projectMilestoneId: m.id },
+              { project: { id: p.id, name: p.name, color: p.color }, projectMilestone: m },
+            ),
         })),
       ]),
     ],
@@ -184,14 +194,19 @@ export async function cycleMenu(issues: Issue[]): Promise<MenuSpec | undefined> 
         id: "none",
         label: "No cycle",
         checked: issues.every((i) => !i.cycle),
-        onSelect: () => void updateIssues(ids, { cycleId: null }),
+        onSelect: () => void updateIssues(ids, { cycleId: null }, { cycle: null }),
       },
       ...open.map((c) => ({
         id: c.id,
         label: `${cycleName(c)}${c.isActive ? " · current" : ""}`,
         hint: `${shortDate(c.startsAt)} – ${shortDate(c.endsAt)}`,
         checked: issues.every((i) => i.cycle?.id === c.id),
-        onSelect: () => void updateIssues(ids, { cycleId: c.id }),
+        onSelect: () =>
+          void updateIssues(
+            ids,
+            { cycleId: c.id },
+            { cycle: { id: c.id, number: c.number, name: c.name } },
+          ),
       })),
     ],
   };
@@ -228,7 +243,7 @@ export function assigneeMenu(issues: Issue[]): MenuSpec {
         icon: <UnassignedIcon size={16} />,
         checked: issues.every((i) => !i.assignee),
         onSelect: () => {
-          void updateIssues(ids, { assigneeId: null });
+          void updateIssues(ids, { assigneeId: null }, { assignee: null });
         },
       },
       ...members.map((m) => ({
@@ -239,7 +254,11 @@ export function assigneeMenu(issues: Issue[]): MenuSpec {
         hint: m.title ?? undefined,
         checked: issues.every((i) => i.assignee?.id === m.id),
         onSelect: () => {
-          void updateIssues(ids, { assigneeId: m.id });
+          void updateIssues(
+            ids,
+            { assigneeId: m.id },
+            { assignee: { id: m.id, name: m.name, kind: m.kind } },
+          );
         },
       })),
     ],
@@ -263,7 +282,7 @@ export function labelsMenu(issues: Issue[]): MenuSpec | undefined {
     ...labels.map((label) => ({
       id: label.id,
       label: label.name,
-      icon: <span className="size-2.5 rounded-full" style={{ background: label.color }} />,
+      icon: <span className="size-2.5 rounded-full bg-muted" />,
       checked: has.get(label.id) ?? false,
       onSelect: () => {
         const on = !has.get(label.id);
@@ -271,6 +290,10 @@ export function labelsMenu(issues: Issue[]): MenuSpec | undefined {
         void updateIssues(
           ids,
           on ? { addedLabelIds: [label.id] } : { removedLabelIds: [label.id] },
+          (issue) => {
+            const rest = (issue.labels?.nodes ?? []).filter((l) => l.id !== label.id);
+            return { labels: { nodes: on ? [...rest, label] : rest } };
+          },
         );
       },
     })),
@@ -289,17 +312,6 @@ export function labelsMenu(issues: Issue[]): MenuSpec | undefined {
   };
 }
 
-const LABEL_COLORS = [
-  "#5e6ad2",
-  "#26b5ce",
-  "#4cb782",
-  "#f2c94c",
-  "#f2994a",
-  "#eb5757",
-  "#bb87fc",
-  "#95a2b3",
-];
-
 function newLabelMenu(team: Team | undefined, issueIds: string[]): MenuSpec {
   let name = "";
   return {
@@ -307,11 +319,10 @@ function newLabelMenu(team: Team | undefined, issueIds: string[]): MenuSpec {
     items: [],
     search: async (query) => {
       name = query;
-      const color = LABEL_COLORS[query.length % LABEL_COLORS.length] ?? "#5e6ad2";
       const create = async (teamId: string | null) => {
         const created = await mutate<{ issueLabelCreate: { issueLabel: Label } }>(
           "mutation($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { issueLabel { id name color } } }",
-          { input: { name, color, teamId } },
+          { input: { name, teamId } },
         );
         const label = created?.issueLabelCreate.issueLabel;
         if (label && issueIds.length) await updateIssues(issueIds, { addedLabelIds: [label.id] });
@@ -322,7 +333,7 @@ function newLabelMenu(team: Team | undefined, issueIds: string[]): MenuSpec {
               {
                 id: "team",
                 label: `Create “${query}” in ${team.name}`,
-                icon: <span className="size-2.5 rounded-full" style={{ background: color }} />,
+                icon: <span className="size-2.5 rounded-full bg-muted" />,
                 onSelect: () => create(team.id),
               },
             ]
@@ -330,7 +341,7 @@ function newLabelMenu(team: Team | undefined, issueIds: string[]): MenuSpec {
         {
           id: "workspace",
           label: `Create “${query}” for all teams`,
-          icon: <span className="size-2.5 rounded-full" style={{ background: color }} />,
+          icon: <span className="size-2.5 rounded-full bg-muted" />,
           onSelect: () => create(null),
         },
       ];
@@ -375,7 +386,7 @@ export async function searchIssueItems(
       id: issue.id,
       label: issue.title,
       section: "Issues",
-      icon: <StatusIcon type={issue.state.type} color={issue.state.color} />,
+      icon: <StatusIcon type={issue.state.type} />,
       hint: issue.identifier,
       onSelect: () => onPick(issue),
     }));
@@ -389,14 +400,21 @@ export function parentMenu(issue: Issue): MenuSpec {
           {
             id: "none",
             label: "Remove parent",
-            onSelect: () => void updateIssues([issue.id], { parentId: null }),
+            onSelect: () => void updateIssues([issue.id], { parentId: null }, { parent: null }),
           },
         ]
       : [],
     search: (query) =>
-      searchIssueItems(query, (parent) => void updateIssues([issue.id], { parentId: parent.id }), [
-        issue.id,
-      ]),
+      searchIssueItems(
+        query,
+        (parent) =>
+          void updateIssues(
+            [issue.id],
+            { parentId: parent.id },
+            { parent: { id: parent.id, identifier: parent.identifier, title: parent.title } },
+          ),
+        [issue.id],
+      ),
   };
 }
 
@@ -582,7 +600,7 @@ export function issueContextMenu(issues: Issue[]): ContextEntry[] {
       id: "status",
       label: "Status",
       hint: "S",
-      icon: one && <StatusIcon type={one.state.type} color={one.state.color} />,
+      icon: one && <StatusIcon type={one.state.type} />,
       submenu: () => statusMenu(issues),
     },
     {
@@ -724,7 +742,7 @@ async function documentProjectMenu(doc: {
       ...data.projects.nodes.map((p) => ({
         id: p.id,
         label: p.name,
-        icon: <span className="size-2.5 rounded-[3px]" style={{ background: p.color }} />,
+        icon: <span className="size-2.5 rounded-[3px] bg-muted" />,
         checked: doc.project?.id === p.id,
         onSelect: () => void move(p.id),
       })),
@@ -1070,7 +1088,7 @@ export function commandPalette(): MenuSpec {
           id: `project-${p.id}`,
           label: p.name,
           section: "Projects",
-          icon: <span className="size-2.5 rounded-full" style={{ background: p.color }} />,
+          icon: <span className="size-2.5 rounded-full bg-muted" />,
           onSelect: () => navigate(paths.project(p.id)),
         })),
         ...(other?.searchDocuments.nodes ?? []).map((d) => ({

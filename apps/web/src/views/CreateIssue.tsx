@@ -89,7 +89,7 @@ function CreateIssue({
               onClose();
               createTeamStore.set(true);
             }}
-            className="mt-4 rounded-md bg-accent px-3 py-1.5 text-white"
+            className="mt-4 rounded-md bg-accent px-3 py-1.5 text-on-accent"
           >
             Create a team
           </button>
@@ -285,13 +285,13 @@ function CreateIssue({
             states.map((s) => ({
               id: s.id,
               label: s.name,
-              icon: <StatusIcon type={s.type} color={s.color} />,
+              icon: <StatusIcon type={s.type} />,
               checked: s.id === state?.id,
               onSelect: () => setStateId(s.id),
             })),
           )}
         >
-          {state && <StatusIcon type={state.type} color={state.color} />}
+          {state && <StatusIcon type={state.type} />}
           {state?.name}
         </Chip>
         <Chip
@@ -342,7 +342,7 @@ function CreateIssue({
                 team.labels.nodes.map((l) => ({
                   id: l.id,
                   label: l.name,
-                  icon: <span className="size-2.5 rounded-full" style={{ background: l.color }} />,
+                  icon: <span className="size-2.5 rounded-full bg-muted" />,
                   checked: chosen.has(l.id),
                   onSelect: () => {
                     if (chosen.has(l.id)) chosen.delete(l.id);

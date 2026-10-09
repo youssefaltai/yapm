@@ -96,6 +96,12 @@ export interface ContractOptions {
   liveLog?: unknown[];
 }
 
+/** A hex colour with no visible hue: the palette is greys only. */
+export const neutral = (hex: string) => {
+  const [r = 0, g = 0, b = 0] = (hex.match(/[0-9a-f]{2}/gi) ?? []).map((c) => parseInt(c, 16));
+  return Math.max(r, g, b) - Math.min(r, g, b) <= 12;
+};
+
 export function hubContract(
   platform: string,
   makeFetch: () => Promise<FetchLike>,
@@ -1892,6 +1898,7 @@ export function hubContract(
       const project = created.projectCreate.project;
       expect(project).toMatchObject({ state: "planned", url: `/project/${project.id}` });
       expect(project.color).toMatch(/^#[0-9a-f]{6}$/);
+      expect(project.color).toSatisfy(neutral);
       const bad = await client.graphql(
         'mutation($id: String!) { projectUpdate(id: $id, input: { targetDate: "soon" }) { success } }',
         { id: project.id },

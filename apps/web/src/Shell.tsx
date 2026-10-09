@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   commandPalette,
   copyText,
@@ -8,7 +8,7 @@ import {
   shortcutsStore,
   workspaceStore,
 } from "./actions.js";
-import type { Viewer } from "./api.js";
+import { type Viewer, waitingStore } from "./api.js";
 import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { EmojiPickerHost } from "./emoji/EmojiPicker.js";
@@ -112,7 +112,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
           </button>
         </div>
         <div className="min-h-0 flex-1">
-          {error && <p className="p-6 text-red-400">{error}</p>}
+          {error && <p className="p-6 text-critical">{error}</p>}
           {workspace && (
             // A fresh page fades in; switching tabs within a page doesn't.
             <div key={pageKey(route)} className="h-full animate-fade-in">
@@ -130,6 +130,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       <ContextMenuHost />
       <EmojiPickerHost />
       <ToastHost />
+      <LoadingBar />
     </div>
   );
 }
@@ -318,7 +319,7 @@ function Sidebar({
           <span className="flex w-full items-center justify-between">
             Approvals
             {pending > 0 && (
-              <span className="animate-badge-in rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">
+              <span className="animate-badge-in rounded-full bg-accent px-1.5 text-[11px] font-medium text-on-accent">
                 {pending}
               </span>
             )}
@@ -581,6 +582,11 @@ function NavLink({
       {children}
     </a>
   );
+}
+
+function LoadingBar() {
+  const waiting = useSyncExternalStore(waitingStore.subscribe, waitingStore.get);
+  return waiting ? <div role="progressbar" aria-label="Loading" className="loading-bar" /> : null;
 }
 
 function ToastHost() {

@@ -108,7 +108,7 @@ function SubmitButton({ busy, children }: { busy: boolean; children: ReactNode }
     <button
       type="submit"
       disabled={busy}
-      className="mt-2 w-full rounded-md bg-accent px-3 py-2 text-[14px] font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-60"
+      className="mt-2 w-full rounded-md bg-accent px-3 py-2 text-[14px] font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-60"
     >
       {children}
     </button>
@@ -116,7 +116,7 @@ function SubmitButton({ busy, children }: { busy: boolean; children: ReactNode }
 }
 
 function ErrorText({ error }: { error: string | null }) {
-  return error ? <p className="mt-3 text-[13px] text-red-400">{error}</p> : null;
+  return error ? <p className="mt-3 text-[13px] text-critical">{error}</p> : null;
 }
 
 function describe(error: unknown): string {

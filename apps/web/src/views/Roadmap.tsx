@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { createProjectStore } from "../actions.js";
 import { useQuery } from "../data.js";
-import { Page, PageHeader } from "../layout.js";
+import { Page, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton } from "../states.js";
 import { ProjectDot, ProjectsTabs } from "./Projects.js";
@@ -72,8 +72,8 @@ export function RoadmapView() {
 
   return (
     <Page>
-      <PageHeader>
-        <ProjectsTabs active="roadmap" />
+      <PageHeader tabs={<ProjectsTabs active="roadmap" />}>
+        <PageTitle>Projects</PageTitle>
       </PageHeader>
       {error && <p className="p-6 text-red-400">{error}</p>}
       {!data && !error && <ListSkeleton rows={5} />}

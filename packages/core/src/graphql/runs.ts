@@ -13,9 +13,10 @@ import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit } from "../db.js";
 import { badRequest, forbidden, notFound } from "../errors.js";
+import { announce } from "../realtime.js";
 import { MODEL_TIERS, type ModelTier } from "../runs/prompts.js";
 import { routeRun } from "../runs/routing.js";
-import { stopRun } from "../runs/service.js";
+import { ONLINE_WINDOW, stopRun } from "../runs/service.js";
 import { event } from "../services/common.js";
 import { findIssue } from "../services/issues.js";
 import {
@@ -49,9 +50,6 @@ const MachineStatus = builder.enumType("MachineStatus", { values: MACHINE_STATUS
 export const Run = builder.objectRef<RunRow>("Run");
 export const Machine = builder.objectRef<MachineRow>("Machine");
 const RunConnection = connection<RunRow>("Run", Run);
-
-/** A machine is online if it checked in within this long. */
-const ONLINE_WINDOW = 2 * 60 * 1000;
 
 const RunLogBatch = builder.objectRef<typeof runLogs.$inferSelect>("RunLogBatch").implement({
   description: "Transcript events a runner uploaded together, in order.",
@@ -409,7 +407,7 @@ builder.mutationFields((t) => ({
         ]);
         return runId;
       });
-      await ctx.deps.realtime?.publish({ type: "runs", at: now(ctx) });
+      await announce(ctx.deps.realtime, { type: "runs", at: now(ctx) });
       return { id };
     },
   }),
@@ -419,7 +417,7 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }), reason: t.arg.string({ required: true }) },
     resolve: async (_root, args, ctx) => {
       await act(ctx, (s) => stopRun(s, args.id, args.reason));
-      await ctx.deps.realtime?.publish({ type: "runs", at: now(ctx) });
+      await announce(ctx.deps.realtime, { type: "runs", at: now(ctx) });
       return { id: args.id };
     },
   }),

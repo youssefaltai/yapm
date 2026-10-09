@@ -5,6 +5,7 @@ import { relyingParty } from "../auth.js";
 import type { HubEnv } from "../context.js";
 import { ServiceError } from "../errors.js";
 import { background, deliverPush, waitUntilOf } from "../push.js";
+import { announce } from "../realtime.js";
 import { enrolMachine, machineForToken } from "../services/machines.js";
 import { appendLogs, claimRun, completeRun, dispatch, heartbeat } from "./service.js";
 
@@ -41,7 +42,10 @@ async function body<T>(c: { req: { json(): Promise<unknown> } }): Promise<T> {
 
 runnerRoutes.post("/enrol", async (c) => {
   const input = await body<Parameters<typeof enrolMachine>[1]>(c);
-  const result = await enrolMachine(c.var.deps.db, input, at(c));
+  const now = at(c);
+  const result = await enrolMachine(c.var.deps.db, input, now);
+  // It waits on Machines for the owner's approval.
+  await announce(c.var.deps.realtime, { type: "change", actorId: "", clientId: null, at: now });
   return c.json({ ...result, approveAt: `${relyingParty(c).origin}/machines` }, 201);
 });
 
@@ -67,7 +71,10 @@ function requireActive(machine: Machine) {
 runnerRoutes.post("/heartbeat", async (c) => {
   const info = await body<Parameters<typeof heartbeat>[2]>(c);
   const now = at(c);
-  const { notified, ...result } = await heartbeat(c.var.deps.db, c.var.machine, info, now);
+  const { notified, changed, ...result } = await heartbeat(c.var.deps.db, c.var.machine, info, now);
+  if (changed) {
+    await announce(c.var.deps.realtime, { type: "change", actorId: "", clientId: null, at: now });
+  }
   // A server waiting for a sign-in tells the owner's phone.
   if (notified) background(waitUntilOf(c), deliverPush(c.var.deps, now, relyingParty(c).origin));
   return c.json({ status: c.var.machine.status, ...result });
@@ -97,10 +104,6 @@ runnerRoutes.post("/runs/:id/complete", async (c) => {
     await dispatch(deps, now);
     background(waitUntilOf(c), deliverPush(deps, now, relyingParty(c).origin));
   }
-  try {
-    await deps.realtime?.publish({ type: "change", actorId: "", clientId: null, at: now });
-  } catch (error) {
-    console.error("Live update failed", error);
-  }
+  await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at: now });
   return c.json({ status: result.status });
 });

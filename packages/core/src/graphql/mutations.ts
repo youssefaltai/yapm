@@ -20,7 +20,7 @@ import {
 import { createLabel, deleteLabel, updateLabel } from "../services/labels.js";
 import { createTeam, updateTeam } from "../services/teams.js";
 import { hireAgent, retireAgent, revokeApiToken, updateUser } from "../services/users.js";
-import { act, builder, db, notFoundError, now, requireOwner, type Types } from "./builder.js";
+import { act, builder, db, notFoundError, requireOwner, type Types } from "./builder.js";
 import {
   Comment,
   Issue,
@@ -504,10 +504,8 @@ builder.mutationType({
         const userId = args.userId ?? viewer.user.id;
         const user = await ctx.loaders.user.load(userId);
         if (!user?.active) throw notFoundError("User");
-        const created = await createApiToken(
-          db(ctx),
-          { userId, name: args.name, actorId: viewer.user.id },
-          now(ctx),
+        const created = await act(ctx, (s) =>
+          createApiToken(s.db, { userId, name: args.name, actorId: s.actorId }, s.now),
         );
         return { ...created, user };
       },

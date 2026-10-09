@@ -2026,7 +2026,7 @@ export function hubContract(
         return JSON.parse(text);
       };
 
-      // Only the owner sets the company's time zone, and only to a real one.
+      // Agents need a grant to set the company's time zone, and only to a real one.
       const { organizationUpdate } = await gql<{
         organizationUpdate: { organization: { timezone: string } };
       }>(
@@ -3232,6 +3232,112 @@ export function hubContract(
       } finally {
         fetchSpy.mockRestore();
       }
+    });
+
+    it("lets managers answer their reports' requests and stop their runs, within their grants", async () => {
+      const hire = async (name: string, managerId?: string) => {
+        const made = await client.graphql<{ agentHire: { user: { id: string } } }>(
+          "mutation($n: String!, $m: String) { agentHire(input: { name: $n, managerId: $m }) { user { id } } }",
+          { n: name, m: managerId },
+        );
+        return made.data?.agentHire.user.id ?? "";
+      };
+      const leadId = await hire("Ops Lead");
+      const internId = await hire("Ops Intern", await hire("Ops Analyst", leadId));
+      await hire("Auditor");
+      const [lead, intern, auditor] = await Promise.all(
+        ["Ops Lead", "Ops Intern", "Auditor"].map(agentToken),
+      );
+      const grant = (action: string) =>
+        client.graphql(
+          "mutation($a: String!, $s: String) { grantCreate(input: { action: $a, scope: user, subjectId: $s }) { success } }",
+          { a: action, s: leadId },
+        );
+      const ask = async (token: string, action: string) =>
+        (await callTool(token, "create_request", { title: action, action, reason: "Work." })).json()
+          .id as string;
+
+      // Only someone above the requester answers, and an agent passes on only what its grants allow.
+      const spend = await ask(intern?.token ?? "", "budget.spend");
+      const byPeer = await callTool(auditor?.token ?? "", "reject_request", {
+        id: spend,
+        reason: "No.",
+      });
+      expect(byPeer.text).toContain("managers");
+      const own = await callTool(intern?.token ?? "", "approve_request", { id: spend });
+      expect(own.isError).toBe(true);
+      expect((await callTool(lead?.token ?? "", "approve_request", { id: spend })).text).toContain(
+        "grant",
+      );
+      await grant("budget.spend");
+      const always = await client.graphql(
+        "mutation($id: String!) { requestApprove(id: $id, alwaysAllow: { scope: user }) { success } }",
+        { id: spend },
+        lead?.token,
+      );
+      expect(always.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect(
+        (await callTool(lead?.token ?? "", "approve_request", { id: spend })).json(),
+      ).toMatchObject({ status: "approved", alwaysAllowed: false });
+      expect(
+        (
+          await callTool(intern?.token ?? "", "check_permission", { action: "budget.spend" })
+        ).json(),
+      ).toMatchObject({ allowed: true, via: "approval" });
+
+      // A one-time approval of its own isn't enough to pass on; rejecting needs a reason.
+      const leadDeploy = await ask(lead?.token ?? "", "tool:Deploy");
+      await client.graphql("mutation($id: String!) { requestApprove(id: $id) { success } }", {
+        id: leadDeploy,
+      });
+      const deploy = await ask(intern?.token ?? "", "tool:Deploy");
+      expect((await callTool(lead?.token ?? "", "approve_request", { id: deploy })).isError).toBe(
+        true,
+      );
+      expect(
+        (await callTool(lead?.token ?? "", "reject_request", { id: deploy, reason: " " })).isError,
+      ).toBe(true);
+      expect(
+        (
+          await callTool(lead?.token ?? "", "reject_request", { id: deploy, reason: "Not yet." })
+        ).json(),
+      ).toMatchObject({ status: "rejected", answer: "Not yet." });
+
+      // Managers stop their reports' runs, with a reason.
+      await client.graphql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+        { input: { agentId: internId, goal: "Tidy the shelves" } },
+      );
+      const queued: { id: string; agent: string; status: string; goal: string }[] = (
+        await callTool(lead?.token ?? "", "list_runs", { agent: "Ops Intern", status: "queued" })
+      ).json().runs;
+      expect(queued.every((r) => r.agent === "Ops Intern" && r.status === "queued")).toBe(true);
+      const runId = queued.find((r) => r.goal === "Tidy the shelves")?.id;
+      expect(
+        (await callTool(auditor?.token ?? "", "stop_run", { id: runId, reason: "Stop." })).isError,
+      ).toBe(true);
+      expect(
+        (await callTool(lead?.token ?? "", "stop_run", { id: runId, reason: "" })).isError,
+      ).toBe(true);
+      expect(
+        (await callTool(lead?.token ?? "", "stop_run", { id: runId, reason: "Not now." })).json(),
+      ).toMatchObject({ id: runId, status: "canceled" });
+
+      // Agents rename the company and set its time zone with a grant; model routing stays the owner's.
+      const rename = { name: "Ops Co", timezone: "Europe/Paris" };
+      expect((await callTool(lead?.token ?? "", "update_organization", rename)).text).toContain(
+        "needs approval",
+      );
+      await grant("organization.update");
+      expect((await callTool(lead?.token ?? "", "update_organization", rename)).json()).toEqual(
+        rename,
+      );
+      const routing = await client.graphql(
+        "mutation { organizationUpdate(input: { modelRouting: {} }) { success } }",
+        undefined,
+        lead?.token,
+      );
+      expect(routing.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
     });
   });
 }

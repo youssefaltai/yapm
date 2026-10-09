@@ -25,6 +25,7 @@ import { findIssue, updateIssue } from "../services/issues.js";
 import { cleanTags } from "../services/machines.js";
 import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
 import { cleanAccount, cleanPlanUsage, runUsageSet } from "../services/usage.js";
+import { isAbove } from "../services/users.js";
 import {
   type Decision,
   decisionInput,
@@ -668,13 +669,14 @@ async function applyWorkResult(ctx: Ctx, run: RunRow, work: ReturnType<typeof pa
   }
 }
 
-/** The owner stops a run: a queued one is canceled, a running one is told to abort. */
+/** The owner or the agent's managers stop a run: a queued one is canceled, a running one is told to abort. */
 export async function stopRun(ctx: Ctx, id: string, reason: string) {
   const { db, now } = ctx;
   const actor = await db.select().from(users).where(eq(users.id, ctx.actorId)).get();
-  if (actor?.kind !== "owner") throw forbidden("Only the owner can stop runs for now");
   const run = await db.select().from(runs).where(eq(runs.id, id)).get();
   if (!run) throw notFound("Run");
+  if (actor?.kind !== "owner" && !(await isAbove(db, ctx.actorId, run.agentId)))
+    throw forbidden("Only the owner and the agent's managers stop its runs");
   const why = reason.trim();
   if (!why) throw badRequest("Say why you're stopping it; the agent learns from it");
   if (!ACTIVE.includes(run.status))

@@ -1454,6 +1454,17 @@ export function hubContract(
         events: [{ type: "tool_use", name: "create_comment" }],
         sessionId: "session-abc",
       });
+      // A manager is woken to screen its reports' requests; these steps follow the agent's run instead.
+      const skipScreening = async () => {
+        const queued = await gql<{ runs: { nodes: { id: string }[] } }>(
+          "{ runs(filter: { status: [queued] }) { nodes { id } } }",
+        );
+        for (const run of queued.data?.runs.nodes ?? [])
+          await gql(
+            'mutation($id: String!) { runStop(id: $id, reason: "Not needed") { success } }',
+            { id: run.id },
+          );
+      };
       // A tool that needs permission: the run asks, waits, and uses the one-time approval once.
       const use = () =>
         gql<{ permissionUse: { allowed: boolean; via: string | null } }>(
@@ -1468,6 +1479,7 @@ export function hubContract(
         work.body.token,
       );
       const askedId = asked.data?.requestCreate.request.id;
+      await skipScreening();
       const waiting = await gql<{ run: { waitingOnRequest: { id: string } | null } }>(
         "query($id: String!) { run(id: $id) { waitingOnRequest { id } } }",
         { id: work.body.run.id },
@@ -1644,6 +1656,7 @@ export function hubContract(
         { issue: issue?.id },
         entering.body.token,
       );
+      await skipScreening();
       await runner(`/runs/${entering.body.run.id}/logs`, machine.token, {
         seq: 0,
         events: [],
@@ -1678,6 +1691,7 @@ export function hubContract(
         { issue: raceId },
         paid.body.token,
       );
+      await skipScreening();
       await runner(`/runs/${paid.body.run.id}/complete`, machine.token, {
         status: "completed",
         result: { outcome: "blocked", summary: "Entered; the shop email waits on approval." },
@@ -3450,6 +3464,50 @@ export function hubContract(
       const template = await mcp("save_template", { team: "TRV", name: "Trip", title: "Trip" });
       await mcp("delete_template", { id: template.id });
       expect((await mcp("list_templates", { team: "TRV" })).templates).toEqual([]);
+    });
+
+    it("tells a manager about its reports' requests and wakes it to screen them", async () => {
+      const hire = async (name: string, managerId?: string) =>
+        (
+          await client.graphql<{ agentHire: { user: { id: string } } }>(
+            "mutation($n: String!, $m: String) { agentHire(input: { name: $n, managerId: $m }) { user { id } } }",
+            { n: name, m: managerId },
+          )
+        ).data?.agentHire.user.id ?? "";
+      const bossId = await hire("Screen Boss");
+      await hire("Screen Report", bossId);
+      const [boss, report] = await Promise.all(["Screen Boss", "Screen Report"].map(agentToken));
+      const inbox = async (token?: string) =>
+        (
+          await client.graphql<{ notifications: { nodes: { type: string; data: unknown }[] } }>(
+            "{ notifications { nodes { type data } } }",
+            undefined,
+            token,
+          )
+        ).data?.notifications.nodes.filter((n) => n.type === "requestCreated") ?? [];
+      const queuedFor = async (name: string) =>
+        (
+          await client.graphql<{ runs: { nodes: { agent: { name: string } }[] } }>(
+            "{ runs(filter: { status: [queued] }) { nodes { agent { name } } } }",
+          )
+        ).data?.runs.nodes.filter((r) => r.agent.name === name).length;
+      const ask = (token: string, action: string) =>
+        callTool(token, "create_request", { title: action, action, reason: "Work." });
+      const ownerBefore = (await inbox()).length;
+
+      // The manager hears about it and wakes; the owner still does too, once.
+      await ask(report?.token ?? "", "budget.spend");
+      expect(await inbox(boss?.token)).toEqual([
+        expect.objectContaining({ data: expect.objectContaining({ title: "budget.spend" }) }),
+      ]);
+      expect(await queuedFor("Screen Boss")).toBe(1);
+      expect((await inbox()).length).toBe(ownerBefore + 1);
+
+      // A manager's own request goes to the owner only, and asking again files nothing new.
+      await ask(boss?.token ?? "", "tool:Deploy");
+      await ask(report?.token ?? "", "budget.spend");
+      expect(await inbox(boss?.token)).toHaveLength(1);
+      expect((await inbox()).length).toBe(ownerBefore + 2);
     });
   });
 }

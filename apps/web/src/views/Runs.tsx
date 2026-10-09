@@ -5,7 +5,15 @@ import { RichEditor, RichText } from "../editor/index.js";
 import { Emoji } from "../emoji/Emoji.js";
 import { navigate, paths, type RunsTab } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
-import { Avatar, timeAgo, useStore } from "../ui.js";
+import {
+  Avatar,
+  DetailLayout,
+  Property,
+  PropertyList,
+  propertyButton,
+  timeAgo,
+  useStore,
+} from "../ui.js";
 
 export type RunStatus =
   | "queued"
@@ -271,8 +279,8 @@ export function RunPage({ id }: { id: string }) {
   }
 
   return (
-    <div className="h-full animate-fade-in overflow-y-auto">
-      <header className="flex h-11 items-center gap-2 border-b border-line px-4 md:px-6">
+    <div className="flex h-full min-h-0 animate-fade-in flex-col">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
         <button
           type="button"
           onClick={() => navigate(paths.runs())}
@@ -284,128 +292,158 @@ export function RunPage({ id }: { id: string }) {
         <span className="truncate font-medium">
           {run.agent.name} · {run.kind === "decision" ? "Decision" : "Work"}
         </span>
-      </header>
-      <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">
-        <div className="flex items-start gap-3">
-          <Avatar name={run.agent.name} kind={run.agent.kind} size={32} />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-medium">{describeRun(run)}</h1>
-            <p className="mt-0.5 text-muted">
-              <RunStatusBadge status={run.status} />
-              {triggers.length > 0 && <span> · {triggers.join(", ")}</span>}
-            </p>
-          </div>
-          {canStop && !stopping && (
-            <button
-              type="button"
-              onClick={() => setStopping(true)}
-              className="rounded-md border border-line px-3 py-1.5 text-red-400 hover:bg-raised"
-            >
-              Stop
-            </button>
-          )}
-        </div>
-
-        {stopping && (
-          <div className="mt-4 rounded-lg border border-line p-4">
-            <div className="block">
-              <span className="mb-1.5 block text-muted">
-                Why stop? {run.agent.name} reads this next time.
-              </span>
-              <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
-                <RichEditor
-                  label="Reason"
-                  autoFocus
-                  value=""
-                  onChange={setReason}
-                  onSubmit={() => reason.trim() && void stop()}
-                  onEscape={() => setStopping(false)}
-                  className="min-h-10"
-                />
-              </div>
-            </div>
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setStopping(false)}
-                className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                disabled={!reason.trim()}
-                onClick={stop}
-                className="rounded-md bg-red-500 px-3 py-1.5 font-medium text-white disabled:opacity-40"
-              >
-                Stop run
-              </button>
-            </div>
-          </div>
-        )}
-
-        <dl className="mt-5 grid grid-cols-[6rem_1fr] gap-y-2 rounded-lg border border-line bg-panel px-4 py-3">
-          {run.issue && (
-            <>
-              <dt className="text-faint">Issue</dt>
-              <dd>
-                <button
-                  type="button"
-                  onClick={() => run.issue && navigate(paths.issue(run.issue.identifier))}
-                  className="text-left hover:underline"
-                >
-                  <span className="text-faint">{run.issue.identifier}</span> {run.issue.title}
-                </button>
-              </dd>
-            </>
-          )}
-          <dt className="text-faint">Machine</dt>
-          <dd className="text-muted">{run.machine?.name ?? "Not picked up yet"}</dd>
-          <dt className="text-faint">Model</dt>
-          <dd className="text-muted">
-            {run.model ? `${run.model} · ${run.effort ?? "default"} effort` : run.modelTier}
-            {run.routeRule && <span className="text-faint"> · {run.routeRule}</span>}
-          </dd>
-          <dt className="text-faint">Usage</dt>
-          <dd className="text-muted">
-            {tokens(run.inputTokens)} in · {tokens(run.outputTokens)} out
-            {run.numTurns ? ` · ${run.numTurns} turns` : ""}
-            {run.costUsd ? ` · $${run.costUsd.toFixed(3)} at API prices` : ""}
-          </dd>
-          <dt className="text-faint">Started</dt>
-          <dd className="text-muted">
-            {run.startedAt ? timeAgo(run.startedAt) : `Queued ${timeAgo(run.createdAt)}`}
-          </dd>
-        </dl>
-
-        {run.waitingOnRequest?.status === "pending" && (
+        {canStop && !stopping && (
           <button
             type="button"
-            onClick={() => run.waitingOnRequest && navigate(paths.request(run.waitingOnRequest.id))}
-            className="mt-4 block w-full rounded-lg border border-amber-400/40 bg-amber-400/5 px-4 py-3 text-left"
+            onClick={() => setStopping(true)}
+            className="ml-auto rounded-md border border-line px-2.5 py-1 text-red-400 hover:bg-raised"
           >
-            <span className="text-amber-400">Waiting for your approval:</span>{" "}
-            {run.waitingOnRequest.title}
+            Stop
           </button>
         )}
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <DetailLayout
+          head={
+            <>
+              <div className="flex items-center gap-3">
+                <Avatar name={run.agent.name} kind={run.agent.kind} size={32} />
+                <h1 className="min-w-0 flex-1 text-xl font-semibold">{describeRun(run)}</h1>
+              </div>
 
-        <Outcome run={run} />
+              {stopping && (
+                <div className="mt-4 rounded-lg border border-line p-4">
+                  <div className="block">
+                    <span className="mb-1.5 block text-muted">
+                      Why stop? {run.agent.name} reads this next time.
+                    </span>
+                    <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
+                      <RichEditor
+                        label="Reason"
+                        autoFocus
+                        value=""
+                        onChange={setReason}
+                        onSubmit={() => reason.trim() && void stop()}
+                        onEscape={() => setStopping(false)}
+                        className="min-h-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setStopping(false)}
+                      className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!reason.trim()}
+                      onClick={stop}
+                      className="rounded-md bg-red-500 px-3 py-1.5 font-medium text-white disabled:opacity-40"
+                    >
+                      Stop run
+                    </button>
+                  </div>
+                </div>
+              )}
 
-        <section className="mt-8">
-          <h2 className="mb-2 font-medium">Transcript</h2>
-          {events.length === 0 ? (
-            <p className="text-muted">
-              {isActive(run.status) ? "Nothing yet. It appears here as the agent works." : "Empty."}
-            </p>
-          ) : (
-            <ol className="space-y-2">
-              {events.map((event, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: the transcript only grows
-                <TranscriptLine key={i} event={event} />
-              ))}
-            </ol>
-          )}
-        </section>
+              {run.waitingOnRequest?.status === "pending" && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    run.waitingOnRequest && navigate(paths.request(run.waitingOnRequest.id))
+                  }
+                  className="mt-4 block w-full rounded-lg border border-amber-400/40 bg-amber-400/5 px-4 py-3 text-left"
+                >
+                  <span className="text-amber-400">Waiting for your approval:</span>{" "}
+                  {run.waitingOnRequest.title}
+                </button>
+              )}
+
+              <Outcome run={run} />
+            </>
+          }
+          side={
+            <>
+              <PropertyList>
+                <Property label="Status">
+                  <RunStatusBadge status={run.status} />
+                </Property>
+                <Property label="Agent" control>
+                  <button
+                    type="button"
+                    onClick={() => navigate(paths.member(run.agent.id))}
+                    className={propertyButton}
+                  >
+                    <Avatar name={run.agent.name} kind={run.agent.kind} size={16} />
+                    {run.agent.name}
+                  </button>
+                </Property>
+                {run.issue && (
+                  <Property label="Issue" control>
+                    <button
+                      type="button"
+                      onClick={() => run.issue && navigate(paths.issue(run.issue.identifier))}
+                      className={propertyButton}
+                    >
+                      <span className="truncate">
+                        <span className="text-faint">{run.issue.identifier}</span> {run.issue.title}
+                      </span>
+                    </button>
+                  </Property>
+                )}
+                {triggers.length > 0 && <Property label="Woken by">{triggers.join(", ")}</Property>}
+                <Property label="Machine">
+                  {run.machine?.name ?? <span className="text-faint">Not picked up yet</span>}
+                </Property>
+                <Property label="Started">
+                  {run.startedAt ? (
+                    timeAgo(run.startedAt)
+                  ) : (
+                    <span className="text-faint">Not yet, queued {timeAgo(run.createdAt)}</span>
+                  )}
+                </Property>
+              </PropertyList>
+              <PropertyList title="Model and usage">
+                <Property label="Model">
+                  <span className="truncate">{run.model ?? run.modelTier}</span>
+                </Property>
+                <Property label="Effort">{run.effort ?? "Default"}</Property>
+                {run.routeRule && <Property label="Route">{run.routeRule}</Property>}
+                <Property label="Tokens">
+                  {tokens(run.inputTokens)} in · {tokens(run.outputTokens)} out
+                </Property>
+                {run.numTurns ? <Property label="Turns">{run.numTurns}</Property> : null}
+                {run.costUsd ? (
+                  <Property label="Cost">
+                    ${run.costUsd.toFixed(3)}
+                    <span className="text-faint">at API prices</span>
+                  </Property>
+                ) : null}
+              </PropertyList>
+            </>
+          }
+        >
+          <section className="mt-8">
+            <h2 className="mb-2 font-medium">Transcript</h2>
+            {events.length === 0 ? (
+              <p className="text-muted">
+                {isActive(run.status)
+                  ? "Nothing yet. It appears here as the agent works."
+                  : "Empty."}
+              </p>
+            ) : (
+              <ol className="space-y-2">
+                {events.map((event, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the transcript only grows
+                  <TranscriptLine key={i} event={event} />
+                ))}
+              </ol>
+            )}
+          </section>
+        </DetailLayout>
       </div>
     </div>
   );

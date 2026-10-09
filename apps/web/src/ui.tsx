@@ -566,3 +566,68 @@ export function SlaBadge({ breachesAt, open }: { breachesAt: string | null; open
     </span>
   );
 }
+
+/**
+ * Linear's detail page: the content on the left, a properties sidebar on the right. On a phone
+ * the sidebar sits between the heading and the content, so the facts come before the long read.
+ */
+export function DetailLayout({
+  head,
+  side,
+  children,
+}: {
+  head: ReactNode;
+  side: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mx-auto grid max-w-6xl grid-cols-1 lg:min-h-full lg:grid-cols-[minmax(0,1fr)_18rem] lg:grid-rows-[auto_1fr]">
+      <div className="min-w-0 px-4 pt-6 md:px-10">{head}</div>
+      <aside className="mx-4 mt-5 border-y border-line py-3 md:mx-10 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:m-0 lg:border-y-0 lg:border-l lg:px-5 lg:py-6">
+        {side}
+      </aside>
+      <div className="min-w-0 px-4 pb-10 md:px-10">{children}</div>
+    </div>
+  );
+}
+
+/** A group of label and value rows in a properties sidebar, with an optional heading. */
+export function PropertyList({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <section className="not-first:mt-4 not-first:border-t not-first:border-line not-first:pt-4">
+      {title && <h2 className="mb-2 text-[12px] font-medium text-faint uppercase">{title}</h2>}
+      <dl className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+        {children}
+      </dl>
+    </section>
+  );
+}
+
+/**
+ * One row of a PropertyList: a quiet label and its value. Plain values get a property button's
+ * padding so they line up with the controls; a `control` value brings its own.
+ */
+export function Property({
+  label,
+  control,
+  children,
+}: {
+  label: string;
+  control?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <dt className="text-faint">{label}</dt>
+      <dd
+        className={`flex min-h-7 min-w-0 items-center gap-2 text-muted ${control ? "" : "px-2 py-1"}`}
+      >
+        {children}
+      </dd>
+    </>
+  );
+}
+
+/** The class for a clickable value in a properties sidebar, matching the issue page's. */
+export const propertyButton =
+  "flex min-h-7 min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-ink hover:bg-raised disabled:hover:bg-transparent";

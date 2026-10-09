@@ -114,35 +114,82 @@ export function CyclePage({ id }: { id: string }) {
             onClick={() => navigate(paths.cycles(team.key))}
             className="text-muted hover:text-ink"
           >
-            {team.name} › Cycles ›
+            <span className="max-sm:hidden">{team.name} › </span>Cycles ›
           </button>
           {cycleName(cycle)}
         </>
       }
       tabs={
-        <span className="text-[12px] text-faint">
+        <span className="text-[12px] text-faint max-sm:hidden xl:hidden">
           {shortDate(cycle.startsAt)} – {shortDate(cycle.endsAt)}
         </span>
       }
-      banner={<BurnUp cycle={cycle} />}
+      banner={
+        <div className="xl:hidden">
+          <BurnUp cycle={cycle} />
+        </div>
+      }
+      aside={<CycleSidebar cycle={cycle} />}
     />
+  );
+}
+
+/** Linear's cycle sidebar: when it runs, how much is done, and the graph, beside the issues. */
+function CycleSidebar({ cycle }: { cycle: CycleDetail }) {
+  const scope = cycle.scopeHistory.at(-1) ?? 0;
+  const done = cycle.completedScopeHistory.at(-1) ?? 0;
+  const daysLeft = Math.ceil((Date.parse(cycle.endsAt) - Date.now()) / 86_400_000);
+  return (
+    <div className="space-y-5 px-5 py-5">
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="font-medium">{cycleName(cycle)}</h2>
+          <CycleStatus cycle={cycle} />
+        </div>
+        <p className="mt-0.5 text-[13px] text-faint">
+          {shortDate(cycle.startsAt)} – {shortDate(cycle.endsAt)}
+          {cycle.isActive &&
+            daysLeft > 0 &&
+            ` · ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}
+        </p>
+      </div>
+      <dl className="grid grid-cols-2 overflow-hidden rounded-lg border border-line">
+        <div className="px-3 py-2.5">
+          <dt className="flex items-center gap-1.5 text-[12px] text-muted">
+            <span className="size-2 rounded-full bg-faint" aria-hidden /> Scope
+          </dt>
+          <dd className="mt-0.5 text-lg font-medium">{scope}</dd>
+        </div>
+        <div className="border-l border-line px-3 py-2.5">
+          <dt className="flex items-center gap-1.5 text-[12px] text-muted">
+            <span className="size-2 rounded-full bg-accent" aria-hidden /> Completed
+          </dt>
+          <dd className="mt-0.5 text-lg font-medium">
+            {done}{" "}
+            <span className="text-[12px] font-normal text-faint">
+              {Math.round(cycle.progress * 100)}%
+            </span>
+          </dd>
+        </div>
+      </dl>
+      <div>
+        <h3 className="mb-2 text-[12px] font-medium text-faint uppercase">Progress</h3>
+        {cycle.scopeHistory.length > 0 ? (
+          <BurnUpChart cycle={cycle} className="h-36 w-full" />
+        ) : (
+          <p className="text-[12px] text-faint">
+            The graph fills in day by day once the cycle starts.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
 /** Scope and completed issues per day, like Linear's cycle graph. */
 function BurnUp({ cycle }: { cycle: CycleDetail }) {
-  const days = Math.max(
-    1,
-    Math.round((Date.parse(cycle.endsAt) - Date.parse(cycle.startsAt)) / 86_400_000),
-  );
   const scope = cycle.scopeHistory;
   const done = cycle.completedScopeHistory;
-  const max = Math.max(1, ...scope);
-  const w = 600;
-  const h = 120;
-  const x = (i: number) => (i / days) * w;
-  const y = (v: number) => h - (v / max) * (h - 8);
-  const line = (values: number[]) => values.map((v, i) => `${x(i + 1)},${y(v)}`).join(" ");
   const last = scope.length - 1;
   return (
     <div className="flex items-center gap-6 border-b border-line px-4 py-3 md:px-6">
@@ -158,41 +205,62 @@ function BurnUp({ cycle }: { cycle: CycleDetail }) {
         <p className="text-faint">{Math.round(cycle.progress * 100)}% done</p>
       </div>
       {scope.length > 0 ? (
-        <svg
-          viewBox={`0 0 ${w} ${h}`}
-          preserveAspectRatio="none"
-          className="h-24 min-w-0 flex-1"
-          role="img"
-          aria-label="Cycle progress"
-        >
-          <line
-            x1="0"
-            y1={h}
-            x2={w}
-            y2={y(scope[last] ?? 0)}
-            className="stroke-line"
-            strokeDasharray="4 4"
-          />
-          <polyline
-            points={`0,${y(scope[0] ?? 0)} ${line(scope)}`}
-            fill="none"
-            className="stroke-faint"
-            strokeWidth="2"
-            vectorEffect="non-scaling-stroke"
-          />
-          <polyline
-            points={`0,${h} ${line(done)}`}
-            fill="none"
-            className="stroke-accent"
-            strokeWidth="2"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
+        <BurnUpChart cycle={cycle} className="h-24 min-w-0 flex-1" />
       ) : (
         <p className="text-[12px] text-faint">
           The graph fills in day by day once the cycle starts.
         </p>
       )}
     </div>
+  );
+}
+
+/** Scope against completed, one point a day, with the ideal line dashed. */
+function BurnUpChart({ cycle, className }: { cycle: CycleDetail; className: string }) {
+  const days = Math.max(
+    1,
+    Math.round((Date.parse(cycle.endsAt) - Date.parse(cycle.startsAt)) / 86_400_000),
+  );
+  const scope = cycle.scopeHistory;
+  const done = cycle.completedScopeHistory;
+  const max = Math.max(1, ...scope);
+  const w = 600;
+  const h = 120;
+  const x = (i: number) => (i / days) * w;
+  const y = (v: number) => h - (v / max) * (h - 8);
+  const line = (values: number[]) => values.map((v, i) => `${x(i + 1)},${y(v)}`).join(" ");
+  const last = scope.length - 1;
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className={className}
+      role="img"
+      aria-label="Cycle progress"
+    >
+      <line
+        x1="0"
+        y1={h}
+        x2={w}
+        y2={y(scope[last] ?? 0)}
+        className="stroke-line"
+        strokeDasharray="4 4"
+        vectorEffect="non-scaling-stroke"
+      />
+      <polyline
+        points={`0,${y(scope[0] ?? 0)} ${line(scope)}`}
+        fill="none"
+        className="stroke-faint"
+        strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
+      />
+      <polyline
+        points={`0,${h} ${line(done)}`}
+        fill="none"
+        className="stroke-accent"
+        strokeWidth="2"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
   );
 }

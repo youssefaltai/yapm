@@ -15,7 +15,7 @@ import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
-import { Avatar, Modal, openMenu, shortDate, timeAgo, useStore } from "../ui.js";
+import { Avatar, DetailLayout, Modal, openMenu, shortDate, timeAgo, useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 
 export type ProjectState = "backlog" | "planned" | "started" | "paused" | "completed" | "canceled";
@@ -495,25 +495,22 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
         <span className="ml-2 flex gap-1">{tabs}</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-6 md:px-6 lg:flex-row">
-          <div className="min-w-0 flex-1">
-            <Overview project={p} />
-          </div>
-          <aside className="w-full shrink-0 lg:w-72">
-            <ProjectProperties project={p} />
-          </aside>
-        </div>
+        <DetailLayout
+          head={<ProjectHeading project={p} />}
+          side={<ProjectProperties project={p} />}
+        >
+          <Overview project={p} />
+        </DetailLayout>
       </div>
     </div>
   );
 }
 
-function Overview({ project: p }: { project: ProjectDetail }) {
+function ProjectHeading({ project: p }: { project: ProjectDetail }) {
   const [name, setName] = useState(p.name);
   const [summary, setSummary] = useState(p.summary ?? "");
   useEffect(() => setName(p.name), [p.name]);
   useEffect(() => setSummary(p.summary ?? ""), [p.summary]);
-  const latest = p.projectUpdates.nodes[0];
   return (
     <>
       <input
@@ -533,7 +530,14 @@ function Overview({ project: p }: { project: ProjectDetail }) {
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         className="mt-1 w-full bg-transparent text-muted outline-none placeholder:text-faint"
       />
+    </>
+  );
+}
 
+function Overview({ project: p }: { project: ProjectDetail }) {
+  const latest = p.projectUpdates.nodes[0];
+  return (
+    <>
       {latest && (
         <div className="mt-5 rounded-lg border border-line px-4 py-3">
           <p className="flex items-center gap-2 text-[12px]">

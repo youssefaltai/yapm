@@ -44,14 +44,29 @@ export const smallField = `${fieldBase} px-2 py-0.5`;
 // Page header -----------------------------------------------------------------
 
 /**
- * The bar across the top of every page: where you are on the left (a title or breadcrumbs, then
- * tabs), and the page's actions on the right.
+ * The bar across the top of every page: where you are on the left (a title or breadcrumbs), the
+ * page's tabs, and its actions on the right. One row from sm up; on a phone the title, tabs and
+ * actions don't fit one row and tabs got cut off mid-word, so the tabs take a row of their own
+ * under the title and actions.
  */
-export function PageHeader({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+export function PageHeader({
+  children,
+  tabs,
+  actions,
+}: {
+  children: ReactNode;
+  tabs?: ReactNode;
+  actions?: ReactNode;
+}) {
   return (
-    <header className="isolate flex h-11 shrink-0 items-center gap-3 border-b border-line px-4 md:px-6">
-      <div className="flex min-w-0 flex-1 items-center gap-3">{children}</div>
-      {actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
+    <header className="isolate flex shrink-0 flex-wrap items-center gap-x-3 border-b border-line px-4 sm:h-11 sm:flex-nowrap md:px-6">
+      <div className="flex h-11 min-w-0 items-center gap-3">{children}</div>
+      {tabs && (
+        <div className="order-last flex min-w-0 items-center gap-1 max-sm:-mx-4 max-sm:basis-[calc(100%+2rem)] max-sm:px-4 max-sm:pb-2 sm:order-none sm:shrink-0">
+          {tabs}
+        </div>
+      )}
+      {actions && <div className="ml-auto flex h-11 shrink-0 items-center gap-1">{actions}</div>}
     </header>
   );
 }

@@ -9,7 +9,7 @@ import { installScript } from "./install.js";
 import { createLoaders } from "./loaders.js";
 import { mcpHandler } from "./mcp/index.js";
 import { waitUntilOf } from "./push.js";
-import { CLIENT_ID_HEADER } from "./realtime.js";
+import { announce, CLIENT_ID_HEADER } from "./realtime.js";
 import { runnerRoutes } from "./runs/routes.js";
 import { exportCompany, exportIssuesCsv } from "./services/export.js";
 import { receiveOAuthCode } from "./services/mcpServers.js";
@@ -89,9 +89,9 @@ export function createHub(deps: HubDeps) {
     const state = c.req.query("state") ?? "";
     const code = c.req.query("code") ?? "";
     const failure = c.req.query("error_description") ?? c.req.query("error");
-    const server = failure
-      ? null
-      : await receiveOAuthCode(deps.db, state, code, deps.now?.() ?? Date.now());
+    const at = deps.now?.() ?? Date.now();
+    const server = failure ? null : await receiveOAuthCode(deps.db, state, code, at);
+    if (server) await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
     const message = failure
       ? `The sign-in didn't go through: ${failure}`
       : server

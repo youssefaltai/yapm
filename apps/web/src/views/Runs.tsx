@@ -181,20 +181,17 @@ export function RunsSection({
 /** The runs page's tabs; Machines is one of them, so the header holds still between them. */
 export function RunsTabs({ active }: { active: RunsTab | "machines" }) {
   return (
-    <>
-      <PageTitle>Runs</PageTitle>
-      <TabRow>
-        <TabLink group="runs-tabs" active={active === "active"} to={paths.runs("active")}>
-          Active
-        </TabLink>
-        <TabLink group="runs-tabs" active={active === "all"} to={paths.runs("all")}>
-          All
-        </TabLink>
-        <TabLink group="runs-tabs" active={active === "machines"} to={paths.machines()}>
-          Machines
-        </TabLink>
-      </TabRow>
-    </>
+    <TabRow>
+      <TabLink group="runs-tabs" active={active === "active"} to={paths.runs("active")}>
+        Active
+      </TabLink>
+      <TabLink group="runs-tabs" active={active === "all"} to={paths.runs("all")}>
+        All
+      </TabLink>
+      <TabLink group="runs-tabs" active={active === "machines"} to={paths.machines()}>
+        Machines
+      </TabLink>
+    </TabRow>
   );
 }
 
@@ -207,8 +204,8 @@ export function RunsView({ tab }: { tab: RunsTab }) {
   );
   return (
     <div className="flex h-full flex-col">
-      <PageHeader>
-        <RunsTabs active={tab} />
+      <PageHeader tabs={<RunsTabs active={tab} />}>
+        <PageTitle>Runs</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}

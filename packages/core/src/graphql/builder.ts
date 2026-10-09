@@ -4,6 +4,7 @@ import type { HubDeps, Viewer } from "../context.js";
 import { ServiceError } from "../errors.js";
 import type { Loaders } from "../loaders.js";
 import { background, deliverPush } from "../push.js";
+import { announce } from "../realtime.js";
 import { dispatch } from "../runs/service.js";
 import type { Ctx } from "../services/common.js";
 
@@ -86,7 +87,12 @@ export async function act<T>(ctx: GraphQLContext, fn: (service: Ctx) => Promise<
       ...(viewer.runId ? { runId: viewer.runId } : {}),
     };
     const result = await fn(service);
-    await announce(ctx, viewer.user.id, at);
+    await announce(ctx.deps.realtime, {
+      type: "change",
+      actorId: viewer.user.id,
+      clientId: ctx.clientId ?? null,
+      at,
+    });
     if (service.notified) {
       // Wake agents the change concerns, and tell the owner's phone.
       await dispatch(ctx.deps, at);
@@ -98,20 +104,6 @@ export async function act<T>(ctx: GraphQLContext, fn: (service: Ctx) => Promise<
       throw createGraphQLError(error.message, { extensions: { code: error.code } });
     }
     throw error;
-  }
-}
-
-/** Tells live clients something changed. A failed broadcast never fails the mutation. */
-async function announce(ctx: GraphQLContext, actorId: string, at: number) {
-  try {
-    await ctx.deps.realtime?.publish({
-      type: "change",
-      actorId,
-      clientId: ctx.clientId ?? null,
-      at,
-    });
-  } catch (error) {
-    console.error("Live update failed", error);
   }
 }
 

@@ -38,9 +38,8 @@ export function CyclesView({ team }: { team: Team }) {
   const cycles = data?.team.cycles.nodes ?? [];
   return (
     <div className="flex h-full flex-col">
-      <PageHeader>
+      <PageHeader tabs={<TeamTabs team={team} active="cycles" />}>
         <PageTitle>{team.name}</PageTitle>
-        <TeamTabs team={team} active="cycles" />
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}

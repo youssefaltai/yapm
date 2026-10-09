@@ -3,7 +3,7 @@ import { dateMenu, linkEntries, workspaceStore } from "../actions.js";
 import { contextMenu } from "../contextMenu.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
-import { button, field, Page, PageBody, PageHeader } from "../layout.js";
+import { button, field, Page, PageBody, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton } from "../states.js";
 import { Avatar, type MenuSpec, openMenu, shortDate } from "../ui.js";
@@ -78,8 +78,8 @@ export function InitiativesView() {
   const [name, setName] = useState("");
   return (
     <Page>
-      <PageHeader>
-        <ProjectsTabs active="initiatives" />
+      <PageHeader tabs={<ProjectsTabs active="initiatives" />}>
+        <PageTitle>Projects</PageTitle>
       </PageHeader>
       <PageBody>
         {error && <p className="text-red-400">{error}</p>}

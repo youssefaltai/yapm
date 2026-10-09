@@ -250,6 +250,7 @@ export function IssuesView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
+        tabs={tabs}
         actions={
           <>
             {filter && source.kind !== "view" && (
@@ -282,7 +283,6 @@ export function IssuesView({
         }
       >
         {typeof title === "string" ? <PageTitle>{title}</PageTitle> : title}
-        {tabs}
       </PageHeader>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">

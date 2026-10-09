@@ -89,23 +89,30 @@ const STATUS_STYLE: Record<Status, string> = {
 export function RequestsView({ tab }: { tab: RequestsTab }) {
   return (
     <div className="flex h-full flex-col">
-      <PageHeader>
+      <PageHeader
+        tabs={
+          <TabRow>
+            <TabLink
+              group="requests-tabs"
+              active={tab === "pending"}
+              to={paths.requests("pending")}
+            >
+              Pending
+            </TabLink>
+            <TabLink
+              group="requests-tabs"
+              active={tab === "answered"}
+              to={paths.requests("answered")}
+            >
+              Answered
+            </TabLink>
+            <TabLink group="requests-tabs" active={tab === "grants"} to={paths.requests("grants")}>
+              Always allowed
+            </TabLink>
+          </TabRow>
+        }
+      >
         <PageTitle>Approvals</PageTitle>
-        <TabRow>
-          <TabLink group="requests-tabs" active={tab === "pending"} to={paths.requests("pending")}>
-            Pending
-          </TabLink>
-          <TabLink
-            group="requests-tabs"
-            active={tab === "answered"}
-            to={paths.requests("answered")}
-          >
-            Answered
-          </TabLink>
-          <TabLink group="requests-tabs" active={tab === "grants"} to={paths.requests("grants")}>
-            Always allowed
-          </TabLink>
-        </TabRow>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "grants" ? <GrantList /> : <RequestList answered={tab === "answered"} />}
@@ -224,16 +231,23 @@ function GrantList() {
   );
 }
 
+/** Longer resources move from the sidebar into the body. */
+const RESOURCE_SIDEBAR_MAX = 48;
+
 const DETAIL = `query($id: String!) { request(id: $id) {
   ${SUMMARY} resource reason details answer used
   answeredBy { id name kind }
   issue { identifier title }
   requester { id name kind title teams { nodes { id name } } }
-} }`;
+}
+machines { id name } }`;
 
 /** One request on one screen: where a push notification lands, so approving is two taps. */
 export function RequestPage({ id }: { id: string }) {
-  const { data, error } = useQuery<{ request: RequestDetail }>(DETAIL, { id });
+  const { data, error } = useQuery<{
+    request: RequestDetail;
+    machines: { id: string; name: string }[];
+  }>(DETAIL, { id });
   const workspace = useStore(workspaceStore);
   const [mode, setMode] = useState<"idle" | "always" | "reject">("idle");
   const [busy, setBusy] = useState(false);
@@ -245,6 +259,8 @@ export function RequestPage({ id }: { id: string }) {
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
+  // mcp.install and other machine permissions name the machine by id; show its name.
+  const machine = data.machines.find((m) => m.id === r.resource);
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
     setBusy(true);
@@ -276,6 +292,15 @@ export function RequestPage({ id }: { id: string }) {
       "Rejected",
     );
 
+  // The resource is what an approval or grant covers, so it shows once: not at all when the
+  // details already show it word for word (the runner's Bash and file requests), else in the
+  // sidebar if it's short, or in the body if it's too long to read there, like a Bash command.
+  // A machine shows by name, which the details don't verify, so it always stays.
+  const resourceInDetails = !machine && r.resource !== null && !!r.details?.includes(r.resource);
+  const longResource =
+    !machine &&
+    r.resource !== null &&
+    (r.resource.length > RESOURCE_SIDEBAR_MAX || r.resource.includes("\n"));
   const statusLabel =
     r.status === "approved"
       ? r.grant
@@ -317,8 +342,21 @@ export function RequestPage({ id }: { id: string }) {
                   asks · {timeAgo(r.createdAt)}
                 </span>
               </div>
-              <h1 className={`mt-3 ${pageHeading}`}>{r.title}</h1>
+              <h1 className={`mt-3 ${pageHeading} [overflow-wrap:anywhere]`}>{r.title}</h1>
               <RichText source={r.reason} className="mt-3" />
+              {longResource && !resourceInDetails && (
+                <section className="mt-5">
+                  <h2 className="mb-1.5 text-[12px] font-medium text-faint">On</h2>
+                  <pre className="overflow-x-auto rounded-lg border border-line bg-raised px-3 py-2 text-[12px] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">
+                    {r.resource}
+                  </pre>
+                </section>
+              )}
+              {/*
+               * With the reason, not below the properties: on a phone the properties stack between
+               * head and body, which split what the agent asks from exactly what it will do.
+               */}
+              {r.details && <RichText source={r.details} className="mt-5" />}
             </>
           }
           side={
@@ -329,9 +367,15 @@ export function RequestPage({ id }: { id: string }) {
               <Property label="Permission">
                 <code className="break-all text-ink">{r.action}</code>
               </Property>
-              {r.resource && (
+              {r.resource && !longResource && !resourceInDetails && (
                 <Property label="On">
-                  <code className="break-all text-ink">{r.resource}</code>
+                  {machine ? (
+                    <span className="text-ink" title={r.resource}>
+                      {machine.name}
+                    </span>
+                  ) : (
+                    <code className="text-ink [overflow-wrap:anywhere]">{r.resource}</code>
+                  )}
                 </Property>
               )}
               {r.issue && (
@@ -351,12 +395,6 @@ export function RequestPage({ id }: { id: string }) {
           }
         >
           <div className="space-y-6">
-            {r.details && (
-              <pre className="overflow-x-auto rounded-lg border border-line bg-canvas px-4 py-3 text-[13px] whitespace-pre-wrap">
-                {r.details}
-              </pre>
-            )}
-
             {canAnswer && mode === "idle" && (
               <div className="sticky bottom-0 grid grid-cols-3 gap-2 bg-canvas py-3">
                 <button

@@ -1,12 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
 import type { HubEvent, Realtime } from "@life-os/core";
+import type { Env } from "./worker.js";
 
 /**
  * One Durable Object holds every live connection. It uses the hibernation API, so
  * idle sockets cost nothing on the free plan; it wakes only to fan out an event.
  * The Worker authenticates each connection before forwarding it here.
  */
-export class LiveHub extends DurableObject {
+export class LiveHub extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // Answer the apps' keep-alive pings without waking the object.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+  }
+
   override async fetch(request: Request): Promise<Response> {
     if (new URL(request.url).pathname === "/publish") {
       const message = await request.text();

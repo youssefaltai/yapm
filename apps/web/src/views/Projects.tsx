@@ -117,8 +117,9 @@ export function ProjectsView() {
             New project
           </button>
         }
+        tabs={<ProjectsTabs active="projects" />}
       >
-        <ProjectsTabs active="projects" />
+        <PageTitle>Projects</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
@@ -464,9 +465,8 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
     );
   return (
     <div className="flex h-full animate-fade-in flex-col">
-      <PageHeader>
+      <PageHeader tabs={tabs}>
         <ProjectCrumbs project={p} />
-        {tabs}
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <DetailLayout
@@ -492,20 +492,17 @@ function ProjectCrumbs({ project: p }: { project: ProjectDetail }) {
 /** Projects, initiatives and the roadmap share a header, so moving between them holds still. */
 export function ProjectsTabs({ active }: { active: "projects" | "initiatives" | "roadmap" }) {
   return (
-    <>
-      <PageTitle>Projects</PageTitle>
-      <TabRow>
-        <TabLink group="projects-tabs" active={active === "projects"} to={paths.projects()}>
-          All
-        </TabLink>
-        <TabLink group="projects-tabs" active={active === "initiatives"} to={paths.initiatives()}>
-          Initiatives
-        </TabLink>
-        <TabLink group="projects-tabs" active={active === "roadmap"} to={paths.roadmap()}>
-          Roadmap
-        </TabLink>
-      </TabRow>
-    </>
+    <TabRow>
+      <TabLink group="projects-tabs" active={active === "projects"} to={paths.projects()}>
+        All
+      </TabLink>
+      <TabLink group="projects-tabs" active={active === "initiatives"} to={paths.initiatives()}>
+        Initiatives
+      </TabLink>
+      <TabLink group="projects-tabs" active={active === "roadmap"} to={paths.roadmap()}>
+        Roadmap
+      </TabLink>
+    </TabRow>
   );
 }
 

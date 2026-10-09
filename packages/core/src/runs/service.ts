@@ -16,6 +16,7 @@ import type { HubDeps } from "../context.js";
 import { newId, randomToken, sha256Hex } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
+import { announce } from "../realtime.js";
 import { createComment, createReaction } from "../services/comments.js";
 import type { Ctx } from "../services/common.js";
 import { event } from "../services/common.js";
@@ -54,6 +55,9 @@ type TriggerNote = {
 };
 
 /** Guards against runaway wakes, e.g. two agents mentioning each other in a loop. */
+/** A machine is online if it checked in within this long. */
+export const ONLINE_WINDOW = 2 * 60 * 1000;
+
 export const LIMITS = {
   /** Wakes per agent per issue in an hour. */
   perIssuePerHour: 6,
@@ -97,11 +101,7 @@ export async function dispatch(deps: HubDeps, at: number): Promise<number> {
 }
 
 async function announceRuns(deps: HubDeps, at: number) {
-  try {
-    await deps.realtime?.publish({ type: "runs", at });
-  } catch (error) {
-    console.error("Live update failed", error);
-  }
+  await announce(deps.realtime, { type: "runs", at });
 }
 
 /** Applies the wake rules and guards to one notification; true when it queued a run. */
@@ -237,12 +237,15 @@ async function withinLimits(db: HubDb, agentId: string, issueId: string | null, 
 }
 
 /** Runs whose machine stopped reporting are failed, so their issues don't look busy forever. */
-async function failLostRuns(db: HubDb, at: number) {
-  await db
+/** Fails runs whose machine stopped checking in; true when there were any. */
+export async function failLostRuns(db: HubDb, at: number) {
+  const lost = await db
     .update(runs)
     .set({ status: "failed", error: "Lost contact with the machine", endedAt: at, updatedAt: at })
     .where(and(eq(runs.status, "running"), lt(runs.heartbeatAt, at - LIMITS.heartbeatTimeout)))
-    .run();
+    .returning({ id: runs.id })
+    .all();
+  return lost.length > 0;
 }
 
 export interface ClaimedRun {
@@ -273,7 +276,16 @@ export async function claimRun(
   at: number,
 ): Promise<ClaimedRun | null> {
   const { db } = deps;
-  await failLostRuns(db, at);
+  const lost = await failLostRuns(db, at);
+  const claimed = await claimNext(deps, machine, at);
+  // A run starting (or a lost one failing) shows on its issue and in Runs.
+  if (claimed || lost)
+    await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
+  return claimed;
+}
+
+async function claimNext(deps: HubDeps, machine: Machine, at: number) {
+  const { db } = deps;
   const busy = await db
     .select({ n: count() })
     .from(runs)
@@ -779,11 +791,14 @@ export async function heartbeat(
         .all()
     : [];
   const gone = runIds.filter((id) => !live.some((r) => r.id === id));
-  const notified = Array.isArray(info.mcpServers)
+  const reported = Array.isArray(info.mcpServers)
     ? await reportMcpServers(db, machine, info.mcpServers, at)
-    : false;
+    : { changed: false, notified: false };
+  const cameOnline = !machine.lastSeenAt || machine.lastSeenAt < at - ONLINE_WINDOW;
   return {
-    notified,
+    notified: reported.notified,
+    /** Something the app shows changed: a server's status, or the machine coming back online. */
+    changed: reported.changed || cameOnline,
     mcpServers: (await listMcpServers(db, machine.id)).map(serverSpec),
     stop: [
       ...stopping.map((r) => ({ id: r.id, reason: r.reason })),

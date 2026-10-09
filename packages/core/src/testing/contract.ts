@@ -91,6 +91,8 @@ export interface ContractOptions {
    * fetch (Node can; the Workers test runs the real worker).
    */
   pushOutbox?: Request[];
+  /** Every live event the hub published, where the adapter can record them (Node can). */
+  liveLog?: unknown[];
 }
 
 export function hubContract(
@@ -113,6 +115,44 @@ export function hubContract(
       send = await makeFetch();
       client = new TestClient(send);
     });
+
+    /** Runs `action` and checks open apps hear about it, by whichever means the platform has. */
+    async function expectAnnounced<T>(action: () => Promise<T>): Promise<T> {
+      if (options.liveLog) {
+        const before = options.liveLog.length;
+        const result = await action();
+        expect(options.liveLog.length).toBeGreaterThan(before);
+        return result;
+      }
+      if (!options.liveSocket) return action();
+      const response = await client.request("/api/live", { headers: { upgrade: "websocket" } });
+      const socket = options.liveSocket(response);
+      if (!socket) throw new Error("no socket");
+      const heard = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("no live event")), 5000);
+        socket.addEventListener("message", (event) => {
+          if (event.data === "pong") return;
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      try {
+        const result = await action();
+        await heard;
+        return result;
+      } finally {
+        socket.close();
+      }
+    }
+
+    /** Checks that `action` publishes nothing, where the platform records events. */
+    async function expectQuiet<T>(action: () => Promise<T>): Promise<T> {
+      if (!options.liveLog) return action();
+      const before = options.liveLog.length;
+      const result = await action();
+      expect(options.liveLog.length).toBe(before);
+      return result;
+    }
 
     it("reports health and platform", async () => {
       const { status, body } = await client.json("/api/health");
@@ -1230,12 +1270,15 @@ export function hubContract(
       ) => client.graphql<T>(query, variables, token);
 
       // Enrolment: the machine shows a code; the owner types it in to approve.
-      const enrol = await runner<{ id: string; token: string; pairingCode: string }>("/enrol", "", {
-        name: "Youssef's MacBook",
-        tags: ["personal"],
-        mcps: ["slack"],
-        capacity: 2,
-      });
+      // It shows up on Machines for approval without a reload.
+      const enrol = await expectAnnounced(() =>
+        runner<{ id: string; token: string; pairingCode: string }>("/enrol", "", {
+          name: "Youssef's MacBook",
+          tags: ["personal"],
+          mcps: ["slack"],
+          capacity: 2,
+        }),
+      );
       expect(enrol.status).toBe(201);
       const machine = enrol.body;
       expect(machine.pairingCode).toMatch(/^\d{6}$/);
@@ -1273,7 +1316,7 @@ export function hubContract(
           },
         );
       }
-      expect((await runner("/claim", machine.token, {})).status).toBe(204);
+      expect((await expectQuiet(() => runner("/claim", machine.token, {}))).status).toBe(204);
 
       // Assigning an issue to an agent wakes it with a decision run.
       const people = await gql<{ users: { nodes: { id: string; name: string }[] } }>(
@@ -1305,7 +1348,8 @@ export function hubContract(
           outputSchema: { properties: Record<string, unknown> };
         };
       };
-      const decision = await runner<Claim>("/claim", machine.token, {});
+      // The run starting shows on the issue and in Runs.
+      const decision = await expectAnnounced(() => runner<Claim>("/claim", machine.token, {}));
       expect(decision.status).toBe(200);
       expect(decision.body).toMatchObject({
         // The hub picks the model: decisions run on the small tier's pinned model.
@@ -2371,17 +2415,20 @@ export function hubContract(
         { id: server?.id, name: "slack-a", url: "https://slack.example/mcp" },
       ]);
       const state = `${server?.id}.abc123`;
-      await runner("/heartbeat", machine.token, {
-        runIds: [],
-        mcpServers: [
-          {
-            id: server?.id,
-            status: "needs_auth",
-            authUrl: "https://slack.example/authorize?state=x",
-            authState: state,
-          },
-        ],
-      });
+      await expectQuiet(() => runner("/heartbeat", machine.token, { runIds: [] }));
+      await expectAnnounced(() =>
+        runner("/heartbeat", machine.token, {
+          runIds: [],
+          mcpServers: [
+            {
+              id: server?.id,
+              status: "needs_auth",
+              authUrl: "https://slack.example/authorize?state=x",
+              authState: state,
+            },
+          ],
+        }),
+      );
       const listed = await gql<{
         machines: { id: string; mcpServers: { status: string; authUrl: string }[] }[];
       }>("{ machines { id mcpServers { status authUrl } } }");
@@ -2390,8 +2437,8 @@ export function hubContract(
       ]);
 
       // The provider sends the owner back to the hub; the code waits for the machine.
-      const back = await client.request(
-        `/api/mcp/oauth/callback?state=${encodeURIComponent(state)}&code=c0de`,
+      const back = await expectAnnounced(() =>
+        client.request(`/api/mcp/oauth/callback?state=${encodeURIComponent(state)}&code=c0de`),
       );
       expect(back.status).toBe(200);
       const handed = await runner<{ mcpServers: { authCode?: string }[] }>(
@@ -2402,10 +2449,12 @@ export function hubContract(
         },
       );
       expect(handed.body.mcpServers[0]?.authCode).toBe("c0de");
-      await runner("/heartbeat", machine.token, {
-        runIds: [],
-        mcpServers: [{ id: server?.id, status: "ready" }],
-      });
+      await expectAnnounced(() =>
+        runner("/heartbeat", machine.token, {
+          runIds: [],
+          mcpServers: [{ id: server?.id, status: "ready" }],
+        }),
+      );
       const ready = await runner<{ mcpServers: { status: string; authCode?: string }[] }>(
         "/heartbeat",
         machine.token,

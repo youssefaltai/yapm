@@ -4,7 +4,7 @@ import { relyingParty } from "../auth.js";
 import type { HubEnv } from "../context.js";
 import { createLoaders } from "../loaders.js";
 import { background, deliverPush, waitUntilOf } from "../push.js";
-import { CLIENT_ID_HEADER } from "../realtime.js";
+import { announce, CLIENT_ID_HEADER } from "../realtime.js";
 import { dispatch } from "../runs/service.js";
 import type { Ctx } from "../services/common.js";
 import { learningTools } from "./learning.js";
@@ -61,11 +61,7 @@ export async function mcpHandler(c: Context<HubEnv>) {
       }
       // Later reads in the same call must see the change.
       for (const loader of Object.values(loaders)) loader.clearAll();
-      try {
-        await deps.realtime?.publish({ type: "change", actorId: viewer.user.id, clientId, at });
-      } catch (error) {
-        console.error("Live update failed", error);
-      }
+      await announce(deps.realtime, { type: "change", actorId: viewer.user.id, clientId, at });
       return result;
     },
   };

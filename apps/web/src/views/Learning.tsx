@@ -18,6 +18,8 @@ export function Prose(props: {
   value: string;
   placeholder: string;
   disabled: boolean;
+  /** The editor's size; long-form text like the handbook keeps the default. */
+  className?: string;
   onSave: (value: string) => void;
 }) {
   return (
@@ -32,7 +34,7 @@ export function Prose(props: {
         placeholder={props.placeholder}
         editable={!props.disabled}
         onBlur={(text) => text !== props.value && props.onSave(text)}
-        className="min-h-32"
+        className={props.className ?? "min-h-32"}
       />
     </div>
   );

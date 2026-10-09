@@ -136,12 +136,15 @@ export function IssuesView({
   title,
   tabs,
   banner,
+  aside,
 }: {
   source: IssueSource;
   title: ReactNode;
   tabs: ReactNode;
   /** Shown above the list, e.g. a cycle's chart. */
   banner?: ReactNode;
+  /** A sidebar beside the list on wide screens, like a cycle's progress. */
+  aside?: ReactNode;
 }) {
   const sourceKey = `${source.kind}:${sourceId(source)}`;
   const team = teamOf(source);
@@ -279,84 +282,93 @@ export function IssuesView({
           </fieldset>
         </div>
       </header>
-      <FilterChips filters={filters} setFilters={setFilters} />
-      {banner}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <FilterChips filters={filters} setFilters={setFilters} />
+          {banner}
 
-      {error && <p className="px-6 py-4 text-red-400">{error}</p>}
-      {!data && !error && <ListSkeleton />}
-      {data && issues.length === 0 && (
-        <IssuesEmpty
-          source={source}
-          filtered={Object.values(filters).some((values) => values.length > 0)}
-          onClear={() => setFilters(NO_FILTERS)}
-          onCreate={() =>
-            createIssueStore.set(
-              source.kind === "project"
-                ? { projectId: source.project.id }
-                : source.kind === "cycle"
-                  ? { teamId: source.team.id, cycleId: source.cycle.id }
-                  : team
-                    ? { teamId: team.id }
-                    : {},
-            )
-          }
-        />
-      )}
-      {issues.length > 0 && layout === "list" && (
-        <div className={`min-h-0 flex-1 overflow-y-auto pb-24 ${stale ? "stale" : "fresh"}`}>
-          {groups.map((group) =>
-            group.issues.length === 0 ? null : (
-              <section key={group.key} aria-label={group.label}>
-                <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-raised/95 px-4 py-1.5 backdrop-blur md:px-6">
-                  <StatusIcon type={group.type} color={group.color} />
-                  <span className="font-medium">{group.label}</span>
-                  <span className="text-faint">{group.issues.length}</span>
-                  {team && group.state && (
-                    <button
-                      type="button"
-                      aria-label={`New issue in ${group.label}`}
-                      onClick={() =>
-                        createIssueStore.set({
-                          teamId: team.id,
-                          stateId: group.state?.id,
-                          ...(source.kind === "cycle" ? { cycleId: source.cycle.id } : {}),
-                        })
-                      }
-                      className="ml-auto px-1 text-faint hover:text-ink"
-                    >
-                      +
-                    </button>
-                  )}
-                </div>
-                {group.issues.map((issue) => (
-                  <IssueRow
-                    key={issue.id}
-                    issue={issue}
-                    focused={issue.id === focusedId}
-                    selected={selected.has(issue.id)}
-                    onFocus={() => setFocusedId(issue.id)}
-                    onToggle={() => toggle(issue.id)}
-                    onContextMenu={onContextMenu(issue)}
-                    showTeam={!team}
-                    triage={issue.state.type === "triage" ? team : null}
-                  />
-                ))}
-              </section>
-            ),
+          {error && <p className="px-6 py-4 text-red-400">{error}</p>}
+          {!data && !error && <ListSkeleton />}
+          {data && issues.length === 0 && (
+            <IssuesEmpty
+              source={source}
+              filtered={Object.values(filters).some((values) => values.length > 0)}
+              onClear={() => setFilters(NO_FILTERS)}
+              onCreate={() =>
+                createIssueStore.set(
+                  source.kind === "project"
+                    ? { projectId: source.project.id }
+                    : source.kind === "cycle"
+                      ? { teamId: source.team.id, cycleId: source.cycle.id }
+                      : team
+                        ? { teamId: team.id }
+                        : {},
+                )
+              }
+            />
+          )}
+          {issues.length > 0 && layout === "list" && (
+            <div className={`min-h-0 flex-1 overflow-y-auto pb-24 ${stale ? "stale" : "fresh"}`}>
+              {groups.map((group) =>
+                group.issues.length === 0 ? null : (
+                  <section key={group.key} aria-label={group.label}>
+                    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-raised/95 px-4 py-1.5 backdrop-blur md:px-6">
+                      <StatusIcon type={group.type} color={group.color} />
+                      <span className="font-medium">{group.label}</span>
+                      <span className="text-faint">{group.issues.length}</span>
+                      {team && group.state && (
+                        <button
+                          type="button"
+                          aria-label={`New issue in ${group.label}`}
+                          onClick={() =>
+                            createIssueStore.set({
+                              teamId: team.id,
+                              stateId: group.state?.id,
+                              ...(source.kind === "cycle" ? { cycleId: source.cycle.id } : {}),
+                            })
+                          }
+                          className="ml-auto px-1 text-faint hover:text-ink"
+                        >
+                          +
+                        </button>
+                      )}
+                    </div>
+                    {group.issues.map((issue) => (
+                      <IssueRow
+                        key={issue.id}
+                        issue={issue}
+                        focused={issue.id === focusedId}
+                        selected={selected.has(issue.id)}
+                        onFocus={() => setFocusedId(issue.id)}
+                        onToggle={() => toggle(issue.id)}
+                        onContextMenu={onContextMenu(issue)}
+                        showTeam={!team}
+                        triage={issue.state.type === "triage" ? team : null}
+                      />
+                    ))}
+                  </section>
+                ),
+              )}
+            </div>
+          )}
+          {data && layout === "board" && issues.length > 0 && (
+            <Board
+              groups={groups}
+              source={source}
+              focusedId={focusedId}
+              selected={selected}
+              onFocus={setFocusedId}
+              onToggle={toggle}
+              onContextMenu={onContextMenu}
+            />
           )}
         </div>
-      )}
-      {data && layout === "board" && issues.length > 0 && (
-        <Board
-          groups={groups}
-          source={source}
-          focusedId={focusedId}
-          selected={selected}
-          onFocus={setFocusedId}
-          onToggle={toggle}
-          onContextMenu={onContextMenu}
-        />
-      )}
+        {aside && (
+          <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-line xl:block">
+            {aside}
+          </aside>
+        )}
+      </div>
       {selected.size > 0 && (
         <BulkBar issues={selectedIssues} onClear={() => setSelected(new Set())} />
       )}

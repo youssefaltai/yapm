@@ -204,6 +204,9 @@ function GrantList() {
   );
 }
 
+/** Longer resources move from the sidebar into the body. */
+const RESOURCE_SIDEBAR_MAX = 48;
+
 const DETAIL = `query($id: String!) { request(id: $id) {
   ${SUMMARY} resource reason details answer used
   answeredBy { id name kind }
@@ -262,6 +265,12 @@ export function RequestPage({ id }: { id: string }) {
       "Rejected",
     );
 
+  // A short resource fits the sidebar. A long one, like a Bash command, can't be read there, so it
+  // goes in the body, unless the details already show it word for word.
+  const longResource =
+    !machine &&
+    r.resource !== null &&
+    (r.resource.length > RESOURCE_SIDEBAR_MAX || r.resource.includes("\n"));
   const statusLabel =
     r.status === "approved"
       ? r.grant
@@ -304,6 +313,14 @@ export function RequestPage({ id }: { id: string }) {
               </div>
               <h1 className="mt-3 text-xl font-semibold">{r.title}</h1>
               <RichText source={r.reason} className="mt-3" />
+              {longResource && !r.details?.includes(r.resource ?? "") && (
+                <section className="mt-5">
+                  <h2 className="mb-1.5 text-[12px] font-medium text-faint">On</h2>
+                  <pre className="overflow-x-auto rounded-lg border border-line bg-raised px-3 py-2 text-[12px] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">
+                    {r.resource}
+                  </pre>
+                </section>
+              )}
             </>
           }
           side={
@@ -314,17 +331,14 @@ export function RequestPage({ id }: { id: string }) {
               <Property label="Permission">
                 <code className="break-all text-ink">{r.action}</code>
               </Property>
-              {r.resource && (
+              {r.resource && !longResource && (
                 <Property label="On">
                   {machine ? (
-                    <span className="truncate text-ink" title={r.resource}>
+                    <span className="text-ink" title={r.resource}>
                       {machine.name}
                     </span>
                   ) : (
-                    // One line: a Bash command can run to 500 characters, and the details show it.
-                    <code className="truncate text-ink" title={r.resource}>
-                      {r.resource}
-                    </code>
+                    <code className="break-all text-ink">{r.resource}</code>
                   )}
                 </Property>
               )}

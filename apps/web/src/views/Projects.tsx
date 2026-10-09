@@ -13,8 +13,22 @@ import { type ContextEntry, contextMenu } from "../contextMenu.js";
 import { confirmDialog, DatePicker, Select } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
+import {
+  Breadcrumbs,
+  button,
+  dialogField,
+  field,
+  GroupHeader,
+  listRow,
+  PageHeader,
+  PageTitle,
+  pageHeading,
+  Section,
+  TabLink,
+  TabRow,
+} from "../layout.js";
 import { navigate, paths } from "../router.js";
-import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
+import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { Avatar, DetailLayout, Modal, openMenu, shortDate, timeAgo, useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 
@@ -93,30 +107,19 @@ export function ProjectsView() {
   })).filter((g) => g.rows.length);
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <span className="font-medium">Projects</span>
-        <button
-          type="button"
-          onClick={() => navigate(paths.initiatives())}
-          className="ml-2 text-muted hover:text-ink"
-        >
-          Initiatives
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate(paths.roadmap())}
-          className="text-muted hover:text-ink"
-        >
-          Roadmap
-        </button>
-        <button
-          type="button"
-          onClick={() => createProjectStore.set(true)}
-          className="ml-auto rounded-md bg-accent px-2.5 py-1 font-medium text-white"
-        >
-          New project
-        </button>
-      </header>
+      <PageHeader
+        actions={
+          <button
+            type="button"
+            onClick={() => createProjectStore.set(true)}
+            className={button("primary", "sm")}
+          >
+            New project
+          </button>
+        }
+      >
+        <ProjectsTabs active="projects" />
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
         {!data && !error && <ListSkeleton rows={6} />}
@@ -131,11 +134,13 @@ export function ProjectsView() {
         )}
         {groups.map((g) => (
           <section key={g.value}>
-            <h2 className="flex items-center gap-2 border-b border-line bg-panel px-4 py-1.5 text-[12px] font-medium text-muted md:px-6">
-              <span className="size-2 rounded-full" style={{ background: g.color }} aria-hidden />
-              {g.label}
-              <span className="text-faint">{g.rows.length}</span>
-            </h2>
+            <GroupHeader
+              icon={
+                <span className="size-2 rounded-full" style={{ background: g.color }} aria-hidden />
+              }
+              label={g.label}
+              count={g.rows.length}
+            />
             <ul>
               {g.rows.map((p) => (
                 <li key={p.id}>
@@ -143,7 +148,7 @@ export function ProjectsView() {
                     type="button"
                     onClick={() => navigate(paths.project(p.id))}
                     onContextMenu={contextMenu(() => projectContextMenu(p))}
-                    className="flex w-full animate-fade-in items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
+                    className={listRow}
                   >
                     <ProjectDot color={p.color} />
                     <span className="min-w-0 flex-1">
@@ -207,8 +212,7 @@ function CreateProject({ onClose }: { onClose: () => void }) {
       navigate(paths.project(result.projectCreate.project.id));
     }
   }
-  const input =
-    "w-full rounded-md border border-line bg-canvas px-3 py-2 outline-none placeholder:text-faint focus:border-accent";
+  const input = dialogField;
   return (
     <Modal onClose={onClose} label="New project">
       <form onSubmit={submit} className="p-5">
@@ -277,18 +281,10 @@ function CreateProject({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
-          >
+          <button type="button" onClick={onClose} className={button("ghost")}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={busy || !name.trim()}
-            className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-          >
+          <button type="submit" disabled={busy || !name.trim()} className={button("primary")}>
             Create project
           </button>
         </div>
@@ -448,52 +444,30 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   if (!p) return <PageSkeleton />;
   const tabs = (
-    <>
+    <TabRow>
       <TabLink group="project-tabs" active={tab === "overview"} to={paths.project(p.id)}>
         Overview
       </TabLink>
       <TabLink group="project-tabs" active={tab === "issues"} to={paths.project(p.id, "issues")}>
         Issues
       </TabLink>
-    </>
+    </TabRow>
   );
   if (tab === "issues")
     return (
       <IssuesView
         key={`project-${p.id}`}
         source={{ kind: "project", project: { id: p.id, name: p.name } }}
-        title={
-          <>
-            <button
-              type="button"
-              onClick={() => navigate(paths.projects())}
-              className="text-muted hover:text-ink"
-            >
-              Projects
-            </button>
-            <span className="text-faint">›</span>
-            <ProjectDot color={p.color} />
-            <span className="max-w-48 truncate">{p.name}</span>
-          </>
-        }
+        title={<ProjectCrumbs project={p} />}
         tabs={tabs}
       />
     );
   return (
     <div className="flex h-full animate-fade-in flex-col">
-      <header className="isolate flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.projects())}
-          className="text-muted hover:text-ink"
-        >
-          Projects
-        </button>
-        <span className="text-faint">›</span>
-        <ProjectDot color={p.color} />
-        <span className="max-w-48 truncate font-medium">{p.name}</span>
-        <span className="ml-2 flex gap-1">{tabs}</span>
-      </header>
+      <PageHeader>
+        <ProjectCrumbs project={p} />
+        {tabs}
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <DetailLayout
           head={<ProjectHeading project={p} />}
@@ -503,6 +477,35 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
         </DetailLayout>
       </div>
     </div>
+  );
+}
+
+function ProjectCrumbs({ project: p }: { project: ProjectDetail }) {
+  return (
+    <Breadcrumbs trail={[{ label: "Projects", to: paths.projects() }]}>
+      <ProjectDot color={p.color} />
+      <span className="max-w-48 truncate">{p.name}</span>
+    </Breadcrumbs>
+  );
+}
+
+/** Projects, initiatives and the roadmap share a header, so moving between them holds still. */
+export function ProjectsTabs({ active }: { active: "projects" | "initiatives" | "roadmap" }) {
+  return (
+    <>
+      <PageTitle>Projects</PageTitle>
+      <TabRow>
+        <TabLink group="projects-tabs" active={active === "projects"} to={paths.projects()}>
+          All
+        </TabLink>
+        <TabLink group="projects-tabs" active={active === "initiatives"} to={paths.initiatives()}>
+          Initiatives
+        </TabLink>
+        <TabLink group="projects-tabs" active={active === "roadmap"} to={paths.roadmap()}>
+          Roadmap
+        </TabLink>
+      </TabRow>
+    </>
   );
 }
 
@@ -519,7 +522,7 @@ function ProjectHeading({ project: p }: { project: ProjectDetail }) {
         onChange={(e) => setName(e.target.value)}
         onBlur={() => name.trim() && name !== p.name && void updateProject(p.id, { name })}
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-        className="w-full bg-transparent text-2xl font-semibold outline-none"
+        className={`w-full bg-transparent outline-none ${pageHeading}`}
       />
       <input
         aria-label="Summary"
@@ -539,7 +542,7 @@ function Overview({ project: p }: { project: ProjectDetail }) {
   return (
     <>
       {latest && (
-        <div className="mt-5 rounded-lg border border-line px-4 py-3">
+        <div className="rounded-lg border border-line px-4 py-3">
           <p className="flex items-center gap-2 text-[12px]">
             <HealthBadge health={latest.health} />
             <span className="text-faint">
@@ -550,8 +553,7 @@ function Overview({ project: p }: { project: ProjectDetail }) {
         </div>
       )}
 
-      <section className="mt-6">
-        <h2 className="mb-2 font-medium">Description</h2>
+      <Section title="Description">
         <RichEditor
           label="Description"
           value={p.description ?? ""}
@@ -560,24 +562,25 @@ function Overview({ project: p }: { project: ProjectDetail }) {
             if (description.trim() !== (p.description ?? "").trim())
               void updateProject(p.id, { description });
           }}
-          className="min-h-16 text-[14px]"
+          className="min-h-16 text-[15px]"
         />
-      </section>
+      </Section>
 
       <Milestones project={p} />
       <Updates project={p} />
 
-      <section className="mt-8">
-        <div className="mb-2 flex items-center">
-          <h2 className="font-medium">Documents</h2>
+      <Section
+        title="Documents"
+        actions={
           <button
             type="button"
             onClick={() => void createDocument(p.id)}
-            className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+            className={button("ghost", "sm")}
           >
             + New document
           </button>
-        </div>
+        }
+      >
         {p.documents.nodes.length === 0 ? (
           <p className="text-faint">Plans, specs and notes for this project live here.</p>
         ) : (
@@ -599,7 +602,7 @@ function Overview({ project: p }: { project: ProjectDetail }) {
             ))}
           </ul>
         )}
-      </section>
+      </Section>
     </>
   );
 }
@@ -608,8 +611,7 @@ function Milestones({ project: p }: { project: ProjectDetail }) {
   const [name, setName] = useState("");
   const [targetDate, setTargetDate] = useState("");
   return (
-    <section className="mt-8">
-      <h2 className="mb-2 font-medium">Milestones</h2>
+    <Section title="Milestones">
       <ul className="divide-y divide-line rounded-lg border border-line empty:hidden">
         {p.projectMilestones.nodes.map((m) => (
           <li key={m.id} className="flex items-center gap-3 px-4 py-2.5">
@@ -662,24 +664,20 @@ function Milestones({ project: p }: { project: ProjectDetail }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Add a milestone"
-          className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3 py-1.5 outline-none placeholder:text-faint focus:border-faint"
+          className={`flex-1 ${field}`}
         />
         <DatePicker
           aria-label="Milestone date"
           value={targetDate || null}
           onChange={(d) => setTargetDate(d ?? "")}
           placeholder="Target date"
-          className="w-36 rounded-md border border-line bg-panel px-2 py-1.5 outline-none hover:bg-raised"
+          className={`w-36 ${field} hover:bg-raised`}
         />
-        <button
-          type="submit"
-          disabled={!name.trim()}
-          className="rounded-md border border-line px-3 py-1.5 hover:bg-raised disabled:opacity-40"
-        >
+        <button type="submit" disabled={!name.trim()} className={button("secondary")}>
           Add
         </button>
       </form>
-    </section>
+    </Section>
   );
 }
 
@@ -689,19 +687,16 @@ function Updates({ project: p }: { project: ProjectDetail }) {
   const [writing, setWriting] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   return (
-    <section className="mt-8">
-      <div className="mb-2 flex items-center">
-        <h2 className="font-medium">Updates</h2>
-        {!writing && (
-          <button
-            type="button"
-            onClick={() => setWriting(true)}
-            className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
-          >
+    <Section
+      title="Updates"
+      actions={
+        !writing && (
+          <button type="button" onClick={() => setWriting(true)} className={button("ghost", "sm")}>
             + Write update
           </button>
-        )}
-      </div>
+        )
+      }
+    >
       {writing && (
         <form
           ref={form}
@@ -749,18 +744,10 @@ function Updates({ project: p }: { project: ProjectDetail }) {
             />
           </div>
           <div className="mt-2 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setWriting(false)}
-              className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
-            >
+            <button type="button" onClick={() => setWriting(false)} className={button("ghost")}>
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={!body.trim()}
-              className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-            >
+            <button type="submit" disabled={!body.trim()} className={button("primary")}>
               Post update
             </button>
           </div>
@@ -783,7 +770,7 @@ function Updates({ project: p }: { project: ProjectDetail }) {
           ))}
         </ol>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -895,7 +882,7 @@ function ProjectProperties({ project: p }: { project: ProjectDetail }) {
       <span className="text-faint">Initiative</span>
       <span className="truncate px-2 py-1 text-muted">{p.initiative?.name ?? "None"}</span>
       <span className="text-faint">Progress</span>
-      <span className="px-2 py-1 text-muted">
+      <span className={button("ghost")}>
         {p.progress.completed} of {p.progress.scope} done
       </span>
       <span />

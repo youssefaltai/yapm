@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useState } from "react";
 import { createTeamStore } from "../actions.js";
 import { mutate } from "../data.js";
+import { button, dialogField } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { Modal, useStore } from "../ui.js";
 
@@ -43,8 +44,7 @@ function CreateTeam({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const input =
-    "w-full rounded-md border border-line bg-canvas px-3 py-2 outline-none placeholder:text-faint focus:border-accent";
+  const input = dialogField;
   return (
     <Modal onClose={onClose} label="Create team">
       <form onSubmit={submit} className="p-5">
@@ -93,18 +93,10 @@ function CreateTeam({ onClose }: { onClose: () => void }) {
           />
         </label>
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
-          >
+          <button type="button" onClick={onClose} className={button("ghost")}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={busy || !name.trim()}
-            className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-          >
+          <button type="submit" disabled={busy || !name.trim()} className={button("primary")}>
             Create team
           </button>
         </div>

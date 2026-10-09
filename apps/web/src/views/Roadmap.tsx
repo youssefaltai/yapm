@@ -1,9 +1,10 @@
 import { useMemo } from "react";
 import { createProjectStore } from "../actions.js";
 import { useQuery } from "../data.js";
+import { Page, PageHeader } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton } from "../states.js";
-import { ProjectDot } from "./Projects.js";
+import { ProjectDot, ProjectsTabs } from "./Projects.js";
 
 interface RoadmapProject {
   id: string;
@@ -70,17 +71,10 @@ export function RoadmapView() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.projects())}
-          className="text-muted hover:text-ink"
-        >
-          Projects ›
-        </button>
-        <span className="font-medium">Roadmap</span>
-      </header>
+    <Page>
+      <PageHeader>
+        <ProjectsTabs active="roadmap" />
+      </PageHeader>
       {error && <p className="p-6 text-red-400">{error}</p>}
       {!data && !error && <ListSkeleton rows={5} />}
       {data && projects.length === 0 && (
@@ -93,7 +87,7 @@ export function RoadmapView() {
       )}
       {projects.length > 0 && (
         <div className="min-h-0 flex-1 overflow-auto">
-          <div className="relative" style={{ width: width + 220 }}>
+          <div className="relative" style={{ minWidth: width + 220 }}>
             <div className="sticky top-0 z-10 flex border-b border-line bg-panel">
               <div className="sticky left-0 w-[220px] shrink-0 bg-panel" />
               {months.map((m) => (
@@ -117,9 +111,9 @@ export function RoadmapView() {
             />
             {[...groups.values()].map((group) => (
               <section key={group.name} aria-label={group.name}>
-                <h2 className="sticky left-0 w-max px-4 pt-4 pb-1 text-[12px] font-medium text-faint uppercase">
-                  {group.name}
-                </h2>
+                <div className="flex h-8 items-center border-b border-line bg-raised/95">
+                  <h2 className="sticky left-0 px-4 font-medium md:px-6">{group.name}</h2>
+                </div>
                 {group.projects.map((p) => {
                   const start = p.startDate ? day(p.startDate) : day(p.createdAt);
                   const end = p.targetDate ? day(p.targetDate) : null;
@@ -128,7 +122,7 @@ export function RoadmapView() {
                       <button
                         type="button"
                         onClick={() => navigate(paths.project(p.id))}
-                        className="sticky left-0 z-10 flex h-full w-[220px] shrink-0 items-center gap-2 truncate bg-canvas px-4 text-left hover:text-ink"
+                        className="sticky left-0 z-10 flex h-full w-[220px] shrink-0 items-center gap-2 truncate bg-canvas px-4 text-left hover:text-ink md:px-6"
                       >
                         <ProjectDot color={p.color} />
                         <span className="truncate">{p.name}</span>
@@ -182,6 +176,6 @@ export function RoadmapView() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

@@ -28,6 +28,7 @@ import {
   useQuery,
   type WorkflowState,
 } from "../data.js";
+import { button, GroupHeader, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths, type TeamView } from "../router.js";
 import { EmptyState, ListSkeleton, SelectedPill } from "../states.js";
 import {
@@ -248,40 +249,41 @@ export function IssuesView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="isolate flex h-11 shrink-0 items-center gap-3 border-b border-line px-4 md:px-6">
-        <div className="flex shrink-0 items-center gap-2 font-medium whitespace-nowrap">
-          {title}
-        </div>
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">{tabs}</div>
-        <div className="ml-auto flex items-center gap-1">
-          {filter && source.kind !== "view" && (
-            <button
-              type="button"
-              onClick={() => void saveView(filter, source)}
-              className="rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-ink"
-            >
-              Save view
-            </button>
-          )}
-          <FilterButton filters={filtersRef} setFilters={setFilters} team={team} />
-          <fieldset className="flex rounded-md border border-line p-0.5" aria-label="Layout">
-            {(["list", "board"] as const).map((option) => (
+      <PageHeader
+        actions={
+          <>
+            {filter && source.kind !== "view" && (
               <button
-                key={option}
                 type="button"
-                aria-pressed={layout === option}
-                onClick={() => setLayout(option)}
-                className={`relative rounded px-2 py-0.5 capitalize ${layout === option ? "text-ink" : "text-faint hover:text-muted"}`}
+                onClick={() => void saveView(filter, source)}
+                className={button("ghost", "sm")}
               >
-                {layout === option && (
-                  <SelectedPill group="issues-layout" className="rounded bg-raised" />
-                )}
-                {option}
+                Save view
               </button>
-            ))}
-          </fieldset>
-        </div>
-      </header>
+            )}
+            <FilterButton filters={filtersRef} setFilters={setFilters} team={team} />
+            <fieldset className="flex rounded-md border border-line p-px" aria-label="Layout">
+              {(["list", "board"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={layout === option}
+                  onClick={() => setLayout(option)}
+                  className={`relative rounded px-2 py-px capitalize ${layout === option ? "text-ink" : "text-faint hover:text-muted"}`}
+                >
+                  {layout === option && (
+                    <SelectedPill group="issues-layout" className="rounded bg-raised" />
+                  )}
+                  {option}
+                </button>
+              ))}
+            </fieldset>
+          </>
+        }
+      >
+        {typeof title === "string" ? <PageTitle>{title}</PageTitle> : title}
+        {tabs}
+      </PageHeader>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <FilterChips filters={filters} setFilters={setFilters} />
@@ -312,27 +314,30 @@ export function IssuesView({
               {groups.map((group) =>
                 group.issues.length === 0 ? null : (
                   <section key={group.key} aria-label={group.label}>
-                    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-raised/95 px-4 py-1.5 backdrop-blur md:px-6">
-                      <StatusIcon type={group.type} color={group.color} />
-                      <span className="font-medium">{group.label}</span>
-                      <span className="text-faint">{group.issues.length}</span>
-                      {team && group.state && (
-                        <button
-                          type="button"
-                          aria-label={`New issue in ${group.label}`}
-                          onClick={() =>
-                            createIssueStore.set({
-                              teamId: team.id,
-                              stateId: group.state?.id,
-                              ...(source.kind === "cycle" ? { cycleId: source.cycle.id } : {}),
-                            })
-                          }
-                          className="ml-auto px-1 text-faint hover:text-ink"
-                        >
-                          +
-                        </button>
-                      )}
-                    </div>
+                    <GroupHeader
+                      icon={<StatusIcon type={group.type} color={group.color} />}
+                      label={group.label}
+                      count={group.issues.length}
+                      actions={
+                        team &&
+                        group.state && (
+                          <button
+                            type="button"
+                            aria-label={`New issue in ${group.label}`}
+                            onClick={() =>
+                              createIssueStore.set({
+                                teamId: team.id,
+                                stateId: group.state?.id,
+                                ...(source.kind === "cycle" ? { cycleId: source.cycle.id } : {}),
+                              })
+                            }
+                            className="px-1 text-faint hover:text-ink"
+                          >
+                            +
+                          </button>
+                        )
+                      }
+                    />
                     {group.issues.map((issue) => (
                       <IssueRow
                         key={issue.id}
@@ -961,7 +966,7 @@ function FilterButton({
           ],
         })
       }
-      className="rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-ink"
+      className={button("ghost", "sm")}
     >
       Filter
     </button>

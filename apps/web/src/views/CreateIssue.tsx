@@ -8,6 +8,7 @@ import {
 import { Select, TimeSelect } from "../controls.js";
 import { type IssueTemplate, mutate, PRIORITIES, type Schedule, toast } from "../data.js";
 import { RichEditor } from "../editor/index.js";
+import { button } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import {
   Avatar,
@@ -364,7 +365,7 @@ function CreateIssue({
           type="button"
           disabled={!title.trim() || busy}
           onClick={() => void submit()}
-          className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
+          className={button("primary")}
         >
           {templateMode ? "Save" : "Create issue"}
         </button>

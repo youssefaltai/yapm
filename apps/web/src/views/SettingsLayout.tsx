@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Section, TabPill, tabClass } from "../layout.js";
+import { SelectedPill } from "../states.js";
 
 export interface SettingsSection {
   id: string;
@@ -49,55 +51,51 @@ export function SettingsLayout({ sections }: { sections: SettingsSection[] }) {
     <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
       <nav
         aria-label="Sections"
-        className="sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-line bg-canvas/95 px-4 py-2 backdrop-blur lg:hidden"
+        className="sticky top-0 z-10 isolate flex gap-0.5 overflow-x-auto border-b border-line bg-canvas/95 px-4 py-2 backdrop-blur lg:hidden"
       >
         {sections.map((s) => (
           <button
             key={s.id}
             type="button"
             onClick={() => jump(s.id)}
-            className={`shrink-0 rounded-full px-3 py-1 ${active === s.id ? "bg-raised text-ink" : "text-muted"}`}
+            className={tabClass(active === s.id)}
           >
+            {active === s.id && <TabPill group="settings-chips" />}
             {s.title}
           </button>
         ))}
       </nav>
       <div className="mx-auto flex max-w-4xl gap-10 px-4 pt-6 pb-16 md:px-6">
-        <nav aria-label="Sections" className="sticky top-6 hidden h-max w-44 shrink-0 lg:block">
+        <nav
+          aria-label="Sections"
+          className="sticky top-6 isolate hidden h-max w-44 shrink-0 space-y-0.5 lg:block"
+        >
           {sections.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => jump(s.id)}
-              className={`block w-full rounded-md px-2 py-1 text-left hover:bg-raised ${
-                active === s.id ? "bg-raised text-ink" : "text-muted"
+              className={`relative block w-full rounded-md px-2 py-1 text-left ${
+                active === s.id ? "text-ink" : "text-muted hover:bg-raised/60 hover:text-ink"
               }`}
             >
+              {active === s.id && <SelectedPill group="settings-nav" />}
               {s.title}
             </button>
           ))}
         </nav>
         <div className="min-w-0 flex-1 space-y-10">
           {sections.map((s) => (
-            <section
-              key={s.id}
-              id={`settings-${s.id}`}
-              aria-labelledby={`settings-${s.id}-title`}
-              className="scroll-mt-16 lg:scroll-mt-6"
-            >
-              <div className="mb-3 flex flex-wrap items-end gap-x-2 gap-y-1">
-                <div className="min-w-0 flex-1 basis-64">
-                  <h2 id={`settings-${s.id}-title`} className="font-medium">
-                    {s.title}
-                  </h2>
-                  {s.description && (
-                    <p className="mt-0.5 text-[13px] text-faint">{s.description}</p>
-                  )}
-                </div>
-                {s.actions && <div className="flex shrink-0 gap-1">{s.actions}</div>}
-              </div>
-              {s.children}
-            </section>
+            <div key={s.id} id={`settings-${s.id}`} className="scroll-mt-16 lg:scroll-mt-6">
+              <Section
+                id={`settings-${s.id}-title`}
+                title={s.title}
+                description={s.description}
+                actions={s.actions}
+              >
+                {s.children}
+              </Section>
+            </div>
           ))}
         </div>
       </div>
@@ -125,7 +123,7 @@ export function SettingsRow({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-4 px-4 py-3">
+    <div className="flex min-h-14 items-center gap-4 px-4 py-2.5">
       <div className="min-w-0 flex-1">
         <p>{label}</p>
         {hint && <p className="text-[12px] text-faint">{hint}</p>}

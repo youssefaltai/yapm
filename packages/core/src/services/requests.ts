@@ -215,9 +215,17 @@ export async function requestOps(
       createdAt: now,
       updatedAt: now,
     }),
-    ...notify(ctx, [
-      { userId: owner ?? "", type: "requestCreated", requestId: id, issueId, data: { title } },
-    ]),
+    // The owner hears of every request; so does an agent manager, who can screen it first.
+    ...notify(
+      ctx,
+      [owner ?? "", ...(actor.managerId ? [actor.managerId] : [])].map((userId) => ({
+        userId,
+        type: "requestCreated" as const,
+        requestId: id,
+        issueId,
+        data: { title },
+      })),
+    ),
     ...audit(
       db,
       [event(ctx, "request.create", "request", id, { title, action, resource, issueId })],

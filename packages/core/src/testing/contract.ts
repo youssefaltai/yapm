@@ -2542,6 +2542,9 @@ export function hubContract(
       expect(text).not.toContain("__HUB__");
       // macOS sh reads non-ASCII bytes after a variable as part of its name.
       expect(text).not.toMatch(/[^\t\n -~]/);
+      // Claude Code (built on Bun) crashes with "EINVAL ... kqueue" reading /dev/tty on macOS;
+      // the sign-in reads the terminal's own device instead.
+      expect(text).not.toContain("</dev/tty");
 
       await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
         id: joined.body.id,

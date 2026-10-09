@@ -123,7 +123,9 @@ elif ! "$BIN" status >/dev/null 2>&1; then
 fi
 
 # Agents use this machine's Claude subscription; sign in once if it isn't already.
-if (: </dev/tty) 2>/dev/null; then "$BIN" login </dev/tty; else "$BIN" login; fi
+# The terminal's own device: Claude Code crashes reading /dev/tty on macOS (kqueue refuses it).
+TTY=$(tty 0<&2 2>/dev/null) || TTY=
+if [ -n "$TTY" ]; then "$BIN" login <"$TTY"; else "$BIN" login; fi
 
 if [ -n "$NO_SERVICE" ]; then
   say "Installed. Run: life-os-runner start"

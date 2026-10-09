@@ -20,15 +20,15 @@ Each row is a moment from the scenario, what v1 of the plan was missing, and how
 | 5 | Stop a misbehaving agent, add a reason note | Missing | **Stop** button sends a kill to the runner within seconds; a stop reason is required and becomes a feedback record that feeds self-improvement |
 | 6 | Agents "running on my Mac", dispatched while I'm AFK | Built-in dispatcher lived in the server, phase 4 | Dispatcher on the hub decides who should wake; runners claim and execute runs locally with the Claude Agent SDK. Built in the agent phase, not last |
 | 7 | Structured output, decide to reply, react, ignore or wait | Missing | **Decision step** before every run: a cheap model call with a strict JSON schema chooses `ignore`, `react`, `reply`, `wait_until`, `work`, `delegate` or `escalate`. Only `work` starts an expensive full session (section 7) |
-| 8 | Agent asks to add a Slack MCP for one employer | Missing | **Capabilities**: MCP servers are installed per machine and granted per agent. Adding one is a Request; the runner installs it on that machine after approval |
-| 9 | MCP login: link in a comment, paste back the localhost URL | Missing | Runs can pause in a **needs input** state and resume when the owner replies. The runner starts the MCP OAuth flow, posts the link, and accepts the pasted localhost callback URL from a comment. Tokens stay on the Mac. Later improvement: a hub-hosted callback so no pasting is needed |
+| 8 | Agent asks to add a Slack MCP for one employer | Removed | Connecting external MCP servers was removed; it will be redesigned from scratch |
+| 9 | MCP login: link in a comment, paste back the localhost URL | Removed | Part of row 8 |
 | 10 | Company restructures: new teams, hiring, firing | Agents could only work issues | Org changes are API actions (`teamCreate`, `agentHire`, `agentRetire`, `charterUpdate`) governed by grants, so the CEO can restructure within what you've allowed |
 | 11 | Events log of what happened | Only per-issue activity | Workspace-wide **audit log**: every mutation by anyone, with actor, run, reason. Queryable by agents |
 | 12 | CEO explains how and why the business self-improved with metrics | Missing | **Metrics engine**: metrics are defined as data (a query over the event log), computed deterministically on a schedule, stored as snapshots per agent and team. Agents read them; they never invent numbers |
 | 13 | Owner and CEO agree on a new metric | Missing | Metric definitions are versioned records; adding or changing one is a normal change the CEO can make (with your grant) and it's in the audit log |
 | 14 | CEO suggests revoking an "always allow" grant | Missing | Grants are visible to the CEO; a weekly governance ritual reviews grant usage and proposes revocations as Requests to you |
 | 15 | CEO decides no team fits a research task and builds one | Missing pieces covered by rows 10 and 7 | Covered by org actions plus delegation; the new team's lead breaks the issue into sub-issues |
-| 16 | Another employer's corporate Mac joins | Missing | Machine enrolment: run the runner, get a pairing code, approve it as a Request. Each machine has **tags** (e.g. `employer-a`) and runs are routed only to machines whose tags and installed MCPs match the work |
+| 16 | Another employer's corporate Mac joins | Missing | Machine enrolment: run the runner, get a pairing code, approve it as a Request. Each machine has **tags** (e.g. `employer-a`) and runs are routed only to machines whose tags match the work |
 | 17 | Agents on different machines coordinate | Covered by design | Hub is the only shared state; agents talk only through issues, comments, mentions and reactions |
 | 18 | Agents mentioning each other all day | Risk not addressed | Loop and cost guards: per-agent wake budget, cooldowns, a "don't wake on your own events" rule, and the decision step's `ignore`/`react` options |
 
@@ -68,14 +68,14 @@ Surfaces over one core:
  iPhone (PWA, Web Push) ─┐
  Desktop browser ────────┼──►  HUB (CF/VPS) ◄─── outbound WebSocket ──── Runner on Mac #1 (personal)
                          │     SQLite (D1 or file)                          ├ Agent SDK (owner's Max login)
-                         │     GraphQL + MCP + realtime                     ├ installed MCPs (Slack: employer A)
+                         │     GraphQL + MCP + realtime                     ├ employer A's files
                          │     dispatcher, scheduler                        └ local tokens and files
                          │     metrics engine
                          └──                       ◄──── outbound WebSocket ──── Runner on Mac #2 (employer B)
 ```
 
 - **Hub** holds all shared state: issues, comments, org, runs and their transcripts, requests, grants, audit log, metrics. It runs the dispatcher (who should wake for an event), the scheduler (rituals), the metrics engine and push notifications. **The hub never calls a model**: it's fully deterministic and needs no AI credentials, so it costs nothing beyond hosting.
-- **Runner** is a small Node daemon on each machine. It enrols with a pairing code (approved by you), advertises its tags, installed MCPs and capacity, claims runs the hub assigns it, runs the agent locally with the **Claude Agent SDK** on the owner's subscription (section 5b), streams every event back, and obeys stop signals. Secrets (MCP tokens, employer credentials, files, the Claude login) never leave the machine.
+- **Runner** is a small Node daemon on each machine. It enrols with a pairing code (approved by you), advertises its tags and capacity, claims runs the hub assigns it, runs the agent locally with the **Claude Agent SDK** on the owner's subscription (section 5b), streams every event back, and obeys stop signals. Secrets (employer credentials, files, the Claude login) never leave the machine.
 
 ## 5a. Self-hosting on any platform
 
@@ -106,19 +106,18 @@ What the SDK gives us, mapped to the scenario:
 | Strict JSON decisions and run results | Structured output: `outputFormat: { type: "json_schema", schema }`, validated again on the hub |
 | Cheap decisions | Decision step is a short `query()` on a small model with no tools and a decision schema; work runs use a larger model |
 | Grants enforced on every tool call | `canUseTool` callback checks the agent's grants with the hub, or opens a Request and waits for your answer; `PreToolUse` hooks for audit logging |
-| Per-agent MCPs on each machine | `mcpServers` passed per query from the agent's config on that machine, plus our hub MCP server |
-| MCP OAuth login with localhost callback | Runner runs the OAuth flow for the MCP, posts the link, takes the pasted callback URL from your comment, stores tokens locally |
+| The hub as the agent's tracker | `mcpServers` has only our hub MCP server |
 | Pause for input, then continue | Run ends in `needs_input`; later `resume: <session id>` when you reply |
 | Stop immediately | `AbortController` on the query; stop reason recorded |
 | Agent identity and context | `systemPrompt` built from charter, handbook and lessons; per-agent working directory via `cwd` |
 
 Subscription limits replace dollar budgets. Max has usage windows rather than a bill, so budgets are counted in runs and model tier per agent, the runner reports when it hits a usage limit, and the dispatcher queues work until the window resets and tells you in the morning brief.
-- **Routing.** A run is assigned to a machine that has the tags and MCPs the agent and issue need. If none is online, the run waits in a queue and the issue shows why.
+- **Routing.** A run is assigned to a machine that has the tags the agent and issue need. If none is online, the run waits in a queue and the issue shows why.
 - **Agents talk only through the hub**, so two agents on two Macs coordinate the same way two people in different offices do on Linear.
 
 ## 6. Requests, grants and approvals
 
-- A **Request** is an agent asking for something it isn't allowed to do yet: a tool call class, adding an MCP to a machine, enrolling a machine, hiring or retiring an agent, spending money, contacting a real person, etc. It carries the asker, the run, the issue, the exact action and a reason.
+- A **Request** is an agent asking for something it isn't allowed to do yet: a tool call class, enrolling a machine, hiring or retiring an agent, spending money, contacting a real person, etc. It carries the asker, the run, the issue, the exact action and a reason.
 - The CEO can pre-screen requests (approve within its own grants, or forward to you with a recommendation). Requests that reach you show in the Inbox and as a push notification.
 - You answer **Approve once**, **Always allow** (choose the scope: this agent or team or everyone, this action, optionally this resource) or **Reject** with a required reason.
 - An **always allow** creates a **Grant**. Grants have scope, creator, usage counts and last-used time. You can revoke any grant; the CEO reviews them weekly and proposes revocations.
@@ -175,13 +174,13 @@ Each phase ends with something usable; one PR per feature-sized slice.
 
 **Phase 2: The company and the owner's daily loop.** Agent members, charters, org chart, org actions; Inbox, notifications, subscriptions; PWA install and Web Push; Requests, Grants and approvals (with mobile approval view); MCP server. *Done when an outside Claude Code session with a token can pick up an issue, ask for approval, and you approve it from your phone.*
 
-**Phase 3: Runners and runs.** Runner daemon, machine enrolment and tags, routing, Runs tab with live and finished transcripts, Stop with reason, needs-input pause and resume from a comment, grant enforcement in the runner, MCP install requests and the OAuth paste-back flow. Dispatcher, wake rules, guards and the structured decision step. *Done when you can go AFK and agents on your Mac wake on mentions, work, talk to each other in comments, and you can watch and stop them.*
+**Phase 3: Runners and runs.** Runner daemon, machine enrolment and tags, routing, Runs tab with live and finished transcripts, Stop with reason, needs-input pause and resume from a comment, grant enforcement in the runner. Dispatcher, wake rules, guards and the structured decision step. *Done when you can go AFK and agents on your Mac wake on mentions, work, talk to each other in comments, and you can watch and stop them.*
 
 **Phase 4: Rituals and planning.** Scheduler; CEO morning brief (push plus a brief document: done yesterday, planned today, blocked); standups and weekly updates; cycles, projects, milestones, project updates, initiatives, roadmap, triage, templates, recurring issues, SLAs, documents, saved views, search.
 
 **Phase 5: Self-improvement.** Metrics engine and snapshots, feedback records, retros, versioned charters, handbook and lessons, grant review ritual, CEO "explain what changed" tools, insights views.
 
-**Phase 6: Polish.** Hub-hosted OAuth callback (no pasting), native iOS app if notification buttons matter, themes, import from Linear, export.
+**Phase 6: Polish.** Native iOS app if notification buttons matter, themes, import from Linear, export.
 
 ## 11. Defaults I'm assuming
 

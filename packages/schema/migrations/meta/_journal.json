@@ -120,6 +120,13 @@
       "when": 1791542267341,
       "tag": "0016_machine_display_name",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1791551070053,
+      "tag": "0017_remove_mcp_servers",
+      "breakpoints": true
     }
   ]
 }

@@ -581,58 +581,6 @@ test.describe
       ).toBeVisible();
     });
 
-    test("adds an MCP server to a machine and connects it", async () => {
-      await page.goto("/machines");
-      const servers = page.getByRole("region", { name: "MCP servers on MacBook" });
-      await servers.getByRole("button", { name: "+ Add server" }).click();
-      await servers.getByLabel("Server name").fill("slack-acme");
-      await servers.getByLabel("Server address").fill("https://slack.example/mcp");
-      await servers.getByRole("button", { name: "Add", exact: true }).click();
-      await expect(servers.getByText("Setting up")).toBeVisible();
-
-      await servers.getByRole("button", { name: "Every agent" }).click();
-      await page.getByRole("option", { name: "Ada" }).click();
-      await expect(servers.getByRole("button", { name: "Ada" })).toBeVisible();
-
-      // The machine finds it needs a sign-in; the owner gets a Connect link.
-      const beat = await page.request.post("/api/runner/heartbeat", {
-        headers: { authorization: `Bearer ${machineToken}` },
-        data: { runIds: [] },
-      });
-      const { mcpServers } = await beat.json();
-      await page.request.post("/api/runner/heartbeat", {
-        headers: { authorization: `Bearer ${machineToken}` },
-        data: {
-          runIds: [],
-          mcpServers: [
-            {
-              id: mcpServers[0].id,
-              status: "needs_auth",
-              authUrl: "https://slack.example/authorize?state=s1",
-              authState: `${mcpServers[0].id}.s1`,
-            },
-          ],
-        },
-      });
-      await page.reload();
-      await expect(servers.getByText("Needs sign-in")).toBeVisible();
-      await expect(servers.getByRole("link", { name: "Connect" })).toHaveAttribute(
-        "href",
-        "https://slack.example/authorize?state=s1",
-      );
-      const back = await page.request.get(
-        `/api/mcp/oauth/callback?state=${encodeURIComponent(`${mcpServers[0].id}.s1`)}&code=abc`,
-      );
-      expect(await back.text()).toContain("Connected slack-acme");
-
-      await servers.getByRole("button", { name: "Remove slack-acme" }).click();
-      await page
-        .getByRole("dialog", { name: "Remove slack-acme?" })
-        .getByRole("button", { name: "Remove" })
-        .click();
-      await expect(servers.getByText("None yet.")).toBeVisible();
-    });
-
     test("exports the company", async () => {
       await page.goto("/company");
       await expect(page.getByLabel("Linear API key")).toBeVisible();

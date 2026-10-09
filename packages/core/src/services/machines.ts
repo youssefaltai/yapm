@@ -38,15 +38,9 @@ export function cleanTags(tags: unknown, label = "Tags"): string[] {
   return [...out];
 }
 
-function cleanNames(names: unknown): string[] {
-  if (!Array.isArray(names)) return [];
-  return [...new Set(names.map((n) => String(n).trim()).filter(Boolean))].slice(0, 50);
-}
-
 export interface MachineEnrolInput {
   name: string;
   tags?: unknown;
-  mcps?: unknown;
   capacity?: number;
   version?: string;
   /** A one-time token from the Machines page: the machine is approved without a pairing code. */
@@ -61,7 +55,6 @@ export interface MachineEnrolInput {
 export async function enrolMachine(db: HubDb, input: MachineEnrolInput, now: number) {
   const name = cleanText(String(input.name ?? ""), "Machine name", 60);
   const tags = cleanTags(input.tags);
-  const mcps = cleanNames(input.mcps);
   const capacity = Math.min(Math.max(Math.floor(input.capacity ?? 2), 1), 16);
   const id = newId();
   // Claimed first, in one statement, so the same token can't add two machines.
@@ -95,7 +88,6 @@ export async function enrolMachine(db: HubDb, input: MachineEnrolInput, now: num
       pairingCode,
       tokenHash: await sha256Hex(token),
       tags,
-      mcps,
       capacity,
       version: input.version?.slice(0, 40) ?? null,
       lastSeenAt: now,

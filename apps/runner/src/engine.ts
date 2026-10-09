@@ -11,8 +11,6 @@ export interface EngineRun {
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** The hub's MCP server, reached with the run's token. */
   hubMcp: { url: string; token: string };
-  /** The machine's own MCP servers, passed through as configured. */
-  mcpServers: Record<string, unknown>;
   /** Continue this session instead of starting fresh. */
   resume: string | null;
   cwd: string;

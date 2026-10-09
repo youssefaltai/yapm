@@ -760,7 +760,7 @@ export const tools: Tool<McpContext>[] = [
     inputSchema: {
       type: "object",
       properties: {
-        emoji: { type: "string" },
+        emoji: { type: "string", description: "One emoji, like 👍, or its shortcode, like :tada:" },
         commentId: { type: "string" },
         issueId: { type: "string" },
       },

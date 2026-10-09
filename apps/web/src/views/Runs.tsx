@@ -2,6 +2,7 @@ import { useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
+import { Emoji } from "../emoji/Emoji.js";
 import { navigate, paths, type RunsTab } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
 import { Avatar, timeAgo, useStore } from "../ui.js";
@@ -434,7 +435,12 @@ function Outcome({ run }: { run: RunDetail }) {
         <>
           <p>
             Decided: <span className="font-medium">{text("action").replace("_", " ")}</span>
-            {text("emoji") && ` ${text("emoji")}`}
+            {text("emoji") && (
+              <>
+                {" "}
+                <Emoji value={text("emoji")} />
+              </>
+            )}
           </p>
           {text("reason") && <p className="mt-1 text-muted">{text("reason")}</p>}
           {text("body") && <RichText source={text("body")} className="mt-2" />}

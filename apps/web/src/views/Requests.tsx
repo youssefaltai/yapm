@@ -212,11 +212,15 @@ const DETAIL = `query($id: String!) { request(id: $id) {
   answeredBy { id name kind }
   issue { identifier title }
   requester { id name kind title teams { nodes { id name } } }
-} }`;
+}
+machines { id name } }`;
 
 /** One request on one screen: where a push notification lands, so approving is two taps. */
 export function RequestPage({ id }: { id: string }) {
-  const { data, error } = useQuery<{ request: RequestDetail }>(DETAIL, { id });
+  const { data, error } = useQuery<{
+    request: RequestDetail;
+    machines: { id: string; name: string }[];
+  }>(DETAIL, { id });
   const workspace = useStore(workspaceStore);
   const [mode, setMode] = useState<"idle" | "always" | "reject">("idle");
   const [busy, setBusy] = useState(false);
@@ -228,6 +232,8 @@ export function RequestPage({ id }: { id: string }) {
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
+  // mcp.install and other machine permissions name the machine by id; show its name.
+  const machine = data.machines.find((m) => m.id === r.resource);
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
     setBusy(true);
@@ -262,9 +268,12 @@ export function RequestPage({ id }: { id: string }) {
   // The resource is what an approval or grant covers, so it shows once: not at all when the
   // details already show it word for word (the runner's Bash and file requests), else in the
   // sidebar if it's short, or in the body if it's too long to read there, like a Bash command.
-  const resourceInDetails = r.resource !== null && !!r.details?.includes(r.resource);
+  // A machine shows by name, which the details don't verify, so it always stays.
+  const resourceInDetails = !machine && r.resource !== null && !!r.details?.includes(r.resource);
   const longResource =
-    r.resource !== null && (r.resource.length > RESOURCE_SIDEBAR_MAX || r.resource.includes("\n"));
+    !machine &&
+    r.resource !== null &&
+    (r.resource.length > RESOURCE_SIDEBAR_MAX || r.resource.includes("\n"));
   const statusLabel =
     r.status === "approved"
       ? r.grant
@@ -332,7 +341,13 @@ export function RequestPage({ id }: { id: string }) {
               </Property>
               {r.resource && !longResource && !resourceInDetails && (
                 <Property label="On">
-                  <code className="text-ink [overflow-wrap:anywhere]">{r.resource}</code>
+                  {machine ? (
+                    <span className="text-ink" title={r.resource}>
+                      {machine.name}
+                    </span>
+                  ) : (
+                    <code className="text-ink [overflow-wrap:anywhere]">{r.resource}</code>
+                  )}
                 </Property>
               )}
               {r.issue && (

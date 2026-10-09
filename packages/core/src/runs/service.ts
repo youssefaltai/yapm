@@ -9,7 +9,7 @@ import {
   runs,
   users,
 } from "@life-os/schema";
-import { and, asc, count, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { API_TOKEN_PREFIX } from "../auth.js";
 import type { HubDeps } from "../context.js";
@@ -51,10 +51,6 @@ type TriggerNote = {
 export const ONLINE_WINDOW = 2 * 60 * 1000;
 
 export const LIMITS = {
-  /** Wakes per agent per issue in an hour. */
-  perIssuePerHour: 6,
-  /** Wakes per agent per day: the subscription's usage is shared by everyone. */
-  perAgentPerDay: 100,
   /** A running run that hasn't reported for this long is presumed lost with its machine. */
   heartbeatTimeout: 3 * 60 * 1000,
   /** How long a run's hub token lives at most. */
@@ -149,7 +145,6 @@ async function wake(
   }
   // A live work session on the issue will see it through list_notifications.
   if (onIssue.some((r) => r.kind === "work" && r.status === "running")) return false;
-  if (!(await withinLimits(db, agentId, issueId, at))) return false;
 
   if (paused && answers) {
     const routed = await routeRun(db, { kind: "work", agentId, issueId, resumes: paused }, at);
@@ -200,38 +195,6 @@ async function wake(
       updatedAt: at,
     })
     .run();
-  return true;
-}
-
-async function withinLimits(db: HubDb, agentId: string, issueId: string | null, at: number) {
-  const [perIssue, perDay] = await Promise.all([
-    issueId
-      ? db
-          .select({ n: count() })
-          .from(runs)
-          .where(
-            and(
-              eq(runs.agentId, agentId),
-              eq(runs.issueId, issueId),
-              gte(runs.createdAt, at - 3_600_000),
-            ),
-          )
-          .get()
-      : undefined,
-    db
-      .select({ n: count() })
-      .from(runs)
-      .where(and(eq(runs.agentId, agentId), gte(runs.createdAt, at - 86_400_000)))
-      .get(),
-  ]);
-  if ((perIssue?.n ?? 0) >= LIMITS.perIssuePerHour) {
-    console.warn(`Not waking ${agentId}: too many runs on one issue this hour`);
-    return false;
-  }
-  if ((perDay?.n ?? 0) >= LIMITS.perAgentPerDay) {
-    console.warn(`Not waking ${agentId}: daily run limit reached`);
-    return false;
-  }
   return true;
 }
 

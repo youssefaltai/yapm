@@ -1,6 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { SoftwareAuthenticator, TestClient } from "@life-os/core/testing";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createNodeApp } from "../../hub-node/src/app.js";
@@ -82,7 +80,7 @@ describe("runner daemon", () => {
       capacity: 2,
       version: "test",
       mcpServers: { notes: { type: "stdio", command: "notes-mcp" } },
-      workDir: await mkdtemp(join(tmpdir(), "runner-test-")),
+      cwd: "/somewhere/anywhere",
       pollMs: 10,
       logFlushMs: 10,
       log: (line) => lines.push(line),
@@ -158,6 +156,8 @@ describe("runner daemon", () => {
     expect(work?.input.tools).toBe(true);
     expect(work?.hubMcp.url).toBe("http://localhost/mcp");
     expect(work?.hubMcp.token).toMatch(/^los_/);
+    // Agents start where the machine says, not in a folder of their own.
+    expect(work?.cwd).toBe("/somewhere/anywhere");
     expect(work?.mcpServers?.notes).toEqual({ type: "stdio", command: "notes-mcp" });
 
     type Pending = {
@@ -262,7 +262,7 @@ describe("runner daemon", () => {
       engine,
       capacity: 1,
       version: "test",
-      workDir: await mkdtemp(join(tmpdir(), "runner-test-")),
+      cwd: tmpdir(),
       pollMs: 10,
       logFlushMs: 10,
       log: (line) => lines.push(line),

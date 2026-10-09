@@ -25,7 +25,9 @@ life-os-runner service uninstall   # stop running in the background
 By hand, or with the npm package: `life-os-runner enrol --hub https://your-hub.example` prints a
 six-digit code to approve in the app (or pass `--token`), then `life-os-runner start`.
 
-Settings live in `~/.life-os-runner/config.json`.
+Settings live in `~/.life-os-runner/config.json`. Agents start in your home folder and may work
+anywhere on the machine; their Claude sign-in, sessions and settings live in
+`~/.life-os-runner/claude`.
 
 Agents connect the MCP servers they need themselves: you approve each one, and sign in to it, from
 its request in the app. The hub hands a run the servers its agent may use. Your own Claude Code

@@ -93,6 +93,11 @@ const within = (column: AnyColumn, from: number, to: number) =>
  * Raw counts for [from, to), for the company and for every team and member at once:
  * three grouped queries however big the company is.
  */
+/** The last `days` days up to and including `at`: windows end just after it. */
+export function lastDays(at: number, days: number): [from: number, to: number] {
+  return [at + 1 - days * DAY, at + 1];
+}
+
 export async function countAll(db: HubDb, from: number, to: number) {
   const [issueRows, runRows, requestRows] = await Promise.all([
     db

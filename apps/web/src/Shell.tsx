@@ -29,7 +29,7 @@ import { InitiativesView } from "./views/Initiatives.js";
 import { Insights } from "./views/Insights.js";
 import { IssuePage } from "./views/IssuePage.js";
 import { IssuesView } from "./views/IssuesView.js";
-import { MachinesView } from "./views/Machines.js";
+import { MachinePage, MachinesView } from "./views/Machines.js";
 import { MemberPage } from "./views/MemberPage.js";
 import { CreateProjectHost, ProjectPage, ProjectsView } from "./views/Projects.js";
 import { RequestPage, RequestsView, usePendingCount } from "./views/Requests.js";
@@ -201,6 +201,8 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
       return <RunPage key={route.id} id={route.id} />;
     case "machines":
       return <MachinesView />;
+    case "machine":
+      return <MachinePage key={route.id} id={route.id} />;
     case "projects":
       return <ProjectsView />;
     case "project":
@@ -336,7 +338,12 @@ function Sidebar({
         </NavLink>
         <NavLink
           to={paths.runs()}
-          active={route.name === "runs" || route.name === "run" || route.name === "machines"}
+          active={
+            route.name === "runs" ||
+            route.name === "run" ||
+            route.name === "machines" ||
+            route.name === "machine"
+          }
         >
           <span className="flex w-full items-center justify-between">
             Runs

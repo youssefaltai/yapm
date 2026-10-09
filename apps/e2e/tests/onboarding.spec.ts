@@ -576,14 +576,20 @@ test.describe
       await page.getByRole("tab", { name: "Machine" }).click();
       await expect(page.getByRole("row", { name: /MacBook/ })).toBeVisible();
       await page.goto("/machines");
-      await expect(
-        page.getByText("owner@example.com · max · session 42% · week 85%"),
-      ).toBeVisible();
+      await page.getByRole("button", { name: /MacBook/ }).click();
+      const claude = page.getByRole("region", { name: "Claude" });
+      await expect(claude.getByText("owner@example.com")).toBeVisible();
+      await expect(claude.getByText("Max plan")).toBeVisible();
+      await expect(claude.getByRole("meter", { name: "This week, all models" })).toHaveAttribute(
+        "aria-valuenow",
+        "85",
+      );
     });
 
     test("adds an MCP server to a machine and connects it", async () => {
       await page.goto("/machines");
-      const servers = page.getByRole("region", { name: "MCP servers on MacBook" });
+      await page.getByRole("button", { name: /MacBook/ }).click();
+      const servers = page.getByRole("region", { name: "MCP servers" });
       await servers.getByRole("button", { name: "+ Add server" }).click();
       await servers.getByLabel("Server name").fill("slack-acme");
       await servers.getByLabel("Server address").fill("https://slack.example/mcp");
@@ -666,8 +672,7 @@ test.describe
       });
       expect((await enrolled.json()).status).toBe("active");
       await expect(page.getByText("Studio Mac is connected.")).toBeVisible();
-      await page.getByRole("button", { name: "Done" }).click();
-      await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Open Studio Mac" }).click();
 
       // Renamed, it keeps the name it enrolled with, and goes back to it when cleared.
       const name = page.getByLabel("Name for Studio Mac");
@@ -675,7 +680,7 @@ test.describe
       await name.fill("Music room");
       await name.press("Enter");
       await expect(page.getByText("Music room", { exact: true })).toBeVisible();
-      await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
+      await expect(page.getByText("Enrolled as Studio Mac")).toBeVisible();
       await page.reload();
       await expect(name).toHaveValue("Music room");
       await name.fill("");

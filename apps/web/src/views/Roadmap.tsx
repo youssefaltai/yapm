@@ -3,6 +3,7 @@ import { createProjectStore } from "../actions.js";
 import { useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton } from "../states.js";
+import { Crumb } from "../ui.js";
 import { ProjectDot } from "./Projects.js";
 
 interface RoadmapProject {
@@ -72,13 +73,7 @@ export function RoadmapView() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.projects())}
-          className="text-muted hover:text-ink"
-        >
-          Projects ›
-        </button>
+        <Crumb onClick={() => navigate(paths.projects())}>Projects</Crumb>
         <span className="font-medium">Roadmap</span>
       </header>
       {error && <p className="p-6 text-red-400">{error}</p>}

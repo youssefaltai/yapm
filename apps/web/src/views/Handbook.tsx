@@ -1,7 +1,7 @@
 import { workspaceStore } from "../actions.js";
 import { mutate, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
-import { useStore } from "../ui.js";
+import { Crumb, useStore } from "../ui.js";
 import { Prose, RevisionList } from "./Learning.js";
 
 /** How the company works, in its own words. Every agent reads it on every run. */
@@ -14,14 +14,7 @@ export function Handbook() {
   return (
     <div className="h-full overflow-y-auto">
       <header className="flex h-11 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.company())}
-          className="text-muted hover:text-ink"
-        >
-          Company
-        </button>
-        <span className="text-faint">›</span>
+        <Crumb onClick={() => navigate(paths.company())}>Company</Crumb>
         <span className="font-medium">Handbook</span>
       </header>
       <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">

@@ -2,8 +2,19 @@ import { type ReactNode, useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
+import {
+  Breadcrumbs,
+  button,
+  listItem,
+  listRow,
+  PageHeader,
+  PageTitle,
+  pageHeading,
+  TabLink,
+  TabRow,
+} from "../layout.js";
 import { navigate, paths, type RequestsTab } from "../router.js";
-import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
+import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import {
   Avatar,
   DetailLayout,
@@ -61,6 +72,13 @@ export function usePendingCount(): number {
   return data?.requests.nodes.length ?? 0;
 }
 
+const STATUS_LABEL: Record<Status, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected",
+  canceled: "Canceled",
+};
+
 const STATUS_STYLE: Record<Status, string> = {
   pending: "text-amber-400",
   approved: "text-emerald-400",
@@ -71,18 +89,24 @@ const STATUS_STYLE: Record<Status, string> = {
 export function RequestsView({ tab }: { tab: RequestsTab }) {
   return (
     <div className="flex h-full flex-col">
-      <header className="isolate flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <span className="mr-2 font-medium">Approvals</span>
-        <TabLink group="requests-tabs" active={tab === "pending"} to={paths.requests("pending")}>
-          Pending
-        </TabLink>
-        <TabLink group="requests-tabs" active={tab === "answered"} to={paths.requests("answered")}>
-          Answered
-        </TabLink>
-        <TabLink group="requests-tabs" active={tab === "grants"} to={paths.requests("grants")}>
-          Always allowed
-        </TabLink>
-      </header>
+      <PageHeader>
+        <PageTitle>Approvals</PageTitle>
+        <TabRow>
+          <TabLink group="requests-tabs" active={tab === "pending"} to={paths.requests("pending")}>
+            Pending
+          </TabLink>
+          <TabLink
+            group="requests-tabs"
+            active={tab === "answered"}
+            to={paths.requests("answered")}
+          >
+            Answered
+          </TabLink>
+          <TabLink group="requests-tabs" active={tab === "grants"} to={paths.requests("grants")}>
+            Always allowed
+          </TabLink>
+        </TabRow>
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "grants" ? <GrantList /> : <RequestList answered={tab === "answered"} />}
       </div>
@@ -113,15 +137,11 @@ function RequestList({ answered }: { answered: boolean }) {
       />
     );
   return (
-    <ul className="divide-y divide-line">
+    <ul>
       {rows.map((r) => (
         <li key={r.id}>
-          <button
-            type="button"
-            onClick={() => navigate(paths.request(r.id))}
-            className="flex w-full animate-fade-in items-center gap-3 px-4 py-3 text-left hover:bg-raised md:px-6"
-          >
-            <Avatar name={r.requester.name} kind={r.requester.kind} size={24} />
+          <button type="button" onClick={() => navigate(paths.request(r.id))} className={listRow}>
+            <Avatar name={r.requester.name} kind={r.requester.kind} size={20} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{r.title}</p>
               <p className="truncate text-[12px] text-faint">
@@ -130,7 +150,7 @@ function RequestList({ answered }: { answered: boolean }) {
             </div>
             {answered && (
               <span className={`text-[12px] ${STATUS_STYLE[r.status]}`}>
-                {r.grant ? "always allowed" : r.status}
+                {r.grant ? "Always allowed" : STATUS_LABEL[r.status]}
               </span>
             )}
             <span className="shrink-0 text-[12px] text-faint">
@@ -160,9 +180,9 @@ function GrantList() {
       />
     );
   return (
-    <ul className="divide-y divide-line">
+    <ul>
       {data.grants.nodes.map((g) => (
-        <li key={g.id} className="flex items-center gap-3 px-4 py-3 md:px-6">
+        <li key={g.id} className={listItem}>
           <div className="min-w-0 flex-1">
             <p className="truncate">
               <span className="font-medium">
@@ -193,7 +213,7 @@ function GrantList() {
                 )
                   toast("Grant revoked");
               }}
-              className="rounded-md border border-line px-2.5 py-1 text-muted hover:text-red-400"
+              className={button("danger", "sm")}
             >
               Revoke
             </button>
@@ -268,17 +288,18 @@ export function RequestPage({ id }: { id: string }) {
           : "Canceled";
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.requests(r.status === "pending" ? "pending" : "answered"))}
-          className="text-muted hover:text-ink"
+      <PageHeader>
+        <Breadcrumbs
+          trail={[
+            {
+              label: "Approvals",
+              to: paths.requests(r.status === "pending" ? "pending" : "answered"),
+            },
+          ]}
         >
-          Approvals
-        </button>
-        <span className="text-faint">›</span>
-        <span className="truncate font-medium">{r.title}</span>
-      </header>
+          <span className="truncate">{r.title}</span>
+        </Breadcrumbs>
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <DetailLayout
           head={
@@ -296,7 +317,7 @@ export function RequestPage({ id }: { id: string }) {
                   asks · {timeAgo(r.createdAt)}
                 </span>
               </div>
-              <h1 className="mt-3 text-xl font-semibold">{r.title}</h1>
+              <h1 className={`mt-3 ${pageHeading}`}>{r.title}</h1>
               <RichText source={r.reason} className="mt-3" />
             </>
           }
@@ -329,151 +350,145 @@ export function RequestPage({ id }: { id: string }) {
             </PropertyList>
           }
         >
-          {r.details && (
-            <pre className="mt-4 overflow-x-auto rounded-lg border border-line bg-canvas px-4 py-3 text-[13px] whitespace-pre-wrap">
-              {r.details}
-            </pre>
-          )}
+          <div className="space-y-6">
+            {r.details && (
+              <pre className="overflow-x-auto rounded-lg border border-line bg-canvas px-4 py-3 text-[13px] whitespace-pre-wrap">
+                {r.details}
+              </pre>
+            )}
 
-          {canAnswer && mode === "idle" && (
-            <div className="sticky bottom-0 mt-6 grid grid-cols-3 gap-2 bg-canvas py-3">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={approveOnce}
-                className="rounded-lg bg-accent px-3 py-3 font-medium text-white disabled:opacity-40"
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setMode("always")}
-                className="rounded-lg border border-line px-3 py-3 font-medium hover:bg-raised"
-              >
-                Always allow
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setMode("reject")}
-                className="rounded-lg border border-line px-3 py-3 font-medium text-red-400 hover:bg-raised"
-              >
-                Reject
-              </button>
-            </div>
-          )}
-
-          {canAnswer && mode === "always" && (
-            <fieldset className="mt-6 rounded-lg border border-line p-4">
-              <legend className="px-1 font-medium">Always allow {r.action} for</legend>
-              <div className="space-y-2">
-                <ScopeOption value="user" current={scope} onChange={setScope}>
-                  {r.requester.name} only
-                </ScopeOption>
-                {r.requester.teams.nodes.map((t) => (
-                  <ScopeOption
-                    key={t.id}
-                    value={`team:${t.id}`}
-                    current={scope}
-                    onChange={setScope}
-                  >
-                    Everyone in {t.name}
-                  </ScopeOption>
-                ))}
-                <ScopeOption value="everyone" current={scope} onChange={setScope}>
-                  Every agent
-                </ScopeOption>
-              </div>
-              {r.resource && (
-                <label className="mt-3 flex items-center gap-2 text-muted">
-                  <input
-                    type="checkbox"
-                    checked={anyResource}
-                    onChange={(e) => setAnyResource(e.target.checked)}
-                  />
-                  On anything, not only <code className="break-all">{r.resource}</code>
-                </label>
-              )}
-              <div className="mt-4 flex justify-end gap-2">
+            {canAnswer && mode === "idle" && (
+              <div className="sticky bottom-0 grid grid-cols-3 gap-2 bg-canvas py-3">
                 <button
                   type="button"
-                  onClick={() => setMode("idle")}
-                  className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
+                  disabled={busy}
+                  onClick={approveOnce}
+                  className="rounded-lg bg-accent px-3 py-3 font-medium text-white disabled:opacity-40"
                 >
-                  Back
+                  Approve
                 </button>
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={alwaysAllow}
-                  className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
+                  onClick={() => setMode("always")}
+                  className="rounded-lg border border-line px-3 py-3 font-medium hover:bg-raised"
                 >
                   Always allow
                 </button>
-              </div>
-            </fieldset>
-          )}
-
-          {canAnswer && mode === "reject" && (
-            <div className="mt-6">
-              <div className="block">
-                <span className="mb-1.5 block text-muted">
-                  Why not? {r.requester.name} learns from this.
-                </span>
-                <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
-                  <RichEditor
-                    label="Why not?"
-                    autoFocus
-                    value=""
-                    onChange={setReason}
-                    onEscape={() => setMode("idle")}
-                    className="min-h-14"
-                  />
-                </div>
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setMode("idle")}
-                  className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !reason.trim()}
-                  onClick={reject}
-                  className="rounded-md bg-red-500 px-3 py-1.5 font-medium text-white disabled:opacity-40"
+                  disabled={busy}
+                  onClick={() => setMode("reject")}
+                  className="rounded-lg border border-line px-3 py-3 font-medium text-red-400 hover:bg-raised"
                 >
                   Reject
                 </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {r.status !== "pending" && (
-            <div className="mt-6 rounded-lg border border-line px-4 py-3">
-              <p className={STATUS_STYLE[r.status]}>
-                {r.status === "approved"
-                  ? r.grant
-                    ? "Always allowed"
-                    : r.used
-                      ? "Approved once, and used"
-                      : "Approved once"
-                  : r.status === "rejected"
-                    ? "Rejected"
-                    : "Canceled by the agent"}
-                {r.answeredBy && r.answeredAt && (
-                  <span className="text-faint">
-                    {" "}
-                    by {r.answeredBy.name} {timeAgo(r.answeredAt)}
-                  </span>
+            {canAnswer && mode === "always" && (
+              <fieldset className="rounded-lg border border-line p-4">
+                <legend className="px-1 font-medium">Always allow {r.action} for</legend>
+                <div className="space-y-2">
+                  <ScopeOption value="user" current={scope} onChange={setScope}>
+                    {r.requester.name} only
+                  </ScopeOption>
+                  {r.requester.teams.nodes.map((t) => (
+                    <ScopeOption
+                      key={t.id}
+                      value={`team:${t.id}`}
+                      current={scope}
+                      onChange={setScope}
+                    >
+                      Everyone in {t.name}
+                    </ScopeOption>
+                  ))}
+                  <ScopeOption value="everyone" current={scope} onChange={setScope}>
+                    Every agent
+                  </ScopeOption>
+                </div>
+                {r.resource && (
+                  <label className="mt-3 flex items-center gap-2 text-muted">
+                    <input
+                      type="checkbox"
+                      checked={anyResource}
+                      onChange={(e) => setAnyResource(e.target.checked)}
+                    />
+                    On anything, not only <code className="break-all">{r.resource}</code>
+                  </label>
                 )}
-              </p>
-              {r.answer && <RichText source={r.answer} className="mt-1 text-muted" />}
-            </div>
-          )}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={() => setMode("idle")} className={button("ghost")}>
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={alwaysAllow}
+                    className={button("primary")}
+                  >
+                    Always allow
+                  </button>
+                </div>
+              </fieldset>
+            )}
+
+            {canAnswer && mode === "reject" && (
+              <div>
+                <div className="block">
+                  <span className="mb-1.5 block text-muted">
+                    Why not? {r.requester.name} learns from this.
+                  </span>
+                  <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
+                    <RichEditor
+                      label="Why not?"
+                      autoFocus
+                      value=""
+                      onChange={setReason}
+                      onEscape={() => setMode("idle")}
+                      className="min-h-14"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button type="button" onClick={() => setMode("idle")} className={button("ghost")}>
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !reason.trim()}
+                    onClick={reject}
+                    className={button("destructive")}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {r.status !== "pending" && (
+              <div className="rounded-lg border border-line px-4 py-3">
+                <p className={STATUS_STYLE[r.status]}>
+                  {r.status === "approved"
+                    ? r.grant
+                      ? "Always allowed"
+                      : r.used
+                        ? "Approved once, and used"
+                        : "Approved once"
+                    : r.status === "rejected"
+                      ? "Rejected"
+                      : "Canceled by the agent"}
+                  {r.answeredBy && r.answeredAt && (
+                    <span className="text-faint">
+                      {" "}
+                      by {r.answeredBy.name} {timeAgo(r.answeredAt)}
+                    </span>
+                  )}
+                </p>
+                {r.answer && <RichText source={r.answer} className="mt-1 text-muted" />}
+              </div>
+            )}
+          </div>
         </DetailLayout>
       </div>
     </div>

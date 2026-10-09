@@ -1,5 +1,4 @@
 import { type ReactNode, useLayoutEffect, useRef } from "react";
-import { navigate } from "./router.js";
 
 // Empty, loading and selected states, shared so every view moves and reads the same way.
 
@@ -342,37 +341,5 @@ export function EmptyState({
         </div>
       )}
     </div>
-  );
-}
-
-// Tabs ----------------------------------------------------------------------
-
-/** A tab that's a link, like Linear's view tabs; the selection glides between tabs in `group`. */
-export function TabLink({
-  active,
-  to,
-  group,
-  children,
-}: {
-  active: boolean;
-  to: string;
-  group: string;
-  children: ReactNode;
-}) {
-  return (
-    <a
-      href={to}
-      aria-current={active ? "page" : undefined}
-      onClick={(e) => {
-        e.preventDefault();
-        navigate(to);
-      }}
-      className={`relative shrink-0 rounded-md border border-transparent px-2 py-0.5 font-normal ${
-        active ? "text-ink" : "text-muted hover:text-ink"
-      }`}
-    >
-      {active && <SelectedPill group={group} className="rounded-md border border-line bg-raised" />}
-      {children}
-    </a>
   );
 }

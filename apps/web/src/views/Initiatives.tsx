@@ -3,10 +3,11 @@ import { dateMenu, linkEntries, workspaceStore } from "../actions.js";
 import { contextMenu } from "../contextMenu.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
+import { button, field, Page, PageBody, PageHeader } from "../layout.js";
 import { navigate, paths } from "../router.js";
-import { EmptyState } from "../states.js";
+import { EmptyState, ListSkeleton } from "../states.js";
 import { Avatar, type MenuSpec, openMenu, shortDate } from "../ui.js";
-import { type Health, HealthBadge, ProjectDot } from "./Projects.js";
+import { type Health, HealthBadge, ProjectDot, ProjectsTabs } from "./Projects.js";
 
 type Status = "planned" | "active" | "completed";
 const STATUS: Record<Status, { label: string; className: string }> = {
@@ -69,66 +70,59 @@ export function InitiativesView() {
   const { data, error } = useQuery<{ initiatives: { nodes: Initiative[] } }>(
     "{ initiatives { nodes { id name description status targetDate owner { id name kind } projects { nodes { id name color health progress { progress } } } } } }",
   );
+  // Every card's "Add project" needs the projects; load them with the page so cards don't grow.
+  const projects = useQuery<{ projects: { nodes: ProjectOption[] } }>(
+    "{ projects(first: 200) { nodes { id name color } } }",
+  );
+  const allProjects = projects.data?.projects.nodes ?? (projects.error ? [] : null);
   const [name, setName] = useState("");
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.projects())}
-          className="text-muted hover:text-ink"
-        >
-          Projects
-        </button>
-        <span className="text-faint">›</span>
-        <span className="font-medium">Initiatives</span>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6 md:px-6">
-          {error && <p className="text-red-400">{error}</p>}
-          <p className="mb-4 text-muted">
-            The few big things the company is going after this year. Link projects to them from
-            here.
-          </p>
-          <form
-            className="mb-6 flex gap-2"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (
-                await mutate(
-                  "mutation($name: String!) { initiativeCreate(input: { name: $name, status: active }) { success } }",
-                  { name },
-                )
+    <Page>
+      <PageHeader>
+        <ProjectsTabs active="initiatives" />
+      </PageHeader>
+      <PageBody>
+        {error && <p className="text-red-400">{error}</p>}
+        <p className="mb-4 text-muted">
+          The few big things the company is going after this year. Link projects to them from here.
+        </p>
+        <form
+          className="mb-6 flex gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (
+              await mutate(
+                "mutation($name: String!) { initiativeCreate(input: { name: $name, status: active }) { success } }",
+                { name },
               )
-                setName("");
-            }}
-          >
-            <input
-              aria-label="New initiative"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="New initiative, e.g. Get fit"
-              className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3 py-1.5 outline-none placeholder:text-faint focus:border-faint"
-            />
-            <button
-              type="submit"
-              disabled={!name.trim()}
-              className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-            >
-              Add
-            </button>
-          </form>
-          {data && data.initiatives.nodes.length === 0 && (
-            <EmptyState
-              compact
-              icon="initiative"
-              title="No initiatives yet"
-              description="Name one above, like “Get fit” or “Buy a home”, then link the projects that move it."
-              className="rounded-xl border border-dashed border-line"
-            />
-          )}
-          <div className="space-y-4">
-            {data?.initiatives.nodes.map((i) => (
+            )
+              setName("");
+          }}
+        >
+          <input
+            aria-label="New initiative"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="New initiative, e.g. Get fit"
+            className={`flex-1 ${field}`}
+          />
+          <button type="submit" disabled={!name.trim()} className={button("primary")}>
+            Add
+          </button>
+        </form>
+        {!error && (!data || !allProjects) && <ListSkeleton rows={4} />}
+        {data && data.initiatives.nodes.length === 0 && (
+          <EmptyState
+            compact
+            icon="initiative"
+            title="No initiatives yet"
+            description="Name one above, like “Get fit” or “Buy a home”, then link the projects that move it."
+            className="rounded-lg border border-dashed border-line"
+          />
+        )}
+        <div className="space-y-4">
+          {allProjects &&
+            data?.initiatives.nodes.map((i) => (
               <section key={i.id} className="rounded-lg border border-line">
                 {/* biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats its buttons */}
                 <header
@@ -221,21 +215,35 @@ export function InitiativesView() {
                     </li>
                   ))}
                 </ul>
-                <LinkProject initiativeId={i.id} linked={i.projects.nodes.map((p) => p.id)} />
+                <LinkProject
+                  initiativeId={i.id}
+                  projects={allProjects}
+                  linked={i.projects.nodes.map((p) => p.id)}
+                />
               </section>
             ))}
-          </div>
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 
-function LinkProject({ initiativeId, linked }: { initiativeId: string; linked: string[] }) {
-  const { data } = useQuery<{ projects: { nodes: { id: string; name: string; color: string }[] } }>(
-    "{ projects(first: 200) { nodes { id name color } } }",
-  );
-  const options = (data?.projects.nodes ?? []).filter((p) => !linked.includes(p.id));
+interface ProjectOption {
+  id: string;
+  name: string;
+  color: string;
+}
+
+function LinkProject({
+  initiativeId,
+  projects,
+  linked,
+}: {
+  initiativeId: string;
+  projects: ProjectOption[];
+  linked: string[];
+}) {
+  const options = projects.filter((p) => !linked.includes(p.id));
   if (!options.length) return null;
   return (
     <button

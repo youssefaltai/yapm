@@ -479,7 +479,7 @@ test.describe
       await expect(page.getByLabel("Document title")).toHaveValue("Payment plan");
 
       await page.getByRole("link", { name: "Projects" }).click();
-      await page.getByRole("button", { name: "Roadmap" }).click();
+      await page.getByRole("link", { name: "Roadmap" }).click();
       await expect(page.getByRole("button", { name: "Pay off the car" })).toBeVisible();
     });
 

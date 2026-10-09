@@ -1,10 +1,12 @@
 import { cycleName, workspaceStore } from "../actions.js";
 import { type Team, useQuery } from "../data.js";
+import { Breadcrumbs, eyebrow, listRow, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
-import { EmptyState, PageSkeleton } from "../states.js";
+import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { shortDate, useStore } from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 import { Progress } from "./Projects.js";
+import { TeamTabs } from "./TeamTabs.js";
 
 interface CycleRow {
   id: string;
@@ -36,19 +38,13 @@ export function CyclesView({ team }: { team: Team }) {
   const cycles = data?.team.cycles.nodes ?? [];
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <span className="font-medium">{team.name}</span>
-        <span className="text-muted">Cycles</span>
-        <button
-          type="button"
-          onClick={() => navigate(paths.teamSettings(team.key))}
-          className="ml-auto text-muted hover:text-ink"
-        >
-          Settings
-        </button>
-      </header>
+      <PageHeader>
+        <PageTitle>{team.name}</PageTitle>
+        <TeamTabs team={team} active="cycles" />
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
+        {team.cyclesEnabled && !data && !error && <ListSkeleton rows={4} />}
         {!team.cyclesEnabled && (
           <EmptyState
             icon="cycle"
@@ -66,7 +62,7 @@ export function CyclesView({ team }: { team: Team }) {
               <button
                 type="button"
                 onClick={() => navigate(paths.cycle(c.id))}
-                className={`flex w-full items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6 ${c.isActive ? "bg-raised/50" : ""}`}
+                className={`${listRow} ${c.isActive ? "bg-raised/50" : ""}`}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{cycleName(c)}</span>
@@ -108,16 +104,14 @@ export function CyclePage({ id }: { id: string }) {
     <IssuesView
       source={{ kind: "cycle", cycle, team }}
       title={
-        <>
-          <button
-            type="button"
-            onClick={() => navigate(paths.cycles(team.key))}
-            className="text-muted hover:text-ink"
-          >
-            <span className="max-sm:hidden">{team.name} › </span>Cycles ›
-          </button>
+        <Breadcrumbs
+          trail={[
+            { label: team.name, to: paths.team(team.key), wide: true },
+            { label: "Cycles", to: paths.cycles(team.key) },
+          ]}
+        >
           {cycleName(cycle)}
-        </>
+        </Breadcrumbs>
       }
       tabs={
         <span className="text-[12px] text-faint max-sm:hidden xl:hidden">
@@ -140,7 +134,7 @@ function CycleSidebar({ cycle }: { cycle: CycleDetail }) {
   const done = cycle.completedScopeHistory.at(-1) ?? 0;
   const daysLeft = Math.ceil((Date.parse(cycle.endsAt) - Date.now()) / 86_400_000);
   return (
-    <div className="space-y-5 px-5 py-5">
+    <div className="space-y-5 px-5 py-6">
       <div>
         <div className="flex items-center gap-2">
           <h2 className="font-medium">{cycleName(cycle)}</h2>
@@ -173,7 +167,7 @@ function CycleSidebar({ cycle }: { cycle: CycleDetail }) {
         </div>
       </dl>
       <div>
-        <h3 className="mb-2 text-[12px] font-medium text-faint uppercase">Progress</h3>
+        <h3 className={`mb-2 ${eyebrow}`}>Progress</h3>
         {cycle.scopeHistory.length > 0 ? (
           <BurnUpChart cycle={cycle} className="h-36 w-full" />
         ) : (

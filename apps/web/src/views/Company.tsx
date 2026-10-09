@@ -1,6 +1,16 @@
 import { type ReactNode, useState } from "react";
 import { createTeamStore, hireAgentStore } from "../actions.js";
 import { type Member, mutate, type Workspace } from "../data.js";
+import {
+  button,
+  field,
+  Page,
+  PageBody,
+  PageHeader,
+  PageTitle,
+  pageHeading,
+  Section,
+} from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
 import { Avatar } from "../ui.js";
@@ -11,49 +21,49 @@ export function Company({ workspace }: { workspace: Workspace }) {
   const owner = members.find((m) => m.kind === "owner");
   const isOwner = workspace.viewer.kind === "owner";
   return (
-    <div className="h-full overflow-y-auto">
-      <header className="flex h-11 items-center border-b border-line px-4 md:px-6">
-        <span className="font-medium">Company</span>
-      </header>
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-10">
-        <h1 className="text-xl font-semibold">{workspace.organization.name}</h1>
+    <Page>
+      <PageHeader>
+        <PageTitle>Company</PageTitle>
+      </PageHeader>
+      <PageBody width="wide">
+        <h1 className={pageHeading}>{workspace.organization.name}</h1>
         <p className="mt-1 text-muted">{summary(members, teams.length)}</p>
 
-        <div className="mt-8 grid gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="mt-8 grid gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="min-w-0">
-            <section aria-labelledby="org-title">
-              <div className="mb-2 flex items-center">
-                <h2 id="org-title" className="text-[12px] font-medium text-faint uppercase">
-                  Organization
-                </h2>
-                {isOwner && (
+            <Section
+              id="org-title"
+              title="Organization"
+              actions={
+                isOwner && (
                   <button
                     type="button"
                     onClick={() => hireAgentStore.set(true)}
-                    className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+                    className={button("ghost", "sm")}
                   >
                     + Hire agent
                   </button>
-                )}
-              </div>
+                )
+              }
+            >
               <div className="overflow-hidden rounded-lg border border-line">
                 {owner && <OrgNode member={owner} members={members} depth={0} />}
               </div>
-            </section>
+            </Section>
 
-            <section aria-labelledby="teams-title" className="mt-8">
-              <div className="mb-2 flex items-center">
-                <h2 id="teams-title" className="text-[12px] font-medium text-faint uppercase">
-                  Teams
-                </h2>
+            <Section
+              id="teams-title"
+              title="Teams"
+              actions={
                 <button
                   type="button"
                   onClick={() => createTeamStore.set(true)}
-                  className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+                  className={button("ghost", "sm")}
                 >
                   + New team
                 </button>
-              </div>
+              }
+            >
               {teams.length === 0 && (
                 <EmptyState
                   compact
@@ -65,7 +75,7 @@ export function Company({ workspace }: { workspace: Workspace }) {
                 />
               )}
               <TeamList teams={teams} members={members} />
-            </section>
+            </Section>
           </div>
 
           <aside className="min-w-0 space-y-3">
@@ -76,7 +86,7 @@ export function Company({ workspace }: { workspace: Workspace }) {
               <button
                 type="button"
                 onClick={() => navigate(paths.handbook())}
-                className="rounded-md border border-line px-3 py-1.5 hover:bg-raised"
+                className={button("secondary")}
               >
                 Handbook
               </button>
@@ -84,8 +94,8 @@ export function Company({ workspace }: { workspace: Workspace }) {
             {isOwner && <MoveData />}
           </aside>
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </Page>
   );
 }
 
@@ -101,7 +111,7 @@ function SideCard({
   return (
     <section className="rounded-lg border border-line bg-panel px-4 py-3">
       <h2 className="font-medium">{title}</h2>
-      <p className="mt-0.5 text-[13px] text-muted">{body}</p>
+      <p className="mt-1 text-muted">{body}</p>
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -119,7 +129,7 @@ function TeamList({ teams, members }: { teams: Workspace["teams"]["nodes"]; memb
             key={team.id}
             type="button"
             onClick={() => navigate(paths.team(team.key))}
-            className="flex w-full animate-fade-in items-center gap-3 px-4 py-2.5 text-left hover:bg-raised"
+            className="flex w-full animate-fade-in items-center gap-3 px-4 py-2 text-left hover:bg-raised"
           >
             <span className="w-10 shrink-0 text-[11px] font-medium text-faint">{team.key}</span>
             <span className="min-w-0 flex-1">
@@ -196,13 +206,9 @@ function MoveData() {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="lin_api_…"
-            className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3 py-1.5 outline-none placeholder:text-faint focus:border-faint"
+            className={`flex-1 ${field}`}
           />
-          <button
-            type="submit"
-            disabled={!apiKey.trim() || busy}
-            className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-          >
+          <button type="submit" disabled={!apiKey.trim() || busy} className={button("primary")}>
             {busy ? "Importing…" : "Import"}
           </button>
         </form>
@@ -217,18 +223,10 @@ function MoveData() {
         body="Everything as JSON, or issues as CSV in Linear's columns. Passkeys, tokens and machine secrets are left out."
       >
         <div className="flex gap-2">
-          <a
-            href="/api/export"
-            download
-            className="rounded-md border border-line px-3 py-1.5 hover:bg-raised"
-          >
+          <a href="/api/export" download className={button("secondary")}>
             Export JSON
           </a>
-          <a
-            href="/api/export?format=csv"
-            download
-            className="rounded-md border border-line px-3 py-1.5 hover:bg-raised"
-          >
+          <a href="/api/export?format=csv" download className={button("secondary")}>
             Export CSV
           </a>
         </div>

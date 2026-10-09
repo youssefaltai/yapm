@@ -23,7 +23,6 @@ const tools = [
 ];
 
 const INSTRUCTIONS = `This is Life OS, the company's own issue tracker. You are one of its members.
-Its tools share Linear's names, but it is not Linear: the owner's Linear workspace is an outside app.
 Work happens in issues: read them with get_issue and list_my_issues, report progress with create_comment,
 and move issues through their team's statuses with update_issue. Address teammates by name.
 Prefer a reaction over a comment when you only need to acknowledge something.`;

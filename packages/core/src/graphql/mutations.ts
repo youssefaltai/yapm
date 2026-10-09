@@ -273,7 +273,7 @@ builder.mutationType({
     teamCreate: t.field({
       type: TeamPayload,
       description:
-        "Creates a team with Linear's default workflow, from Triage and Backlog through Done and Canceled.",
+        "Creates a team with the default workflow, from Triage and Backlog through Done and Canceled.",
       args: { input: t.arg({ type: TeamCreateInput, required: true }) },
       resolve: async (_root, args, ctx) => {
         const id = await act(ctx, (s) => createTeam(s, args.input));

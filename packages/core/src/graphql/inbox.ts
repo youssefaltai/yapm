@@ -37,7 +37,7 @@ export const Notification = builder.objectRef<NotificationRow>("Notification");
 const NotificationConnection = connection<NotificationRow>("Notification", Notification);
 
 Notification.implement({
-  description: "An entry in a member's Inbox, like Linear's notifications.",
+  description: "An entry in a member's Inbox.",
   fields: (t) => ({
     id: t.exposeID("id"),
     type: t.field({ type: NotificationType, resolve: (n) => n.type }),

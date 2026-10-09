@@ -774,8 +774,8 @@ export function hubContract(
         protocolVersion: "2025-06-18",
         serverInfo: { name: "life-os" },
       });
-      // Its tools share Linear's names, so agents must not mistake it for the owner's Linear.
-      expect(init.result?.instructions).toContain("not Linear");
+      // Agents must not mistake it for the owner's Linear, so nothing they read names Linear.
+      expect(init.result?.instructions).not.toContain("Linear");
       const note = await client.request("/mcp", {
         method: "POST",
         json: { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -793,6 +793,15 @@ export function hubContract(
           "create_comment",
           "list_teams",
         ]),
+      );
+      expect(JSON.stringify(list.result)).not.toContain("Linear");
+      const schema = await client.graphql<{
+        __schema: { types: { name: string; description: string | null; fields: unknown }[] };
+      }>("{ __schema { types { name description fields { name description } } } }");
+      // Only the importer, which brings a real Linear workspace in, may name it.
+      const described = schema.data?.__schema.types.filter((t) => !/linear/i.test(t.name)) ?? [];
+      expect(JSON.stringify(described).replace(/"name":"linearImport[^}]*}/g, "")).not.toContain(
+        "Linear",
       );
 
       const created = (
@@ -1367,7 +1376,7 @@ export function hubContract(
         input: { tools: false },
       });
       expect(decision.body.input.systemPrompt).toContain("Coach things.");
-      expect(decision.body.input.systemPrompt).toContain("not Linear");
+      expect(decision.body.input.systemPrompt).not.toContain("Linear");
       expect(decision.body.input.prompt).toContain("Youssef assigned the issue to you");
       expect(decision.body.input.prompt).toContain("Build a 12-week training plan");
       expect(decision.body.input.outputSchema.properties).toHaveProperty("action");

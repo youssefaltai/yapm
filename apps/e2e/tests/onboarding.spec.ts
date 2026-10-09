@@ -468,9 +468,8 @@ test.describe
     test("coaches an agent with feedback, lessons and the handbook", async () => {
       // Feedback on the issue where the work happened, from Ada's comment.
       await page.goto("/issue/PF-1");
-      const comment = page.getByText("@Youssef the bill is paid, receipt attached.", {
-        exact: true,
-      });
+      // Matches the comment both as plain text and once the editor renders the mention.
+      const comment = page.getByText("the bill is paid, receipt attached.");
       await comment.hover();
       await page.getByRole("button", { name: "Give feedback" }).first().click();
       await page
@@ -874,7 +873,13 @@ test.describe
       const comment = page.getByText("Paid through the bank app.");
       await comment.click({ button: "right" });
       await page.getByRole("menuitem", { name: /Add reaction/ }).hover();
-      await page.getByRole("menuitem", { name: "🎉" }).click();
+      await page.getByRole("menuitem", { name: /Party Popper/ }).click();
       await expect(page.getByRole("button", { name: /🎉 1/ })).toBeVisible();
+
+      // Or search the full picker, and pick with the keyboard.
+      await page.getByRole("button", { name: "Add reaction" }).last().click();
+      await page.getByPlaceholder("Search emoji…").fill("rocket");
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("button", { name: /🚀 1/ })).toBeVisible();
     });
   });

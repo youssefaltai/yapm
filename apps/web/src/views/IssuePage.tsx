@@ -31,6 +31,13 @@ import {
   type Workspace,
 } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
+import {
+  openReactionPicker,
+  type Reaction,
+  Reactions,
+  reactionMenu,
+  SmileyPlus,
+} from "../emoji/Reactions.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, PageSkeleton } from "../states.js";
 import {
@@ -57,12 +64,6 @@ interface MiniIssue {
   identifier: string;
   title: string;
   state: { type: StateType; color: string };
-}
-
-interface Reaction {
-  id: string;
-  emoji: string;
-  user: { id: string; name: string; isMe: boolean };
 }
 
 interface Comment {
@@ -855,6 +856,8 @@ function CommentBody({
   workspace: Workspace;
   onReply: () => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reactRef = useRef<HTMLButtonElement>(null);
   const [editing, setEditing] = useState(false);
   const [coaching, setCoaching] = useState(false);
   const [text, setText] = useState(comment.body);
@@ -887,13 +890,15 @@ function CommentBody({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats its buttons
     <div
+      ref={ref}
       className="group px-4 py-3"
       onContextMenu={contextMenu(() => [
         { id: "reply", label: "Reply", onSelect: onReply },
         {
           id: "react",
           label: "Add reaction",
-          submenu: () => reactionMenu(comment.reactions, { commentId: comment.id }),
+          submenu: () =>
+            reactionMenu(comment.reactions, { commentId: comment.id }, () => ref.current),
         },
         comment.user.isMe && { id: "edit", label: "Edit", onSelect: startEditing },
         canCoach(workspace, comment.user.id) && {
@@ -914,7 +919,20 @@ function CommentBody({
           {timeAgo(comment.createdAt)}
           {comment.editedAt ? " (edited)" : ""}
         </span>
-        <span className="ml-auto flex gap-2 opacity-0 group-hover:opacity-100">
+        <span className="ml-auto flex items-center gap-2 opacity-0 group-hover:opacity-100 has-[:focus-visible]:opacity-100">
+          <button
+            ref={reactRef}
+            type="button"
+            aria-label="React"
+            title="Add reaction"
+            onClick={() =>
+              reactRef.current &&
+              openReactionPicker(reactRef.current, comment.reactions, { commentId: comment.id })
+            }
+            className="text-faint hover:text-ink"
+          >
+            <SmileyPlus size={15} />
+          </button>
           {canCoach(workspace, comment.user.id) && (
             <button
               type="button"
@@ -966,7 +984,11 @@ function CommentBody({
       ) : (
         <RichText source={comment.body} className="mt-1.5" />
       )}
-      <Reactions reactions={comment.reactions} target={{ commentId: comment.id }} />
+      <Reactions
+        reactions={comment.reactions}
+        target={{ commentId: comment.id }}
+        addWhenEmpty={false}
+      />
       {coaching && (
         <div className="mt-2">
           <FeedbackForm
@@ -978,65 +1000,6 @@ function CommentBody({
           />
         </div>
       )}
-    </div>
-  );
-}
-
-const QUICK_EMOJI = ["👍", "👎", "❤️", "🎉", "😄", "👀", "🚀", "🙏"];
-
-type ReactionTarget = { issueId?: string; commentId?: string };
-
-function toggleReaction(reactions: Reaction[], emoji: string, target: ReactionTarget) {
-  const mine = reactions.find((r) => r.emoji === emoji && r.user.isMe);
-  if (mine)
-    return mutate("mutation($id: String!) { reactionDelete(id: $id) { success } }", {
-      id: mine.id,
-    });
-  return mutate(
-    "mutation($input: ReactionCreateInput!) { reactionCreate(input: $input) { success } }",
-    { input: { emoji, ...target } },
-  );
-}
-
-function reactionMenu(reactions: Reaction[], target: ReactionTarget): MenuSpec {
-  return {
-    placeholder: "React with…",
-    items: QUICK_EMOJI.map((emoji) => ({
-      id: emoji,
-      label: emoji,
-      checked: reactions.some((r) => r.emoji === emoji && r.user.isMe),
-      onSelect: () => void toggleReaction(reactions, emoji, target),
-    })),
-  };
-}
-
-function Reactions({ reactions, target }: { reactions: Reaction[]; target: ReactionTarget }) {
-  const groups = new Map<string, Reaction[]>();
-  for (const r of reactions) groups.set(r.emoji, [...(groups.get(r.emoji) ?? []), r]);
-  const toggle = (emoji: string) => void toggleReaction(reactions, emoji, target);
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-1">
-      {[...groups].map(([emoji, list]) => (
-        <button
-          key={emoji}
-          type="button"
-          title={list.map((r) => r.user.name).join(", ")}
-          onClick={() => toggle(emoji)}
-          className={`flex animate-pop-in items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] ${
-            list.some((r) => r.user.isMe) ? "border-accent/60 bg-accent/10" : "border-line"
-          }`}
-        >
-          {emoji} <span className="text-muted">{list.length}</span>
-        </button>
-      ))}
-      <button
-        type="button"
-        aria-label="Add reaction"
-        onClick={() => openMenu(reactionMenu(reactions, target))}
-        className="rounded-full px-1.5 py-0.5 text-[12px] text-faint hover:bg-raised hover:text-ink"
-      >
-        ☺︎+
-      </button>
     </div>
   );
 }

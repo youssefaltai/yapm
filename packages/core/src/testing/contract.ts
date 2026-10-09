@@ -508,6 +508,33 @@ export function hubContract(
       );
       expect(react.data?.reactionCreate.reaction.emoji).toBe("👍");
 
+      // Shortcodes become the emoji, so `+1` from an agent groups with 👍 instead of showing as text.
+      const shortcode = await client.graphql<{
+        reactionCreate: { reaction: { id: string; emoji: string } };
+      }>(
+        'mutation($commentId: String) { reactionCreate(input: { emoji: ":+1:", commentId: $commentId }) { reaction { id emoji } } }',
+        { commentId },
+        ceoToken,
+      );
+      expect(shortcode.data?.reactionCreate.reaction).toEqual(react.data?.reactionCreate.reaction);
+      const tada = await client.graphql<{ reactionCreate: { reaction: { emoji: string } } }>(
+        'mutation($issueId: String) { reactionCreate(input: { emoji: "tada", issueId: $issueId }) { reaction { emoji } } }',
+        { issueId },
+      );
+      expect(tada.data?.reactionCreate.reaction.emoji).toBe("🎉");
+      const heart = await client.graphql<{ reactionCreate: { reaction: { emoji: string } } }>(
+        'mutation($issueId: String) { reactionCreate(input: { emoji: "\u2764", issueId: $issueId }) { reaction { emoji } } }',
+        { issueId },
+      );
+      expect(heart.data?.reactionCreate.reaction.emoji).toBe("❤️");
+      for (const emoji of [":not_an_emoji:", "hello"]) {
+        const bad = await client.graphql(
+          "mutation($issueId: String, $emoji: String!) { reactionCreate(input: { emoji: $emoji, issueId: $issueId }) { success } }",
+          { issueId, emoji },
+        );
+        expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      }
+
       const forbidden = await client.graphql(
         'mutation($id: String!) { commentUpdate(id: $id, input: { body: "hijacked" }) { success } }',
         { id: commentId },

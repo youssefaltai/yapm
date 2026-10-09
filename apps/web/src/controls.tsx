@@ -15,6 +15,9 @@ import { createStore, Modal, useLayer, useStore } from "./ui.js";
 
 // Popover -------------------------------------------------------------------
 
+/** What a popover hangs from: an element, or just a place, like the caret in an editor. */
+export type Anchor = HTMLElement | { getBoundingClientRect(): DOMRect };
+
 /**
  * A floating panel anchored to a trigger. A clear backdrop catches outside
  * clicks so they close only the popover, like a native menu.
@@ -26,7 +29,7 @@ export function Popover({
   label,
   align = "start",
 }: {
-  anchor: HTMLElement | null;
+  anchor: Anchor | null;
   onClose: () => void;
   children: ReactNode;
   label: string;
@@ -41,7 +44,8 @@ export function Popover({
       const panel = ref.current;
       if (!anchor || !panel) return;
       const a = anchor.getBoundingClientRect();
-      const { width, height } = panel.getBoundingClientRect();
+      // Layout size, not the rect: the pop-in animation starts scaled down.
+      const { offsetWidth: width, offsetHeight: height } = panel;
       const gap = 4;
       const below = window.innerHeight - a.bottom - gap;
       const top = below >= height || a.top < height ? a.bottom + gap : a.top - gap - height;
@@ -58,7 +62,12 @@ export function Popover({
   }, [anchor, align]);
 
   // Hand focus back to the trigger, so keyboard users stay where they were.
-  useEffect(() => () => anchor?.focus({ preventScroll: true }), [anchor]);
+  useEffect(
+    () => () => {
+      if (anchor instanceof HTMLElement) anchor.focus({ preventScroll: true });
+    },
+    [anchor],
+  );
 
   return createPortal(
     // Clicks inside stay inside: React would otherwise bubble them to the trigger's ancestors.

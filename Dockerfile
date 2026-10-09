@@ -1,5 +1,5 @@
 # Life OS hub on Node.js: serves the API, GraphQL and the web app, with a SQLite file in /data.
-FROM node:22-slim AS build
+FROM public.ecr.aws/docker/library/node:22-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY . .
@@ -8,7 +8,7 @@ RUN pnpm --filter @life-os/web build && pnpm --filter @life-os/hub-node build
 # Production dependencies the bundle keeps external (native libSQL, Hono, Drizzle).
 RUN pnpm --filter @life-os/hub-node deploy --prod --legacy /out
 
-FROM node:22-slim
+FROM public.ecr.aws/docker/library/node:22-slim
 ENV NODE_ENV=production \
     PORT=8787 \
     DATABASE_URL=file:/data/life-os.db

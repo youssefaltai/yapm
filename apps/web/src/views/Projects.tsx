@@ -37,18 +37,18 @@ export type ProjectState = "backlog" | "planned" | "started" | "paused" | "compl
 export type Health = "onTrack" | "atRisk" | "offTrack";
 
 export const PROJECT_STATES: { value: ProjectState; label: string; color: string }[] = [
-  { value: "backlog", label: "Backlog", color: "#bec2c8" },
-  { value: "planned", label: "Planned", color: "#e2e2e2" },
-  { value: "started", label: "In Progress", color: "#f2c94c" },
-  { value: "paused", label: "Paused", color: "#95a2b3" },
-  { value: "completed", label: "Completed", color: "#5e6ad2" },
-  { value: "canceled", label: "Canceled", color: "#95a2b3" },
+  { value: "backlog", label: "Backlog", color: "var(--color-faint)" },
+  { value: "planned", label: "Planned", color: "var(--color-muted)" },
+  { value: "started", label: "In Progress", color: "var(--color-ink)" },
+  { value: "paused", label: "Paused", color: "var(--color-faint)" },
+  { value: "completed", label: "Completed", color: "var(--color-muted)" },
+  { value: "canceled", label: "Canceled", color: "var(--color-faint)" },
 ];
 
 export const HEALTH: Record<Health, { label: string; className: string }> = {
-  onTrack: { label: "On track", className: "text-emerald-400" },
-  atRisk: { label: "At risk", className: "text-amber-400" },
-  offTrack: { label: "Off track", className: "text-red-400" },
+  onTrack: { label: "On track", className: "text-success" },
+  atRisk: { label: "At risk", className: "text-warning" },
+  offTrack: { label: "Off track", className: "text-critical" },
 };
 
 interface ProjectRow {
@@ -67,11 +67,11 @@ interface ProjectRow {
 const PROJECT_ROW =
   "id name summary color state health targetDate lead { id name kind } progress { progress scope } initiative { id name }";
 
-export function ProjectDot({ color, size = 10 }: { color: string; size?: number }) {
+export function ProjectDot({ size = 10 }: { size?: number }) {
   return (
     <span
-      className="inline-block shrink-0 rounded-[3px]"
-      style={{ background: color, width: size, height: size }}
+      className="inline-block shrink-0 rounded-[3px] bg-muted"
+      style={{ width: size, height: size }}
       aria-hidden
     />
   );
@@ -123,7 +123,7 @@ export function ProjectsView() {
         <PageTitle>Projects</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {error && <p className="p-6 text-red-400">{error}</p>}
+        {error && <p className="p-6 text-critical">{error}</p>}
         {!data && !error && <ListSkeleton rows={6} />}
         {data && rows.length === 0 && (
           <EmptyState
@@ -152,7 +152,7 @@ export function ProjectsView() {
                     onContextMenu={contextMenu(() => projectContextMenu(p))}
                     className={listRow}
                   >
-                    <ProjectDot color={p.color} />
+                    <ProjectDot />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{p.name}</span>
                       {p.summary && (
@@ -488,7 +488,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
 function ProjectCrumbs({ project: p }: { project: ProjectDetail }) {
   return (
     <Breadcrumbs trail={[{ label: "Projects", to: paths.projects() }]}>
-      <ProjectDot color={p.color} />
+      <ProjectDot />
       <span className="max-w-48 truncate">{p.name}</span>
     </Breadcrumbs>
   );
@@ -640,7 +640,7 @@ function Milestones({ project: p }: { project: ProjectDetail }) {
                     { id: m.id },
                   );
               }}
-              className="text-faint hover:text-red-400"
+              className="text-faint hover:text-critical"
             >
               ×
             </button>
@@ -891,7 +891,7 @@ function ProjectProperties({ project: p }: { project: ProjectDetail }) {
       <button
         type="button"
         onClick={() => void archiveProject(p)}
-        className="mt-2 justify-self-start rounded-md px-2 py-1 text-[12px] text-faint hover:text-red-400"
+        className="mt-2 justify-self-start rounded-md px-2 py-1 text-[12px] text-faint hover:text-critical"
       >
         Archive project
       </button>

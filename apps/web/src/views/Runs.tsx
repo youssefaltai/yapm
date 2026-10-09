@@ -61,9 +61,9 @@ export const isActive = (status: RunStatus) => ACTIVE.includes(status);
 const STATUS: Record<RunStatus, { label: string; className: string }> = {
   queued: { label: "Queued", className: "text-muted" },
   running: { label: "Running", className: "text-accent" },
-  needs_input: { label: "Needs input", className: "text-amber-400" },
-  completed: { label: "Done", className: "text-emerald-400" },
-  failed: { label: "Failed", className: "text-red-400" },
+  needs_input: { label: "Needs input", className: "text-warning" },
+  completed: { label: "Done", className: "text-success" },
+  failed: { label: "Failed", className: "text-critical" },
   stopped: { label: "Stopped", className: "text-faint" },
   canceled: { label: "Canceled", className: "text-faint" },
 };
@@ -137,7 +137,7 @@ export function RunRows({
                     </>
                   )}
                   {run.waitingOnRequest?.status === "pending" && (
-                    <span className="text-amber-400">
+                    <span className="text-warning">
                       {showIssue && run.issue ? " · " : ""}Waiting for your approval
                     </span>
                   )}
@@ -208,7 +208,7 @@ export function RunsView({ tab }: { tab: RunsTab }) {
         <PageTitle>Runs</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {error && <p className="p-6 text-red-400">{error}</p>}
+        {error && <p className="p-6 text-critical">{error}</p>}
         {!data && !error && <ListSkeleton rows={6} />}
         {data &&
           data.runs.nodes.length === 0 &&
@@ -364,9 +364,9 @@ export function RunPage({ id }: { id: string }) {
                   onClick={() =>
                     run.waitingOnRequest && navigate(paths.request(run.waitingOnRequest.id))
                   }
-                  className="mt-4 block w-full rounded-lg border border-amber-400/40 bg-amber-400/5 px-4 py-3 text-left"
+                  className="mt-4 block w-full rounded-lg border border-warning/40 bg-warning/5 px-4 py-3 text-left"
                 >
-                  <span className="text-amber-400">Waiting for your approval:</span>{" "}
+                  <span className="text-warning">Waiting for your approval:</span>{" "}
                   {run.waitingOnRequest.title}
                 </button>
               )}
@@ -463,7 +463,7 @@ function Outcome({ run }: { run: RunDetail }) {
     );
   if (run.status === "failed")
     return (
-      <p className="mt-4 rounded-lg border border-red-400/40 px-4 py-3 text-red-400">
+      <p className="mt-4 rounded-lg border border-critical/40 px-4 py-3 text-critical">
         {run.error ?? "Failed"}
       </p>
     );
@@ -489,7 +489,7 @@ function Outcome({ run }: { run: RunDetail }) {
       ) : (
         <>
           <RichText source={text("summary")} />
-          {text("question") && <p className="mt-2 text-amber-400">Asked: {text("question")}</p>}
+          {text("question") && <p className="mt-2 text-warning">Asked: {text("question")}</p>}
         </>
       )}
     </div>

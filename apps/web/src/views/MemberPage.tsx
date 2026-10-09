@@ -389,7 +389,7 @@ export function MemberPage({ id }: { id: string }) {
                             { id: token.id },
                           )
                         }
-                        className="text-faint hover:text-red-400"
+                        className="text-faint hover:text-critical"
                       >
                         Revoke
                       </button>

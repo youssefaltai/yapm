@@ -255,10 +255,10 @@ function ContextMenu({ menu }: { menu: OpenMenu }) {
               className={`${ROW} transition-none ${
                 index === active || sub?.index === index
                   ? entry.danger
-                    ? "bg-red-500/10 text-red-400"
+                    ? "bg-critical/10 text-critical"
                     : "bg-raised text-ink"
                   : entry.danger
-                    ? "text-red-400/90"
+                    ? "text-critical/90"
                     : "text-muted"
               }`}
             >
@@ -502,7 +502,7 @@ function MenuList({
                   <span
                     aria-hidden
                     className={`flex size-3.5 shrink-0 items-center justify-center rounded-sm border text-[10px] transition-colors ${
-                      item.checked ? "border-accent bg-accent text-white" : "border-faint"
+                      item.checked ? "border-accent bg-accent text-on-accent" : "border-faint"
                     }`}
                   >
                     {item.checked ? "✓" : ""}

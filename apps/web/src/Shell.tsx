@@ -112,7 +112,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
           </button>
         </div>
         <div className="min-h-0 flex-1">
-          {error && <p className="p-6 text-red-400">{error}</p>}
+          {error && <p className="p-6 text-critical">{error}</p>}
           {workspace && (
             // A fresh page fades in; switching tabs within a page doesn't.
             <div key={pageKey(route)} className="h-full animate-fade-in">
@@ -318,7 +318,7 @@ function Sidebar({
           <span className="flex w-full items-center justify-between">
             Approvals
             {pending > 0 && (
-              <span className="animate-badge-in rounded-full bg-accent px-1.5 text-[11px] font-medium text-white">
+              <span className="animate-badge-in rounded-full bg-accent px-1.5 text-[11px] font-medium text-on-accent">
                 {pending}
               </span>
             )}

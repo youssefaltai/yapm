@@ -56,7 +56,7 @@ export function DocumentsView() {
         />
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {error && <p className="p-6 text-red-400">{error}</p>}
+        {error && <p className="p-6 text-critical">{error}</p>}
         {!data && !error && <ListSkeleton rows={6} />}
         {data &&
           data.documents.nodes.length === 0 &&
@@ -87,7 +87,7 @@ export function DocumentsView() {
                 <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
                 {d.project && (
                   <span className="flex max-w-40 items-center gap-1.5 truncate text-[12px] text-muted max-sm:hidden">
-                    <ProjectDot color={d.project.color} size={8} />
+                    <ProjectDot size={8} />
                     {d.project.name}
                   </span>
                 )}
@@ -190,7 +190,7 @@ export function DocumentPage({ id }: { id: string }) {
               ? {
                   label: (
                     <>
-                      <ProjectDot color={doc.project.color} size={8} />
+                      <ProjectDot size={8} />
                       {doc.project.name}
                     </>
                   ),

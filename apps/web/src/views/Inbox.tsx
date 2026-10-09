@@ -185,7 +185,7 @@ export function InboxView() {
         </PageHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <PushBanner />
-          {error && <p className="p-6 text-red-400">{error}</p>}
+          {error && <p className="p-6 text-critical">{error}</p>}
           {!data && !error && <ListSkeleton rows={6} />}
           {data && items.length === 0 && (
             <EmptyState

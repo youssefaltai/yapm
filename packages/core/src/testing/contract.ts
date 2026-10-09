@@ -3159,7 +3159,11 @@ export function hubContract(
         expect(wrong.errors?.[0]?.message).toContain("another sign-in");
         const refused = await connect(`${redirectUri}?code=bad&state=${state}`);
         expect(refused.errors?.[0]?.message).toContain("invalid_code");
-        const pasted = await connect(`${redirectUri}?code=good-code&state=${state}`);
+        // Each sign-in is used once, so the owner signs in again.
+        const retry = new URL((await connect()).data?.mcpServerConnect.authorizationUrl ?? "");
+        const pasted = await connect(
+          `${redirectUri}?code=good-code&state=${retry.searchParams.get("state")}`,
+        );
         expect(pasted.data?.mcpServerConnect.mcpServer.status).toBe("ready");
         const exchange = tokenForms.at(-1);
         expect(exchange?.get("redirect_uri")).toBe(redirectUri);
@@ -3172,7 +3176,7 @@ export function hubContract(
             ),
           ),
         );
-        expect(challenge).toBe(authorize.searchParams.get("code_challenge"));
+        expect(challenge).toBe(retry.searchParams.get("code_challenge"));
 
         await client.graphql(
           "mutation($id: String!) { requestApprove(id: $id, alwaysAllow: { scope: user }) { success } }",
@@ -3182,6 +3186,48 @@ export function hubContract(
           type: "http",
           url: "https://chat.example.com/mcp",
           headers: { Authorization: "Bearer xoxp-1" },
+        });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("uses each sign-in once, and signs in again when the agent asks again", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        // Drive is ready and always allowed; its tokens stopped working, so the agent asks again.
+        const coach = await agentToken("Coach");
+        const asked = await callTool(coach.token, "create_mcp_server", {
+          name: "drive",
+          reason: "Drive rejects my token.",
+        });
+        expect(asked.json()).toMatchObject({ title: "Sign in to drive again", status: "pending" });
+        const filed = await client.graphql<{ request: { mcpServer: { id: string } } }>(
+          "query($id: String!) { request(id: $id) { mcpServer { id } } }",
+          { id: asked.json().id },
+        );
+        const connected = await client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
+          "mutation($id: String!) { mcpServerConnect(id: $id) { authorizationUrl } }",
+          { id: filed.data?.request.mcpServer.id },
+        );
+        const state = new URL(
+          connected.data?.mcpServerConnect.authorizationUrl ?? "",
+        ).searchParams.get("state");
+
+        // The browser sends the callback twice at once: only one exchanges the code.
+        const exchanges = () =>
+          tokenForms.filter((f) => f.get("grant_type") === "authorization_code").length;
+        const before = exchanges();
+        const back = await Promise.all(
+          [1, 2].map(() => client.request(`/api/mcp/oauth/callback?code=good-code&state=${state}`)),
+        );
+        expect(exchanges()).toBe(before + 1);
+        const errors = back.map((r) =>
+          new URL(r.headers.get("location") ?? "").searchParams.get("error"),
+        );
+        expect(errors.sort()).toEqual([expect.stringContaining("already used"), null]);
+        expect((await claimFor(coach.id)).mcpServers.drive).toMatchObject({
+          headers: { Authorization: "Bearer drive-2" },
         });
       } finally {
         fetchSpy.mockRestore();

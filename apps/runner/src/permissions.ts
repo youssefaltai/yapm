@@ -26,10 +26,37 @@ export function resourceOf(tool: string, input: Record<string, unknown>): string
   return null;
 }
 
+/** Commands this short read well as a title; longer ones wrap the heading and get cut. */
+const TITLE_RESOURCE_MAX = 60;
+
+/**
+ * The request's title and reason. A short resource goes in the title as is. A long one, like a
+ * piped one-liner, would fill the heading, so the agent's description of the call names it
+ * instead (and so is not repeated as the reason), or the resource is clipped with an ellipsis.
+ */
+export function describeRequest(
+  agent: string,
+  tool: string,
+  resource: string | null,
+  description: string,
+  issue: string | null,
+): { title: string; reason: string } {
+  const needed = `Needed for the work on ${issue ?? "the current task"}; the session is paused until you answer.`;
+  const short = resource && resource.length <= TITLE_RESOURCE_MAX && !resource.includes("\n");
+  const subject = short
+    ? resource
+    : description ||
+      (resource && `${resource.replace(/\s+/g, " ").slice(0, TITLE_RESOURCE_MAX - 1)}…`);
+  return {
+    title: `${agent} wants to use ${tool}${subject ? `: ${subject}` : ""}`,
+    reason: subject === description || !description ? needed : description,
+  };
+}
+
 /**
  * What the owner reads before answering. A Bash command shows as itself in a shell block: inside
  * JSON every quote is escaped, which makes a one-liner hard to check, and its description is
- * already the request's reason. Other tools show their input as JSON.
+ * already in the request's title or reason. Other tools show their input as JSON.
  */
 export function requestDetails(tool: string, input: Record<string, unknown>): string {
   const command = typeof input.command === "string" ? input.command : null;
@@ -94,17 +121,16 @@ export async function decideTool(
   let requestId = now.pendingRequestId;
   if (!requestId) {
     const description = typeof input.description === "string" ? input.description : "";
+    const { title, reason } = describeRequest(ctx.agent, tool, resource, description, ctx.issue);
     const created = await ctx.hub.graphql<{ requestCreate: { request: { id: string } } }>(
       ctx.token,
       "mutation($input: RequestCreateInput!) { requestCreate(input: $input) { request { id } } }",
       {
         input: {
-          title: `${ctx.agent} wants to use ${tool}${resource ? `: ${resource.slice(0, 80)}` : ""}`,
+          title,
           action,
           resource,
-          reason:
-            description ||
-            `Needed for the work on ${ctx.issue ?? "the current task"}; the session is paused until you answer.`,
+          reason,
           details: requestDetails(tool, input),
           issueId: ctx.issueId,
         },

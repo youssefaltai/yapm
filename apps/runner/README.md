@@ -2,8 +2,8 @@
 
 Runs your company's AI agents on this machine, signed in with your own Claude subscription.
 The hub decides who runs what; the runner claims runs, works through the Claude Agent SDK,
-streams the transcript back, and obeys Stop. Secrets (your Claude sign-in, MCP tokens,
-files) never leave the machine.
+streams the transcript back, and obeys Stop. Secrets (your Claude sign-in, files) never
+leave the machine.
 
 On the Machines page in Life OS, press **Add machine** and paste the command into Terminal on
 the computer you're adding:
@@ -25,10 +25,24 @@ life-os-runner service uninstall   # stop running in the background
 By hand, or with the npm package: `life-os-runner enrol --hub https://your-hub.example` prints a
 six-digit code to approve in the app (or pass `--token`), then `life-os-runner start`.
 
-Settings live in `~/.life-os-runner/config.json`. Add MCP servers only this machine should
-offer under `"mcpServers"`, in Claude Code's shape. Servers added from the hub (Machines page,
-or an agent's approved request) are set up automatically; when one needs a sign-in, the hub
-sends you a Connect link and the tokens are kept in `~/.life-os-runner/mcp-auth.json`.
+Settings live in `~/.life-os-runner/config.json`. Agents start in your home folder and may work
+anywhere on the machine; their Claude sign-in, sessions and settings live in
+`~/.life-os-runner/claude`.
+
+Agents connect the MCP servers they need themselves: you approve each one, and sign in to it, from
+its request in the app. The hub hands a run the servers its agent may use. Your own Claude Code
+setup is never read or changed. To give every agent on this machine a server by hand, add it under
+`"mcpServers"` in Claude Code's format. Agents still ask you before using a server's tools.
+
+```json
+"mcpServers": {
+  "github": {
+    "type": "http",
+    "url": "https://api.githubcopilot.com/mcp/",
+    "headers": { "Authorization": "Bearer github_pat_…" }
+  }
+}
+```
 
 The runner also tells the hub which Claude login it uses and how full your plan's usage windows
 are (the same numbers as Claude Code's `/usage`), for the Usage page. It reads them when a run

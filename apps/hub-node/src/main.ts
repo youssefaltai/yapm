@@ -25,6 +25,7 @@ const deps: HubDeps = {
     version: env.LIFE_OS_VERSION ?? "dev",
     ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
     ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
+    ...(env.LIFE_OS_SECRET ? { secret: env.LIFE_OS_SECRET } : {}),
   },
   realtime: createNodeRealtime(),
 };

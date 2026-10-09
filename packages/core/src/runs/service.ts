@@ -9,7 +9,7 @@ import {
   runs,
   users,
 } from "@life-os/schema";
-import { and, asc, count, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { API_TOKEN_PREFIX } from "../auth.js";
 import type { HubDeps } from "../context.js";
@@ -23,14 +23,7 @@ import { event } from "../services/common.js";
 import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
 import { cleanTags } from "../services/machines.js";
-import {
-  listMcpServers,
-  type McpServerReport,
-  type McpServerSpec,
-  reportMcpServers,
-  serverSpec,
-  serversForAgent,
-} from "../services/mcpServers.js";
+import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
 import { cleanAccount, cleanPlanUsage, runUsageSet } from "../services/usage.js";
 import {
   type Decision,
@@ -59,10 +52,6 @@ type TriggerNote = {
 export const ONLINE_WINDOW = 2 * 60 * 1000;
 
 export const LIMITS = {
-  /** Wakes per agent per issue in an hour. */
-  perIssuePerHour: 6,
-  /** Wakes per agent per day: the subscription's usage is shared by everyone. */
-  perAgentPerDay: 100,
   /** A running run that hasn't reported for this long is presumed lost with its machine. */
   heartbeatTimeout: 3 * 60 * 1000,
   /** How long a run's hub token lives at most. */
@@ -136,13 +125,31 @@ async function wake(
     note.type === "projectUpdateCreated"
   )
     return false;
+  let paused = onIssue.find((r) => r.status === "needs_input");
   if (note.type === "requestAnswered" && note.requestId) {
-    // A run waiting on its own request hears the answer directly.
+    // The session that asked picks up the answer, wherever the request was filed: directly
+    // while it's still going, else by resuming its latest run.
     const request = await db.select().from(requests).where(eq(requests.id, note.requestId)).get();
-    if (request?.runId) return false;
+    const asker = request?.runId
+      ? await db.select().from(runs).where(eq(runs.id, request.runId)).get()
+      : undefined;
+    const latest = asker?.sessionId
+      ? await db
+          .select()
+          .from(runs)
+          .where(and(eq(runs.agentId, agentId), eq(runs.sessionId, asker.sessionId)))
+          .orderBy(desc(runs.createdAt))
+          .get()
+      : asker;
+    if (latest?.status === "running") return false;
+    const resumable = latest?.status === "needs_input" || latest?.status === "completed";
+    if (latest?.kind === "work" && latest.sessionId && resumable) paused = latest;
   }
-  const paused = onIssue.find((r) => r.status === "needs_input");
-  const isComment = note.type === "issueNewComment" || note.type === "issueCommentMention";
+  // Comments and answers to requests are what a paused session waits for.
+  const answers =
+    note.type === "issueNewComment" ||
+    note.type === "issueCommentMention" ||
+    note.type === "requestAnswered";
   if (note.type === "issueNewComment" && !paused) {
     // Followers hear about every comment; only the assignee wakes for them.
     const issue = issueId ? await findIssue(db, issueId) : null;
@@ -150,17 +157,23 @@ async function wake(
   }
   // A live work session on the issue will see it through list_notifications.
   if (onIssue.some((r) => r.kind === "work" && r.status === "running")) return false;
-  if (!(await withinLimits(db, agentId, issueId, at))) return false;
 
-  if (paused && isComment) {
-    const routed = await routeRun(db, { kind: "work", agentId, issueId, resumes: paused }, at);
+  if (paused && answers) {
+    const routed = await routeRun(
+      db,
+      { kind: "work", agentId, issueId: paused.issueId, resumes: paused },
+      at,
+    );
     await commit(db, [
-      db.update(runs).set({ status: "completed", updatedAt: at }).where(eq(runs.id, paused.id)),
+      db
+        .update(runs)
+        .set({ status: "completed", updatedAt: at })
+        .where(and(eq(runs.id, paused.id), eq(runs.status, "needs_input"))),
       db.insert(runs).values({
         id: newId(),
         agentId,
         kind: "work",
-        issueId,
+        issueId: paused.issueId,
         goal: paused.goal,
         ...routed,
         trigger: { notes: [trigger] },
@@ -204,38 +217,6 @@ async function wake(
   return true;
 }
 
-async function withinLimits(db: HubDb, agentId: string, issueId: string | null, at: number) {
-  const [perIssue, perDay] = await Promise.all([
-    issueId
-      ? db
-          .select({ n: count() })
-          .from(runs)
-          .where(
-            and(
-              eq(runs.agentId, agentId),
-              eq(runs.issueId, issueId),
-              gte(runs.createdAt, at - 3_600_000),
-            ),
-          )
-          .get()
-      : undefined,
-    db
-      .select({ n: count() })
-      .from(runs)
-      .where(and(eq(runs.agentId, agentId), gte(runs.createdAt, at - 86_400_000)))
-      .get(),
-  ]);
-  if ((perIssue?.n ?? 0) >= LIMITS.perIssuePerHour) {
-    console.warn(`Not waking ${agentId}: too many runs on one issue this hour`);
-    return false;
-  }
-  if ((perDay?.n ?? 0) >= LIMITS.perAgentPerDay) {
-    console.warn(`Not waking ${agentId}: daily run limit reached`);
-    return false;
-  }
-  return true;
-}
-
 /** Runs whose machine stopped reporting are failed, so their issues don't look busy forever. */
 /** Fails runs whose machine stopped checking in; true when there were any. */
 export async function failLostRuns(db: HubDb, at: number) {
@@ -265,8 +246,8 @@ export interface ClaimedRun {
   /** Acts as the agent on the hub, for this run only. */
   token: string;
   input: RunInput;
-  /** The machine's hub-managed MCP servers this agent gets, ready to use. */
-  mcpServers: McpServerSpec[];
+  /** Outside MCP servers the agent may use, in Claude Code's shape; work runs only. */
+  mcpServers: Record<string, McpServerConfig>;
 }
 
 /** Gives a machine the oldest queued run it may take, or null. */
@@ -323,12 +304,13 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
       .all();
     const mine = won[0];
     if (!mine) continue; // another machine got it first
-    return prepare(db, mine, machine, at);
+    return prepare(deps, mine, at);
   }
   return null;
 }
 
-async function prepare(db: HubDb, run: RunRow, machine: Machine, at: number): Promise<ClaimedRun> {
+async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedRun> {
+  const { db } = deps;
   const agent = await db.select().from(users).where(eq(users.id, run.agentId)).get();
   if (!agent) throw notFound("Agent");
   const issue = run.issueId ? await findIssue(db, run.issueId) : null;
@@ -364,7 +346,7 @@ async function prepare(db: HubDb, run: RunRow, machine: Machine, at: number): Pr
     agent: { id: agent.id, name: agent.name },
     token,
     input,
-    mcpServers: serversForAgent(await listMcpServers(db, machine.id), agent.id),
+    mcpServers: run.kind === "work" ? await mcpServersFor(deps, agent.id, run.id, at) : {},
   };
 }
 
@@ -616,6 +598,22 @@ async function applyDecision(ctx: Ctx, run: RunRow, decision: Decision) {
         now,
       );
       await commit(db, [
+        // One plan to look again per agent and issue: the newest replaces any earlier one.
+        ...(later
+          ? [
+              db
+                .update(runs)
+                .set({ status: "canceled", updatedAt: now })
+                .where(
+                  and(
+                    eq(runs.agentId, run.agentId),
+                    run.issueId ? eq(runs.issueId, run.issueId) : isNull(runs.issueId),
+                    eq(runs.status, "queued"),
+                    sql`${runs.notBefore} is not null`,
+                  ),
+                ),
+            ]
+          : []),
         db.insert(runs).values({
           id: newId(),
           agentId: run.agentId,
@@ -654,12 +652,9 @@ async function threadOf(db: HubDb, commentId: string | null) {
 async function applyWorkResult(ctx: Ctx, run: RunRow, work: ReturnType<typeof parseWorkResult>) {
   const { db } = ctx;
   if (!run.issueId) return;
-  if (work.outcome === "needs_input") {
-    await createComment(ctx, {
-      issueId: run.issueId,
-      body: work.question ?? work.summary,
-      parentId: null,
-    });
+  // A question is the ask, so it's always posted.
+  if (work.outcome === "needs_input" && work.question) {
+    await createComment(ctx, { issueId: run.issueId, body: work.question, parentId: null });
     return;
   }
   // The agent usually reports as it goes; only post the summary if it said nothing.
@@ -725,12 +720,9 @@ export async function heartbeat(
   machine: Machine,
   info: {
     tags?: string[];
-    mcps?: string[];
     capacity?: number;
     version?: string;
     runIds?: string[];
-    /** How each hub-managed MCP server is doing on the machine. */
-    mcpServers?: McpServerReport[];
     /** The Claude login agents use there. */
     claudeAccount?: unknown;
     /** The plan's limits as the machine last read them. */
@@ -748,7 +740,6 @@ export async function heartbeat(
       .update(machines)
       .set({
         lastSeenAt: at,
-        ...(Array.isArray(info.mcps) ? { mcps: info.mcps.map(String).slice(0, 50) } : {}),
         ...(typeof info.capacity === "number"
           ? { capacity: Math.min(Math.max(Math.floor(info.capacity), 1), 16) }
           : {}),
@@ -791,15 +782,9 @@ export async function heartbeat(
         .all()
     : [];
   const gone = runIds.filter((id) => !live.some((r) => r.id === id));
-  const reported = Array.isArray(info.mcpServers)
-    ? await reportMcpServers(db, machine, info.mcpServers, at)
-    : { changed: false, notified: false };
-  const cameOnline = !machine.lastSeenAt || machine.lastSeenAt < at - ONLINE_WINDOW;
   return {
-    notified: reported.notified,
-    /** Something the app shows changed: a server's status, or the machine coming back online. */
-    changed: reported.changed || cameOnline,
-    mcpServers: (await listMcpServers(db, machine.id)).map(serverSpec),
+    /** The app shows whether a machine is online, so coming back is a change. */
+    changed: !machine.lastSeenAt || machine.lastSeenAt < at - ONLINE_WINDOW,
     stop: [
       ...stopping.map((r) => ({ id: r.id, reason: r.reason })),
       ...gone.map((id) => ({ id, reason: "The hub ended this run" })),

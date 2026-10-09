@@ -1,4 +1,4 @@
-import type { McpServerReport, McpServerSpec } from "./mcp.js";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudeAccount, PlanUsage } from "./plan.js";
 
 /** Talks to the hub: the runner protocol with the machine's secret, GraphQL with a run's token. */
@@ -34,9 +34,9 @@ export interface Claim {
   agent: { id: string; name: string };
   token: string;
   mcpUrl: string;
+  /** Outside MCP servers this agent may use, in Claude Code's shape with their secrets. */
+  mcpServers?: Options["mcpServers"];
   input: RunInput;
-  /** Hub-managed MCP servers this agent gets on this machine. */
-  mcpServers?: McpServerSpec[];
 }
 
 export interface Enrolment {
@@ -101,7 +101,6 @@ export class HubClient {
   enrol(input: {
     name: string;
     tags: string[];
-    mcps: string[];
     capacity: number;
     version: string;
     setupToken?: string;
@@ -119,12 +118,10 @@ export class HubClient {
   heartbeat(
     token: string,
     info: {
-      mcps: string[];
       capacity: number;
       version: string;
       runIds: string[];
       tags?: string[];
-      mcpServers?: McpServerReport[];
       claudeAccount?: ClaudeAccount;
       planUsage?: PlanUsage;
     },
@@ -132,7 +129,6 @@ export class HubClient {
     return this.call<{
       status: string;
       stop: { id: string; reason: string | null }[];
-      mcpServers?: McpServerSpec[];
     }>("/api/runner/heartbeat", token, info);
   }
 

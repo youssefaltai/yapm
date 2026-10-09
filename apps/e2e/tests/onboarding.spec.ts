@@ -581,58 +581,6 @@ test.describe
       ).toBeVisible();
     });
 
-    test("adds an MCP server to a machine and connects it", async () => {
-      await page.goto("/machines");
-      const servers = page.getByRole("region", { name: "MCP servers on MacBook" });
-      await servers.getByRole("button", { name: "+ Add server" }).click();
-      await servers.getByLabel("Server name").fill("slack-acme");
-      await servers.getByLabel("Server address").fill("https://slack.example/mcp");
-      await servers.getByRole("button", { name: "Add", exact: true }).click();
-      await expect(servers.getByText("Setting up")).toBeVisible();
-
-      await servers.getByRole("button", { name: "Every agent" }).click();
-      await page.getByRole("option", { name: "Ada" }).click();
-      await expect(servers.getByRole("button", { name: "Ada" })).toBeVisible();
-
-      // The machine finds it needs a sign-in; the owner gets a Connect link.
-      const beat = await page.request.post("/api/runner/heartbeat", {
-        headers: { authorization: `Bearer ${machineToken}` },
-        data: { runIds: [] },
-      });
-      const { mcpServers } = await beat.json();
-      await page.request.post("/api/runner/heartbeat", {
-        headers: { authorization: `Bearer ${machineToken}` },
-        data: {
-          runIds: [],
-          mcpServers: [
-            {
-              id: mcpServers[0].id,
-              status: "needs_auth",
-              authUrl: "https://slack.example/authorize?state=s1",
-              authState: `${mcpServers[0].id}.s1`,
-            },
-          ],
-        },
-      });
-      await page.reload();
-      await expect(servers.getByText("Needs sign-in")).toBeVisible();
-      await expect(servers.getByRole("link", { name: "Connect" })).toHaveAttribute(
-        "href",
-        "https://slack.example/authorize?state=s1",
-      );
-      const back = await page.request.get(
-        `/api/mcp/oauth/callback?state=${encodeURIComponent(`${mcpServers[0].id}.s1`)}&code=abc`,
-      );
-      expect(await back.text()).toContain("Connected slack-acme");
-
-      await servers.getByRole("button", { name: "Remove slack-acme" }).click();
-      await page
-        .getByRole("dialog", { name: "Remove slack-acme?" })
-        .getByRole("button", { name: "Remove" })
-        .click();
-      await expect(servers.getByText("None yet.")).toBeVisible();
-    });
-
     test("exports the company", async () => {
       await page.goto("/company");
       await expect(page.getByLabel("Linear API key")).toBeVisible();
@@ -913,5 +861,97 @@ test.describe
       await page.getByPlaceholder("Search emoji…").fill("rocket");
       await page.keyboard.press("Enter");
       await expect(page.getByRole("button", { name: /🚀 1/ })).toBeVisible();
+    });
+
+    test("connects an agent's MCP server with a pasted token, then approves it", async () => {
+      const asked = await mcp("create_mcp_server", {
+        name: "notion",
+        url: "https://mcp.example.com/mcp",
+        auth: "token",
+        howToConnect: "Create an integration token in Notion settings.",
+        reason: "I need to read the team wiki.",
+      });
+      await page.goto(`/request/${asked.id}`);
+      await expect(page.getByText("Create an integration token in Notion settings.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Always allow" })).toBeDisabled();
+
+      await page.getByLabel("Token").fill("secret-token");
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await expect(page.getByText("Approved once by Youssef")).toBeVisible();
+      expect(await mcp("get_request", { id: asked.id })).toMatchObject({
+        status: "approved",
+      });
+    });
+
+    test("sends the owner to the provider to sign in to an OAuth server", async () => {
+      // The hub can't reach a provider from here, so the server is a token one that the page is
+      // told signs in with OAuth, and the hub's answer to connecting is a fixed URL.
+      const asked = await mcp("create_mcp_server", {
+        name: "linear",
+        url: "https://mcp.example.com/linear",
+        auth: "token",
+        reason: "I need to read tickets.",
+      });
+      await page.route("**/graphql", async (route) => {
+        const query: string = route.request().postDataJSON().query;
+        if (query.includes("mcpServerConnect"))
+          return route.fulfill({
+            json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-elsewhere" } } },
+          });
+        const response = await route.fetch();
+        const body = await response.json();
+        if (body.data?.request?.mcpServer) body.data.request.mcpServer.auth = "oauth";
+        return route.fulfill({ response, json: body });
+      });
+      await page.goto(`/request/${asked.id}`);
+      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+      await page.getByRole("button", { name: "Sign in to linear" }).click();
+      await page.waitForURL("**/signed-in-elsewhere");
+      await page.unroute("**/graphql");
+    });
+
+    test("signs in on another tab and connects with the pasted address", async () => {
+      // As above, the page is told the sign-in ends on localhost, and connecting answers a URL.
+      const asked = await mcp("create_mcp_server", {
+        name: "slack",
+        url: "https://mcp.example.com/slack",
+        auth: "token",
+        reason: "I need to read the team channel.",
+      });
+      let pasted: unknown = null;
+      await page.route("**/graphql", async (route) => {
+        const body = route.request().postDataJSON();
+        if (body.query.includes("mcpServerConnect")) {
+          if (!body.variables.callbackUrl)
+            return route.fulfill({
+              json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-elsewhere" } } },
+            });
+          pasted = body.variables.callbackUrl;
+          return route.fulfill({
+            json: { errors: [{ message: "That address is from another sign-in." }] },
+          });
+        }
+        const response = await route.fetch();
+        const json = await response.json();
+        if (json.data?.request?.mcpServer)
+          Object.assign(json.data.request.mcpServer, { auth: "oauth", pastesCallback: true });
+        return route.fulfill({ response, json });
+      });
+      await page.goto(`/request/${asked.id}`);
+      const [tab] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: "Sign in to slack" }).click(),
+      ]);
+      await tab.waitForURL("**/signed-in-elsewhere");
+      await tab.close();
+      const landed = "http://localhost:3118/callback?code=c&state=s";
+      await page.getByLabel("Paste the address you land on").fill(landed);
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await expect(page.getByText("That address is from another sign-in.")).toBeVisible();
+      expect(pasted).toBe(landed);
+      await page.unroute("**/graphql");
     });
   });

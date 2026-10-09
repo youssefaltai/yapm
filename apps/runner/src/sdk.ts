@@ -71,12 +71,14 @@ export const sdkEngine: Engine = async (run) => {
     outputFormat: { type: "json_schema", schema: run.input.outputSchema },
     abortController,
     cwd: run.cwd,
-    // Agents don't read the machine owner's own Claude settings or memory.
+    // Agents don't read the machine owner's own Claude settings or memory,
     settingSources: [],
+    // nor get the connectors on the owner's claude.ai account.
+    env: { ...process.env, ENABLE_CLAUDEAI_MCP_SERVERS: "false" },
     ...(run.input.tools
       ? {
           mcpServers: {
-            ...(run.mcpServers as Options["mcpServers"]),
+            ...run.mcpServers,
             [HUB_MCP]: {
               type: "http",
               url: run.hubMcp.url,

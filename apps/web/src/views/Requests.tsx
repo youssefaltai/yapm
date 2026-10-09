@@ -1,10 +1,12 @@
 import { type ReactNode, useState } from "react";
 import { workspaceStore } from "../actions.js";
-import { mutate, toast, useQuery } from "../data.js";
+import { graphql } from "../api.js";
+import { invalidate, mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import {
   Breadcrumbs,
   button,
+  dialogField,
   listItem,
   listRow,
   PageHeader,
@@ -47,6 +49,13 @@ interface RequestDetail extends RequestSummary {
   used: boolean;
   answeredBy: Person | null;
   issue: { identifier: string; title: string } | null;
+  mcpServer: {
+    id: string;
+    name: string;
+    auth: "none" | "oauth" | "token";
+    status: "pending" | "ready";
+    pastesCallback: boolean;
+  } | null;
   requester: Person & { title: string | null; teams: { nodes: { id: string; name: string }[] } };
 }
 
@@ -238,29 +247,57 @@ const DETAIL = `query($id: String!) { request(id: $id) {
   ${SUMMARY} resource reason details answer used
   answeredBy { id name kind }
   issue { identifier title }
+  mcpServer { id name auth status pastesCallback }
   requester { id name kind title teams { nodes { id name } } }
-}
-machines { id name } }`;
+} }`;
 
 /** One request on one screen: where a push notification lands, so approving is two taps. */
 export function RequestPage({ id }: { id: string }) {
-  const { data, error } = useQuery<{
-    request: RequestDetail;
-    machines: { id: string; name: string }[];
-  }>(DETAIL, { id });
+  const { data, error } = useQuery<{ request: RequestDetail }>(DETAIL, { id });
   const workspace = useStore(workspaceStore);
   const [mode, setMode] = useState<"idle" | "always" | "reject">("idle");
   const [busy, setBusy] = useState(false);
   const [reason, setReason] = useState("");
   const [scope, setScope] = useState<string>("user");
   const [anyResource, setAnyResource] = useState(false);
+  const [token, setToken] = useState("");
+  const [callbackUrl, setCallbackUrl] = useState("");
+  const [failure, setFailure] = useState<string | null>(null);
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
-  // mcp.install and other machine permissions name the machine by id; show its name.
-  const machine = data.machines.find((m) => m.id === r.resource);
+  const server = r.mcpServer?.status === "pending" ? r.mcpServer : null;
+  const connectError = failure ?? new URLSearchParams(window.location.search).get("error");
+
+  /** Connects the server; answers where to sign in, if there is anywhere. */
+  async function connect(variables: { token?: string; callbackUrl?: string }) {
+    if (!server) return null;
+    setBusy(true);
+    setFailure(null);
+    try {
+      const result = await graphql<{ mcpServerConnect: { authorizationUrl: string | null } }>(
+        "mutation($id: String!, $token: String, $callbackUrl: String) { mcpServerConnect(id: $id, token: $token, callbackUrl: $callbackUrl) { authorizationUrl } }",
+        { id: server.id, ...variables },
+      );
+      invalidate();
+      return result.mcpServerConnect.authorizationUrl;
+    } catch (e) {
+      setFailure(e instanceof Error ? e.message : String(e));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Signs in from a new tab, opened before awaiting so phones don't block it; this page stays. */
+  async function signInElsewhere() {
+    const tab = window.open("", "_blank");
+    const url = await connect({});
+    if (url) tab?.location.assign(url);
+    else tab?.close();
+  }
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
     setBusy(true);
@@ -295,12 +332,9 @@ export function RequestPage({ id }: { id: string }) {
   // The resource is what an approval or grant covers, so it shows once: not at all when the
   // details already show it word for word (the runner's Bash and file requests), else in the
   // sidebar if it's short, or in the body if it's too long to read there, like a Bash command.
-  // A machine shows by name, which the details don't verify, so it always stays.
-  const resourceInDetails = !machine && r.resource !== null && !!r.details?.includes(r.resource);
+  const resourceInDetails = r.resource !== null && !!r.details?.includes(r.resource);
   const longResource =
-    !machine &&
-    r.resource !== null &&
-    (r.resource.length > RESOURCE_SIDEBAR_MAX || r.resource.includes("\n"));
+    r.resource !== null && (r.resource.length > RESOURCE_SIDEBAR_MAX || r.resource.includes("\n"));
   const statusLabel =
     r.status === "approved"
       ? r.grant
@@ -369,13 +403,7 @@ export function RequestPage({ id }: { id: string }) {
               </Property>
               {r.resource && !longResource && !resourceInDetails && (
                 <Property label="On">
-                  {machine ? (
-                    <span className="text-ink" title={r.resource}>
-                      {machine.name}
-                    </span>
-                  ) : (
-                    <code className="text-ink [overflow-wrap:anywhere]">{r.resource}</code>
-                  )}
+                  <code className="text-ink [overflow-wrap:anywhere]">{r.resource}</code>
                 </Property>
               )}
               {r.issue && (
@@ -395,11 +423,85 @@ export function RequestPage({ id }: { id: string }) {
           }
         >
           <div className="space-y-6">
+            {canAnswer && server && (
+              <section className="rounded-lg border border-line p-4">
+                {connectError && <p className="mb-3 text-red-400">{connectError}</p>}
+                {server.pastesCallback ? (
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={signInElsewhere}
+                      className={button("primary")}
+                    >
+                      Sign in to {server.name}
+                    </button>
+                    <form
+                      className="flex gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        connect({ callbackUrl });
+                      }}
+                    >
+                      <input
+                        aria-label="Paste the address you land on"
+                        placeholder="Paste the address you land on"
+                        autoComplete="off"
+                        value={callbackUrl}
+                        onChange={(e) => setCallbackUrl(e.target.value)}
+                        className={`${dialogField} flex-1`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy || !callbackUrl}
+                        className={button("primary")}
+                      >
+                        Connect
+                      </button>
+                    </form>
+                  </div>
+                ) : server.auth === "oauth" ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      const url = await connect({});
+                      if (url) window.location.assign(url);
+                    }}
+                    className={button("primary")}
+                  >
+                    Sign in to {server.name}
+                  </button>
+                ) : (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      connect({ token });
+                    }}
+                  >
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        aria-label="Token"
+                        autoComplete="off"
+                        value={token}
+                        onChange={(e) => setToken(e.target.value)}
+                        className={`${dialogField} flex-1`}
+                      />
+                      <button type="submit" disabled={busy || !token} className={button("primary")}>
+                        Connect
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            )}
+
             {canAnswer && mode === "idle" && (
               <div className="sticky bottom-0 grid grid-cols-3 gap-2 bg-canvas py-3">
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !!server}
                   onClick={approveOnce}
                   className="rounded-lg bg-accent px-3 py-3 font-medium text-white disabled:opacity-40"
                 >
@@ -407,7 +509,7 @@ export function RequestPage({ id }: { id: string }) {
                 </button>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !!server}
                   onClick={() => setMode("always")}
                   className="rounded-lg border border-line px-3 py-3 font-medium hover:bg-raised"
                 >

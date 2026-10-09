@@ -30,8 +30,7 @@
     "prepublishOnly": "tsup"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.293",
-    "@modelcontextprotocol/sdk": "1.32.1"
+    "@anthropic-ai/claude-agent-sdk": "0.3.293"
   },
   "devDependencies": {
     "@life-os/core": "workspace:*",

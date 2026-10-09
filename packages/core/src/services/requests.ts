@@ -2,6 +2,7 @@ import {
   type GrantScope,
   grants,
   issues,
+  mcpServers,
   requests,
   runs,
   teamMemberships,
@@ -144,6 +145,16 @@ export interface RequestCreateInput {
 
 /** An agent asks for something. Asking again while a request is pending returns that request. */
 export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promise<string> {
+  const { id, ops } = await requestOps(ctx, input);
+  await commit(ctx.db, ops);
+  return id;
+}
+
+/** The writes that file a request, for callers that commit them with their own; none when one is pending. */
+export async function requestOps(
+  ctx: Ctx,
+  input: RequestCreateInput,
+): Promise<{ id: string; ops: WriteOp[] }> {
   const { db, now } = ctx;
   const actor = await loadActor(db, ctx.actorId);
   if (actor.kind === "owner") throw badRequest("The owner doesn't need to ask");
@@ -161,7 +172,7 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
   const permission = await checkPermission(db, actor.id, action, resource);
   if (permission.allowed)
     throw new ServiceError("CONFLICT", "You can already do this; no need to ask");
-  if (permission.pendingRequestId) return permission.pendingRequestId;
+  if (permission.pendingRequestId) return { id: permission.pendingRequestId, ops: [] };
 
   let issueId: string | null = null;
   if (input.issueId) {
@@ -175,7 +186,7 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
   }
   const id = newId();
   const owner = await ownerId(db);
-  await commit(db, [
+  const ops = [
     // A run that asks shows as waiting on the answer.
     ...(ctx.runId
       ? [
@@ -206,8 +217,8 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
       [event(ctx, "request.create", "request", id, { title, action, resource, issueId })],
       now,
     ),
-  ]);
-  return id;
+  ];
+  return { id, ops };
 }
 
 /** The run that asked stops waiting once the request is answered. */
@@ -286,6 +297,15 @@ export async function approveRequest(
 ): Promise<string> {
   const { db, now } = ctx;
   const request = await pendingRequest(ctx, id);
+  if (request.action === "mcp.use") {
+    const server = await db
+      .select({ status: mcpServers.status })
+      .from(mcpServers)
+      .where(eq(mcpServers.name, request.resource ?? ""))
+      .get();
+    if (server && server.status !== "ready")
+      throw new ServiceError("CONFLICT", `Connect ${request.resource} first`);
+  }
   const ops: WriteOp[] = [];
   const events = [];
   let grantId: string | null = null;
@@ -426,7 +446,7 @@ export async function cancelRequest(ctx: Ctx, id: string): Promise<string> {
   return id;
 }
 
-async function requireOwner(ctx: Ctx, what: string) {
+export async function requireOwner(ctx: Ctx, what: string) {
   if ((await loadActor(ctx.db, ctx.actorId)).kind !== "owner")
     throw forbidden(`Only the owner can ${what}`);
 }

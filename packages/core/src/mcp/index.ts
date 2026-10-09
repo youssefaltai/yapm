@@ -9,11 +9,18 @@ import { dispatch } from "../runs/service.js";
 import type { Ctx } from "../services/common.js";
 import { learningTools } from "./learning.js";
 import { machineTools } from "./machines.js";
+import { mcpServerTools } from "./mcpServers.js";
 import { planningTools } from "./planning.js";
 import { handleMessage } from "./protocol.js";
 import { tools as coreTools, type McpContext } from "./tools.js";
 
-const tools = [...coreTools, ...planningTools, ...learningTools, ...machineTools];
+const tools = [
+  ...coreTools,
+  ...planningTools,
+  ...learningTools,
+  ...machineTools,
+  ...mcpServerTools,
+];
 
 const INSTRUCTIONS = `This is the company's issue tracker, shaped like Linear. You are one of its members.
 Work happens in issues: read them with get_issue and list_my_issues, report progress with create_comment,
@@ -43,6 +50,7 @@ export async function mcpHandler(c: Context<HubEnv>) {
   const waitUntil = waitUntilOf(c);
   const ctx: McpContext = {
     db: deps.db,
+    deps,
     viewer: viewer.user,
     loaders,
     appUrl,

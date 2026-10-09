@@ -5,7 +5,6 @@ CREATE TABLE `machines` (
 	`pairing_code` text NOT NULL,
 	`token_hash` text NOT NULL,
 	`tags` text NOT NULL,
-	`mcps` text NOT NULL,
 	`capacity` integer DEFAULT 2 NOT NULL,
 	`version` text,
 	`last_seen_at` integer,

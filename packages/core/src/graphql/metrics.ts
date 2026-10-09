@@ -1,17 +1,26 @@
-import type { MetricScope, metricSnapshots } from "@life-os/schema";
+import type { AuditFilter, MetricScope, metricSnapshots } from "@life-os/schema";
 import { createGraphQLError } from "graphql-yoga";
 import {
   addCounts,
+  archiveMetric,
   countAll,
+  createMetric,
   deriveMetrics,
   emptyCounts,
+  listMetrics,
+  type MetricRow,
   type Metrics,
+  type MetricValue,
   metricHistory,
+  metricValues,
   type RouteStats,
+  requireMetric,
   routeStats,
   scopeKey,
+  updateMetric,
 } from "../services/metrics.js";
-import { builder, db, now, requireViewer } from "./builder.js";
+import { act, builder, db, now, requireViewer } from "./builder.js";
+import { payload } from "./mutations.js";
 import { Team, User } from "./types.js";
 
 const DAY = 86_400_000;
@@ -93,6 +102,50 @@ const UserMetrics = builder
     }),
   });
 
+const MetricFilter = builder.objectRef<AuditFilter>("MetricFilter").implement({
+  description: "Audit log entries with this action, and of this entity type when given.",
+  fields: (t) => ({
+    action: t.exposeString("action"),
+    entityType: t.string({ nullable: true, resolve: (f) => f.entityType ?? null }),
+  }),
+});
+
+const Metric = builder.objectRef<MetricRow>("Metric").implement({
+  description:
+    "A measure the company agreed on, counted from the audit log: the numerator, or the numerator divided by the denominator.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    description: t.exposeString("description", { nullable: true }),
+    numerator: t.field({ type: MetricFilter, resolve: (m) => m.numerator }),
+    denominator: t.field({ type: MetricFilter, nullable: true, resolve: (m) => m.denominator }),
+    unit: t.exposeString("unit", { nullable: true }),
+    target: t.exposeFloat("target", { nullable: true }),
+    direction: t.exposeString("direction", {
+      nullable: true,
+      description: "Which way is better: up or down.",
+    }),
+    creator: t.field({
+      type: User,
+      nullable: true,
+      resolve: (m, _a, ctx) => (m.creatorId ? ctx.loaders.user.load(m.creatorId) : null),
+    }),
+    createdAt: t.field({ type: "DateTime", resolve: (m) => m.createdAt }),
+    updatedAt: t.field({ type: "DateTime", resolve: (m) => m.updatedAt }),
+    archivedAt: t.field({ type: "DateTime", nullable: true, resolve: (m) => m.archivedAt }),
+  }),
+});
+
+const MetricValueRef = builder.objectRef<MetricValue>("MetricValue").implement({
+  description:
+    "A metric's value over a period and the period before; null with nothing to divide by.",
+  fields: (t) => ({
+    metric: t.field({ type: Metric, resolve: (v) => v.metric }),
+    value: t.exposeFloat("value", { nullable: true }),
+    previousValue: t.exposeFloat("previousValue", { nullable: true }),
+  }),
+});
+
 const Insights = builder
   .objectRef<{
     from: number;
@@ -114,6 +167,12 @@ const Insights = builder
         type: [RouteMetrics],
         description: "Runs grouped by model route, most expensive first.",
         resolve: (i) => i.routes,
+      }),
+      metrics: t.field({
+        type: [MetricValueRef],
+        description: "The company's own metrics, for everyone or for one member.",
+        args: { userId: t.arg.string({ required: false }) },
+        resolve: (i, args, ctx) => metricValues(db(ctx), i.from, i.to, args.userId ?? null),
       }),
     }),
   });
@@ -184,6 +243,77 @@ builder.queryFields((t) => ({
       requireViewer(ctx);
       const [scope, id] = scopeOf(args);
       return metricHistory(db(ctx), scope, id, args.days ?? 30, now(ctx));
+    },
+  }),
+}));
+
+const MetricFilterInput = builder.inputType("MetricFilterInput", {
+  fields: (t) => ({
+    action: t.string({ required: true, description: "An audit action, e.g. issue.create." }),
+    entityType: t.string({ required: false, description: "e.g. issue" }),
+  }),
+});
+
+const metricFields = (required: boolean) =>
+  builder.inputType(required ? "MetricCreateInput" : "MetricUpdateInput", {
+    fields: (t) => ({
+      name: t.string({ required }),
+      description: t.string({ required: false }),
+      numerator: t.field({ type: MetricFilterInput, required }),
+      denominator: t.field({
+        type: MetricFilterInput,
+        required: false,
+        description: "Makes it a ratio; null makes it a count.",
+      }),
+      unit: t.string({ required: false }),
+      target: t.float({ required: false }),
+      direction: t.string({ required: false, description: "Which way is better: up or down." }),
+    }),
+  });
+const MetricCreateInput = metricFields(true);
+const MetricUpdateInput = metricFields(false);
+const MetricPayload = payload("MetricPayload", "metric", Metric);
+
+builder.queryFields((t) => ({
+  metrics: t.field({
+    type: [Metric],
+    description: "The metrics the company defined, by name. Values are on insights.",
+    resolve: (_root, _args, ctx) => {
+      requireViewer(ctx);
+      return listMetrics(db(ctx));
+    },
+  }),
+}));
+
+builder.mutationFields((t) => ({
+  metricCreate: t.field({
+    type: MetricPayload,
+    description: "Defines a metric. Agents need metric.update.",
+    args: { input: t.arg({ type: MetricCreateInput, required: true }) },
+    resolve: async (_root, args, ctx) => {
+      const id = await act(ctx, (s) => createMetric(s, args.input));
+      return { entity: await requireMetric(db(ctx), id) };
+    },
+  }),
+  metricUpdate: t.field({
+    type: MetricPayload,
+    description: "Changes a metric. Agents need metric.update.",
+    args: {
+      id: t.arg.string({ required: true }),
+      input: t.arg({ type: MetricUpdateInput, required: true }),
+    },
+    resolve: async (_root, args, ctx) => {
+      const id = await act(ctx, (s) => updateMetric(s, args.id, args.input));
+      return { entity: await requireMetric(db(ctx), id) };
+    },
+  }),
+  metricArchive: t.field({
+    type: MetricPayload,
+    description: "Stops measuring a metric. Agents need metric.update.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      const id = await act(ctx, (s) => archiveMetric(s, args.id));
+      return { entity: await requireMetric(db(ctx), id) };
     },
   }),
 }));

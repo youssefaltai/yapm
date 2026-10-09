@@ -3509,5 +3509,74 @@ export function hubContract(
       expect(await inbox(boss?.token)).toHaveLength(1);
       expect((await inbox()).length).toBe(ownerBefore + 2);
     });
+
+    it("keeps metric definitions as data, counted from the audit log", async () => {
+      await client.graphql('mutation { agentHire(input: { name: "Analyst" }) { success } }');
+      const analyst = await agentToken("Analyst");
+      const save = (args: Record<string, unknown>) => callTool(analyst.token, "save_metric", args);
+      const created = { name: "Issues filed", numerator: { action: "issue.create" } };
+
+      // Defining a metric needs metric.update; only structured filters over the log are accepted.
+      expect((await save(created)).text).toContain("needs approval: metric.update");
+      await client.graphql(
+        'mutation($s: String) { grantCreate(input: { action: "metric.update", scope: user, subjectId: $s }) { success } }',
+        { s: analyst.id },
+      );
+      expect((await save({ name: "Bad", numerator: { action: "x' or 1=1 --" } })).isError).toBe(
+        true,
+      );
+      const metric = (await save({ ...created, direction: "up", target: 3 })).json();
+      expect(metric).toMatchObject({ name: "Issues filed", direction: "up", target: 3 });
+      expect((await save(created)).text).toContain("already");
+
+      // The owner defines one too, a ratio; with nothing to divide by it is null.
+      const ratio = await client.graphql<{ metricCreate: { metric: { id: string } } }>(
+        `mutation { metricCreate(input: {
+          name: "Comments per issue", unit: "comments",
+          numerator: { action: "comment.create" },
+          denominator: { action: "never.happens", entityType: "issue" }
+        }) { metric { id } } }`,
+      );
+      expect(ratio.errors).toBeUndefined();
+
+      for (const title of ["Q1 taxes", "Q2 taxes"])
+        await callTool(analyst.token, "create_issue", { title, team: "TRV" });
+      const mine = (await callTool(analyst.token, "get_metrics", { member: "me" })).json();
+      expect(mine.custom).toContainEqual(
+        expect.objectContaining({ name: "Issues filed", current: 2, previous: 0, target: 3 }),
+      );
+      expect(mine.custom).toContainEqual(
+        expect.objectContaining({ name: "Comments per issue", current: null }),
+      );
+
+      // Changes and archiving are audited; archived metrics stop being measured.
+      const update = await client.graphql(
+        'mutation($id: String!) { metricUpdate(id: $id, input: { name: "Issues opened" }) { success } }',
+        { id: metric.id },
+        analyst.token,
+      );
+      expect(update.errors).toBeUndefined();
+      const insights = await client.graphql<{
+        insights: { metrics: { metric: { name: string }; value: number | null }[] };
+      }>("{ insights(days: 7) { metrics { metric { name } value previousValue } } }");
+      expect(insights.data?.insights.metrics).toContainEqual(
+        expect.objectContaining({ metric: { name: "Issues opened" } }),
+      );
+      expect(
+        insights.data?.insights.metrics.find((m) => m.metric.name === "Issues opened")?.value,
+      ).toBeGreaterThanOrEqual(2);
+      expect((await save({ id: metric.id, archived: true })).isError).toBe(false);
+      const left = await client.graphql<{ metrics: { name: string }[] }>("{ metrics { name } }");
+      expect(left.data?.metrics).toEqual([{ name: "Comments per issue" }]);
+      const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
+        { id: metric.id },
+      );
+      expect(log.data?.auditEntries.nodes.map((n) => n.action).sort()).toEqual([
+        "metric.archive",
+        "metric.create",
+        "metric.update",
+      ]);
+    });
   });
 }

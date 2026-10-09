@@ -6,7 +6,7 @@ import type { HubEnv } from "../context.js";
 import { ServiceError } from "../errors.js";
 import { background, deliverPush, waitUntilOf } from "../push.js";
 import { announce } from "../realtime.js";
-import { enrolMachine, machineForToken } from "../services/machines.js";
+import { enrolMachine, machineForToken, machineName } from "../services/machines.js";
 import { appendLogs, claimRun, completeRun, dispatch, heartbeat } from "./service.js";
 
 type Machine = typeof machines.$inferSelect;
@@ -60,7 +60,13 @@ runnerRoutes.use("*", async (c, next) => {
 
 runnerRoutes.get("/me", (c) => {
   const m = c.var.machine;
-  return c.json({ id: m.id, name: m.name, status: m.status, tags: m.tags, capacity: m.capacity });
+  return c.json({
+    id: m.id,
+    name: machineName(m),
+    status: m.status,
+    tags: m.tags,
+    capacity: m.capacity,
+  });
 });
 
 function requireActive(machine: Machine) {

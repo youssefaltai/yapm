@@ -18,6 +18,13 @@ const MAX_PENDING = 5;
 
 const TAG = /^[a-z0-9][a-z0-9_.-]{0,39}$/;
 
+type MachineRow = typeof machines.$inferSelect;
+
+/** The name people see: the owner's, or what the machine called itself when it enrolled. */
+export function machineName(m: Pick<MachineRow, "name" | "displayName">) {
+  return m.displayName ?? m.name;
+}
+
 export function cleanTags(tags: unknown, label = "Tags"): string[] {
   if (!Array.isArray(tags)) return [];
   const out = new Set<string>();
@@ -193,11 +200,19 @@ export async function approveMachine(ctx: Ctx, id: string, pairingCode: string) 
       .update(machines)
       .set({ status: "active", approvedAt: now, updatedAt: now })
       .where(eq(machines.id, id)),
-    ...audit(db, [event(ctx, "machine.approve", "machine", id, { name: machine.name })], now),
+    ...audit(
+      db,
+      [event(ctx, "machine.approve", "machine", id, { name: machineName(machine) })],
+      now,
+    ),
   ]);
   return id;
 }
 
+/**
+ * Renames or retags a machine. A name is the owner's own for it: an empty one, or the one the
+ * machine enrolled with, goes back to that original name.
+ */
 export async function updateMachine(
   ctx: Ctx,
   id: string,
@@ -207,7 +222,10 @@ export async function updateMachine(
   await requireOwner(ctx);
   const machine = await loadMachine(ctx, id);
   const set: Partial<typeof machines.$inferInsert> = { updatedAt: now };
-  if (input.name != null) set.name = cleanText(input.name, "Machine name", 60);
+  if (input.name != null) {
+    const name = input.name.trim() ? cleanText(input.name, "Machine name", 60) : null;
+    set.displayName = name === machine.name ? null : name;
+  }
   if (input.tags != null) set.tags = cleanTags(input.tags);
   await commit(db, [
     db.update(machines).set(set).where(eq(machines.id, id)),
@@ -215,8 +233,11 @@ export async function updateMachine(
       db,
       [
         event(ctx, "machine.update", "machine", id, {
-          from: { name: machine.name, tags: machine.tags },
-          to: { name: set.name, tags: set.tags },
+          from: { name: machineName(machine), tags: machine.tags },
+          to: {
+            name: set.displayName === undefined ? undefined : machineName({ ...machine, ...set }),
+            tags: set.tags,
+          },
         }),
       ],
       now,
@@ -234,7 +255,11 @@ export async function revokeMachine(ctx: Ctx, id: string) {
     machine.status === "pending"
       ? db.delete(machines).where(eq(machines.id, id))
       : db.update(machines).set({ status: "revoked", updatedAt: now }).where(eq(machines.id, id)),
-    ...audit(db, [event(ctx, "machine.revoke", "machine", id, { name: machine.name })], now),
+    ...audit(
+      db,
+      [event(ctx, "machine.revoke", "machine", id, { name: machineName(machine) })],
+      now,
+    ),
   ]);
   return id;
 }

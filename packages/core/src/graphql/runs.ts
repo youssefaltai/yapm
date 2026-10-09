@@ -23,6 +23,7 @@ import {
   approveMachine,
   createSetupToken,
   listMachines,
+  machineName,
   revokeMachine,
   updateMachine,
 } from "../services/machines.js";
@@ -158,7 +159,14 @@ Machine.implement({
   description: "A computer running the runner. Agents run there with its tags and MCP servers.",
   fields: (t) => ({
     id: t.exposeID("id"),
-    name: t.exposeString("name"),
+    name: t.string({
+      description: "The owner's name for it, or else its originalName.",
+      resolve: (m) => machineName(m),
+    }),
+    originalName: t.string({
+      description: "What the machine called itself when it enrolled, e.g. its host name.",
+      resolve: (m) => m.name,
+    }),
     status: t.field({ type: MachineStatus, resolve: (m) => m.status }),
     tags: t.exposeStringList("tags"),
     mcps: t.exposeStringList("mcps"),
@@ -346,7 +354,10 @@ const RunCreateInput = builder.inputType("RunCreateInput", {
 
 const MachineUpdateInput = builder.inputType("MachineUpdateInput", {
   fields: (t) => ({
-    name: t.string({ required: false }),
+    name: t.string({
+      required: false,
+      description: "Renames it; an empty name goes back to its originalName.",
+    }),
     tags: t.stringList({ required: false }),
   }),
 });

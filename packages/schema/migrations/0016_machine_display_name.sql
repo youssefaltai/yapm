@@ -1,0 +1,1 @@
+ALTER TABLE `machines` ADD `display_name` text;

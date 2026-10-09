@@ -913,35 +913,45 @@ test.describe
       await page.unroute("**/graphql");
     });
 
-    test("signs in with the owner's own OAuth app where the provider needs one", async () => {
-      // As above, the page is told the server needs the owner's app, and connecting answers a URL.
+    test("signs in on another tab and connects with the pasted address", async () => {
+      // As above, the page is told the sign-in ends on localhost, and connecting answers a URL.
       const asked = await mcp("create_mcp_server", {
         name: "slack",
         url: "https://mcp.example.com/slack",
         auth: "token",
         reason: "I need to read the team channel.",
       });
-      let sent: Record<string, unknown> = {};
+      let pasted: unknown = null;
       await page.route("**/graphql", async (route) => {
         const body = route.request().postDataJSON();
         if (body.query.includes("mcpServerConnect")) {
-          sent = body.variables;
+          if (!body.variables.callbackUrl)
+            return route.fulfill({
+              json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-elsewhere" } } },
+            });
+          pasted = body.variables.callbackUrl;
           return route.fulfill({
-            json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-elsewhere" } } },
+            json: { errors: [{ message: "That address is from another sign-in." }] },
           });
         }
         const response = await route.fetch();
         const json = await response.json();
         if (json.data?.request?.mcpServer)
-          Object.assign(json.data.request.mcpServer, { auth: "oauth", needsClient: true });
+          Object.assign(json.data.request.mcpServer, { auth: "oauth", pastesCallback: true });
         return route.fulfill({ response, json });
       });
       await page.goto(`/request/${asked.id}`);
-      await page.getByLabel("Client ID").fill("app-1");
-      await page.getByLabel("Client secret").fill("shh");
-      await page.getByRole("button", { name: "Sign in to slack" }).click();
-      await page.waitForURL("**/signed-in-elsewhere");
-      expect(sent).toMatchObject({ clientId: "app-1", clientSecret: "shh" });
+      const [tab] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: "Sign in to slack" }).click(),
+      ]);
+      await tab.waitForURL("**/signed-in-elsewhere");
+      await tab.close();
+      const landed = "http://localhost:3118/callback?code=c&state=s";
+      await page.getByLabel("Paste the address you land on").fill(landed);
+      await page.getByRole("button", { name: "Connect", exact: true }).click();
+      await expect(page.getByText("That address is from another sign-in.")).toBeVisible();
+      expect(pasted).toBe(landed);
       await page.unroute("**/graphql");
     });
   });

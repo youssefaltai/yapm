@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { workspaceStore } from "../actions.js";
-import { mutate, toast, useQuery } from "../data.js";
+import { graphql } from "../api.js";
+import { invalidate, mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import {
   Breadcrumbs,
@@ -53,7 +54,7 @@ interface RequestDetail extends RequestSummary {
     name: string;
     auth: "none" | "oauth" | "token";
     status: "pending" | "ready";
-    needsClient: boolean;
+    pastesCallback: boolean;
   } | null;
   requester: Person & { title: string | null; teams: { nodes: { id: string; name: string }[] } };
 }
@@ -246,7 +247,7 @@ const DETAIL = `query($id: String!) { request(id: $id) {
   ${SUMMARY} resource reason details answer used
   answeredBy { id name kind }
   issue { identifier title }
-  mcpServer { id name auth status needsClient }
+  mcpServer { id name auth status pastesCallback }
   requester { id name kind title teams { nodes { id name } } }
 } }`;
 
@@ -260,26 +261,42 @@ export function RequestPage({ id }: { id: string }) {
   const [scope, setScope] = useState<string>("user");
   const [anyResource, setAnyResource] = useState(false);
   const [token, setToken] = useState("");
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
+  const [callbackUrl, setCallbackUrl] = useState("");
+  const [failure, setFailure] = useState<string | null>(null);
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
   const server = r.mcpServer?.status === "pending" ? r.mcpServer : null;
-  const connectError = new URLSearchParams(window.location.search).get("error");
+  const connectError = failure ?? new URLSearchParams(window.location.search).get("error");
 
-  async function connect(variables: { token?: string; clientId?: string; clientSecret?: string }) {
-    if (!server) return;
+  /** Connects the server; answers where to sign in, if there is anywhere. */
+  async function connect(variables: { token?: string; callbackUrl?: string }) {
+    if (!server) return null;
     setBusy(true);
-    const result = await mutate<{ mcpServerConnect: { authorizationUrl: string | null } }>(
-      "mutation($id: String!, $token: String, $clientId: String, $clientSecret: String) { mcpServerConnect(id: $id, token: $token, clientId: $clientId, clientSecret: $clientSecret) { authorizationUrl } }",
-      { id: server.id, ...variables },
-    );
-    setBusy(false);
-    const url = result?.mcpServerConnect.authorizationUrl;
-    if (url) window.location.assign(url);
+    setFailure(null);
+    try {
+      const result = await graphql<{ mcpServerConnect: { authorizationUrl: string | null } }>(
+        "mutation($id: String!, $token: String, $callbackUrl: String) { mcpServerConnect(id: $id, token: $token, callbackUrl: $callbackUrl) { authorizationUrl } }",
+        { id: server.id, ...variables },
+      );
+      invalidate();
+      return result.mcpServerConnect.authorizationUrl;
+    } catch (e) {
+      setFailure(e instanceof Error ? e.message : String(e));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Signs in from a new tab, opened before awaiting so phones don't block it; this page stays. */
+  async function signInElsewhere() {
+    const tab = window.open("", "_blank");
+    const url = await connect({});
+    if (url) tab?.location.assign(url);
+    else tab?.close();
   }
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
@@ -409,44 +426,48 @@ export function RequestPage({ id }: { id: string }) {
             {canAnswer && server && (
               <section className="rounded-lg border border-line p-4">
                 {connectError && <p className="mb-3 text-red-400">{connectError}</p>}
-                {server.needsClient ? (
-                  <form
-                    className="space-y-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      connect({ clientId, clientSecret });
-                    }}
-                  >
-                    <input
-                      aria-label="Client ID"
-                      placeholder="Client ID"
-                      autoComplete="off"
-                      value={clientId}
-                      onChange={(e) => setClientId(e.target.value)}
-                      className={`${dialogField} w-full`}
-                    />
-                    <input
-                      type="password"
-                      aria-label="Client secret"
-                      placeholder="Client secret"
-                      autoComplete="off"
-                      value={clientSecret}
-                      onChange={(e) => setClientSecret(e.target.value)}
-                      className={`${dialogField} w-full`}
-                    />
+                {server.pastesCallback ? (
+                  <div className="space-y-3">
                     <button
-                      type="submit"
-                      disabled={busy || !clientId}
+                      type="button"
+                      disabled={busy}
+                      onClick={signInElsewhere}
                       className={button("primary")}
                     >
                       Sign in to {server.name}
                     </button>
-                  </form>
+                    <form
+                      className="flex gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        connect({ callbackUrl });
+                      }}
+                    >
+                      <input
+                        aria-label="Paste the address you land on"
+                        placeholder="Paste the address you land on"
+                        autoComplete="off"
+                        value={callbackUrl}
+                        onChange={(e) => setCallbackUrl(e.target.value)}
+                        className={`${dialogField} flex-1`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy || !callbackUrl}
+                        className={button("primary")}
+                      >
+                        Connect
+                      </button>
+                    </form>
+                  </div>
                 ) : server.auth === "oauth" ? (
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => connect({})}
+                    onClick={async () => {
+                      const url = await connect({});
+                      if (url) window.location.assign(url);
+                    }}
                     className={button("primary")}
                   >
                     Sign in to {server.name}

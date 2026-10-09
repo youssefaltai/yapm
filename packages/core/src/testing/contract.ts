@@ -2860,7 +2860,6 @@ export function hubContract(
               issuer: "https://chat.example.com",
               authorization_endpoint: "https://chat.example.com/oauth/authorize",
               token_endpoint: "https://chat.example.com/api/oauth.access",
-              token_endpoint_auth_methods_supported: ["client_secret_post"],
             });
           case "POST https://chat.example.com/api/oauth.access": {
             const form = new URLSearchParams(await request.text());
@@ -3127,47 +3126,68 @@ export function hubContract(
       }
     });
 
-    it("signs in with the owner's own OAuth app where the provider registers no clients", async () => {
+    it("signs in with a provider's published client, the owner pasting the address they land on", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
       try {
         const coach = await agentToken("Coach");
-        const asked = await callTool(coach.token, "create_mcp_server", {
-          name: "chat",
-          url: "https://chat.example.com/mcp",
-          scopes: ["channels:history"],
-          reason: "Read the team's channel.",
-        });
-        const requestId = asked.json().id as string;
-        type Server = { id: string; auth: string; needsClient: boolean; redirectUri: string };
-        const request = async () =>
-          (
-            await client.graphql<{ request: { details: string; mcpServer: Server } }>(
-              "query($id: String!) { request(id: $id) { details mcpServer { id auth needsClient redirectUri } } }",
-              { id: requestId },
-            )
-          ).data?.request;
-        const filed = await request();
-        const redirectUri = "http://localhost/api/mcp/oauth/callback";
-        expect(filed?.mcpServer).toMatchObject({ auth: "oauth", needsClient: true, redirectUri });
-        expect(filed?.details).toContain(redirectUri);
+        const ask = (args: Record<string, unknown>) =>
+          callTool(coach.token, "create_mcp_server", {
+            name: "chat",
+            url: "https://chat.example.com/mcp",
+            scopes: ["channels:history"],
+            reason: "Read the team's channel.",
+            ...args,
+          });
+        const unregistered = await ask({});
+        expect(unregistered.isError).toBe(true);
+        expect(unregistered.text).toContain("callbackPort");
 
-        const connected = await client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
-          'mutation($id: String!) { mcpServerConnect(id: $id, clientId: "app-1", clientSecret: "shh") { authorizationUrl } }',
-          { id: filed?.mcpServer.id },
-        );
-        const authorize = new URL(connected.data?.mcpServerConnect.authorizationUrl ?? "");
+        const asked = await ask({ oauth: { clientId: "app-1", callbackPort: 3118 } });
+        const requestId = asked.json().id as string;
+        const filed = await client.graphql<{
+          request: { mcpServer: { id: string; auth: string; pastesCallback: boolean } };
+        }>("query($id: String!) { request(id: $id) { mcpServer { id auth pastesCallback } } }", {
+          id: requestId,
+        });
+        const server = filed.data?.request.mcpServer;
+        expect(server).toMatchObject({ auth: "oauth", pastesCallback: true });
+
+        const connect = (callbackUrl?: string) =>
+          client.graphql<{
+            mcpServerConnect: { authorizationUrl: string | null; mcpServer: { status: string } };
+          }>(
+            "mutation($id: String!, $url: String) { mcpServerConnect(id: $id, callbackUrl: $url) { authorizationUrl mcpServer { status } } }",
+            { id: server?.id, url: callbackUrl },
+          );
+        const started = await connect();
+        const authorize = new URL(started.data?.mcpServerConnect.authorizationUrl ?? "");
+        const redirectUri = "http://localhost:3118/callback";
         expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
           client_id: "app-1",
+          redirect_uri: redirectUri,
           scope: "channels:history",
           code_challenge_method: "S256",
         });
-        expect((await request())?.mcpServer.needsClient).toBe(false);
 
         const state = authorize.searchParams.get("state");
-        const refused = await client.request(`/api/mcp/oauth/callback?code=bad&state=${state}`);
-        expect(refused.headers.get("location")).toContain("invalid_code");
-        await client.request(`/api/mcp/oauth/callback?code=good-code&state=${state}`);
-        expect(tokenForms.at(-1)?.get("client_secret")).toBe("shh");
+        const wrong = await connect(`${redirectUri}?code=good-code&state=other`);
+        expect(wrong.errors?.[0]?.message).toContain("another sign-in");
+        const refused = await connect(`${redirectUri}?code=bad&state=${state}`);
+        expect(refused.errors?.[0]?.message).toContain("invalid_code");
+        const pasted = await connect(`${redirectUri}?code=good-code&state=${state}`);
+        expect(pasted.data?.mcpServerConnect.mcpServer.status).toBe("ready");
+        const exchange = tokenForms.at(-1);
+        expect(exchange?.get("redirect_uri")).toBe(redirectUri);
+        expect(exchange?.has("client_secret")).toBe(false);
+        const challenge = toBase64Url(
+          new Uint8Array(
+            await crypto.subtle.digest(
+              "SHA-256",
+              new TextEncoder().encode(exchange?.get("code_verifier") ?? ""),
+            ),
+          ),
+        );
+        expect(challenge).toBe(authorize.searchParams.get("code_challenge"));
 
         await client.graphql(
           "mutation($id: String!) { requestApprove(id: $id, alwaysAllow: { scope: user }) { success } }",

@@ -774,6 +774,8 @@ export function hubContract(
         protocolVersion: "2025-06-18",
         serverInfo: { name: "life-os" },
       });
+      // Its tools share Linear's names, so agents must not mistake it for the owner's Linear.
+      expect(init.result?.instructions).toContain("not Linear");
       const note = await client.request("/mcp", {
         method: "POST",
         json: { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -1365,6 +1367,7 @@ export function hubContract(
         input: { tools: false },
       });
       expect(decision.body.input.systemPrompt).toContain("Coach things.");
+      expect(decision.body.input.systemPrompt).toContain("not Linear");
       expect(decision.body.input.prompt).toContain("Youssef assigned the issue to you");
       expect(decision.body.input.prompt).toContain("Build a 12-week training plan");
       expect(decision.body.input.outputSchema.properties).toHaveProperty("action");
@@ -3013,6 +3016,8 @@ export function hubContract(
         // Its claim carries the server with a freshly refreshed token; others' don't.
         const claim = await claimFor(coach.id);
         expect(claim.input.systemPrompt).toContain("create_mcp_server");
+        // A status or project the issue names that isn't here may live in an outside app.
+        expect(claim.input.systemPrompt).toContain("don't swap in a guess");
         expect(claim.mcpServers).toEqual({
           drive: {
             type: "http",

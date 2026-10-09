@@ -298,6 +298,11 @@ export function RequestPage({ id }: { id: string }) {
               </div>
               <h1 className="mt-3 text-xl font-semibold">{r.title}</h1>
               <RichText source={r.reason} className="mt-3" />
+              {/*
+               * With the reason, not below the properties: on a phone the properties stack between
+               * head and body, which split what the agent asks from exactly what it will do.
+               */}
+              {r.details && <RichText source={r.details} className="mt-5" />}
             </>
           }
           side={
@@ -329,12 +334,6 @@ export function RequestPage({ id }: { id: string }) {
             </PropertyList>
           }
         >
-          {r.details && (
-            <pre className="mt-4 overflow-x-auto rounded-lg border border-line bg-canvas px-4 py-3 text-[13px] whitespace-pre-wrap">
-              {r.details}
-            </pre>
-          )}
-
           {canAnswer && mode === "idle" && (
             <div className="sticky bottom-0 mt-6 grid grid-cols-3 gap-2 bg-canvas py-3">
               <button

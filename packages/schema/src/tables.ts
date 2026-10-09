@@ -961,6 +961,38 @@ export const metricSnapshots = sqliteTable(
   (t) => [uniqueIndex("metric_snapshots_day_idx").on(t.scope, t.scopeId, t.date)],
 );
 
+/** Audit log entries with this action, and of this entity type when given. */
+export interface AuditFilter {
+  action: string;
+  entityType?: string;
+}
+
+export const METRIC_DIRECTIONS = ["up", "down"] as const;
+export type MetricDirection = (typeof METRIC_DIRECTIONS)[number];
+
+/**
+ * A measure agents and the owner agree on, counted from the audit log: how many entries match
+ * the numerator, or that divided by how many match the denominator.
+ */
+export const metrics = sqliteTable(
+  "metrics",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    numerator: text("numerator", { mode: "json" }).$type<AuditFilter>().notNull(),
+    denominator: text("denominator", { mode: "json" }).$type<AuditFilter>(),
+    unit: text("unit"),
+    target: real("target"),
+    /** Which way is better. */
+    direction: text("direction", { enum: METRIC_DIRECTIONS }),
+    creatorId: text("creator_id"),
+    ...timestamps,
+    archivedAt: integer("archived_at", { mode: "number" }),
+  },
+  (t) => [uniqueIndex("metrics_name_idx").on(t.name).where(sql`archived_at is null`)],
+);
+
 export const MCP_AUTHS = ["none", "oauth", "token"] as const;
 export type McpAuth = (typeof MCP_AUTHS)[number];
 export const MCP_SERVER_STATUSES = ["pending", "ready"] as const;

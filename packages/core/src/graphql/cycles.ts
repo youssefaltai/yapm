@@ -1,16 +1,9 @@
 import { customViews, cycles, issues, workspaces } from "@life-os/schema";
 import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
-import { audit } from "../audit.js";
-import { commit } from "../db.js";
-import { badRequest, notFound } from "../errors.js";
-import { cleanRouting, loadRouting } from "../runs/routing.js";
-import { changes, event } from "../services/common.js";
 import { activeCycle, requireCycle, updateCycle } from "../services/cycles.js";
-import { updateHandbook } from "../services/feedback.js";
-import { rescheduleAll } from "../services/templates.js";
+import { updateOrganization } from "../services/organization.js";
 import { canSeeView, createView, deleteView, requireView, updateView } from "../services/views.js";
-import { isTimeZone } from "../time.js";
 import {
   act,
   builder,
@@ -20,7 +13,6 @@ import {
   now,
   pageArgs,
   paginate,
-  requireOwner,
   requireViewer,
 } from "./builder.js";
 import { type IssueFilterShape, issueArgs, issueWhere, queryIssues } from "./filters.js";
@@ -292,44 +284,10 @@ builder.mutationFields((t) => ({
   organizationUpdate: t.field({
     type: OrganizationPayload,
     description:
-      "Renames the company, sets its time zone, rewrites its handbook or changes how runs pick a model. Owner only.",
+      "Renames the company, sets its time zone, rewrites its handbook or changes how runs pick a model. Agents need organization.update for the name and time zone and handbook.update for the handbook; model routing is owner only.",
     args: { input: t.arg({ type: OrganizationUpdateInput, required: true }) },
     resolve: async (_root, args, ctx) => {
-      requireOwner(ctx);
-      await act(ctx, async (s) => {
-        const company = await s.db.select().from(workspaces).get();
-        if (!company) throw notFound("Company");
-        const next: Partial<typeof company> = {};
-        if (args.input.name != null) {
-          const name = args.input.name.trim();
-          if (!name || name.length > 80) throw badRequest("Company name must be 1–80 characters");
-          next.name = name;
-        }
-        if (args.input.timezone != null) {
-          if (!isTimeZone(args.input.timezone)) throw badRequest("Unknown time zone");
-          next.timezone = args.input.timezone;
-        }
-        if (args.input.handbook != null) await updateHandbook(s, args.input.handbook);
-        if (args.input.modelRouting != null) {
-          const routing = cleanRouting(args.input.modelRouting);
-          if (JSON.stringify(routing) !== JSON.stringify(await loadRouting(s.db)))
-            next.modelRouting = routing;
-        }
-        const diff = changes(company, next);
-        if (!diff) return;
-        await commit(s.db, [
-          s.db
-            .update(workspaces)
-            .set({ ...next, updatedAt: s.now })
-            .where(eq(workspaces.id, company.id)),
-          ...audit(
-            s.db,
-            [event(s, "organization.update", "organization", company.id, diff)],
-            s.now,
-          ),
-        ]);
-        if (next.timezone) await rescheduleAll(s.db, next.timezone, s.now);
-      });
+      await act(ctx, (s) => updateOrganization(s, args.input));
       const row = await db(ctx).select().from(workspaces).get();
       if (!row) throw createGraphQLError("The company has not been set up yet");
       return { entity: row };

@@ -11,17 +11,31 @@ import {
   templates,
 } from "@life-os/schema";
 import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { updateCycle } from "../services/cycles.js";
 import {
   createDocument,
+  createInitiative,
   createMilestone,
   createProject,
   createProjectUpdate,
+  deleteMilestone,
+  deleteProjectUpdate,
   requireDocument,
+  setDocumentArchived,
+  setInitiativeArchived,
+  setProjectArchived,
   updateDocument,
+  updateInitiative,
   updateMilestone,
   updateProject,
+  updateProjectUpdate,
 } from "../services/projects.js";
-import { createTemplate, requireTemplate, updateTemplate } from "../services/templates.js";
+import {
+  createTemplate,
+  deleteTemplate,
+  requireTemplate,
+  updateTemplate,
+} from "../services/templates.js";
 import { describeSchedule } from "../time.js";
 import { type Tool, ToolError } from "./protocol.js";
 import {
@@ -29,6 +43,7 @@ import {
   issueSummary,
   limitArg,
   type McpContext,
+  resolveCycle,
   resolveMilestone,
   resolveProject,
   resolveTeam,
@@ -110,20 +125,21 @@ async function projectInput(c: McpContext, args: Args) {
     input.teamIds = await Promise.all(
       args.teams.map(async (t) => (await resolveTeam(c, String(t))).id),
     );
-  if (args.initiative !== undefined) {
-    if (!args.initiative) input.initiativeId = null;
-    else {
-      const ref = String(args.initiative);
-      const row = await c.db
-        .select()
-        .from(initiatives)
-        .where(or(eq(initiatives.id, ref), sql`lower(${initiatives.name}) = ${ref.toLowerCase()}`))
-        .get();
-      if (!row) throw new ToolError(`No initiative matches "${ref}". Use list_initiatives.`);
-      input.initiativeId = row.id;
-    }
-  }
+  if (args.initiative !== undefined)
+    input.initiativeId = args.initiative
+      ? (await resolveInitiative(c, String(args.initiative))).id
+      : null;
   return input;
+}
+
+async function resolveInitiative(c: McpContext, ref: string) {
+  const row = await c.db
+    .select()
+    .from(initiatives)
+    .where(or(eq(initiatives.id, ref), sql`lower(${initiatives.name}) = ${ref.toLowerCase()}`))
+    .get();
+  if (!row) throw new ToolError(`No initiative matches "${ref}". Use list_initiatives.`);
+  return row;
 }
 
 async function documentSummary(c: McpContext, d: typeof documents.$inferSelect, full: boolean) {
@@ -262,16 +278,22 @@ export const planningTools: Tool<McpContext>[] = [
   {
     name: "update_project",
     title: "Update project",
-    description: "Update a project's name, summary, description, state, lead, teams or dates.",
+    description:
+      "Update a project's name, summary, description, state, lead, teams or dates, or archive it.",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string", description: "Project name or id" }, ...projectFields },
+      properties: {
+        id: { type: "string", description: "Project name or id" },
+        ...projectFields,
+        archived: { type: "boolean", description: "true archives it, false restores it" },
+      },
       required: ["id"],
     },
     async run(args, c) {
       const p = await resolveProject(c, String(args.id));
-      const { id: _id, ...rest } = args;
+      const { id: _id, archived, ...rest } = args;
       await c.act(async (s) => updateProject(s, p.id, await projectInput(c, rest)));
+      if (typeof archived === "boolean") await c.act((s) => setProjectArchived(s, p.id, archived));
       c.loaders.project.clear(p.id);
       return projectSummary(c, await resolveProject(c, p.id));
     },
@@ -300,6 +322,38 @@ export const planningTools: Tool<McpContext>[] = [
         }),
       );
       return { id, project: p.name, url: `${c.appUrl}/project/${p.id}` };
+    },
+  },
+  {
+    name: "update_project_update",
+    title: "Edit project update",
+    description: "Edit a project update's body or health.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        body: { type: "string", description: "Markdown" },
+        health: { type: "string", enum: ["onTrack", "atRisk", "offTrack"] },
+      },
+      required: ["id"],
+    },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) =>
+        updateProjectUpdate(s, id, { body: str(args.body), health: str(args.health) }),
+      );
+      return { id };
+    },
+  },
+  {
+    name: "delete_project_update",
+    title: "Delete project update",
+    description: "Delete a project update.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => deleteProjectUpdate(s, id));
+      return { id, deleted: true };
     },
   },
   {
@@ -338,6 +392,17 @@ export const planningTools: Tool<McpContext>[] = [
     },
   },
   {
+    name: "delete_milestone",
+    title: "Delete milestone",
+    description: "Delete a milestone; its issues stay in the project.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => deleteMilestone(s, id));
+      return { id, deleted: true };
+    },
+  },
+  {
     name: "list_initiatives",
     title: "List initiatives",
     description: "List the company's initiatives and their projects.",
@@ -368,6 +433,47 @@ export const planningTools: Tool<McpContext>[] = [
           })),
         ),
       };
+    },
+  },
+  {
+    name: "save_initiative",
+    title: "Create or update initiative",
+    description: "Create an initiative, or update or archive one by id.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Initiative name or id (to update)" },
+        name: { type: "string" },
+        description: { type: ["string", "null"], description: "Markdown" },
+        status: { type: "string", enum: ["planned", "active", "completed"] },
+        owner: { type: ["string", "null"], description: 'Member name, id or "me"' },
+        targetDate: { type: ["string", "null"], description: "YYYY-MM-DD" },
+        archived: { type: "boolean", description: "true archives it, false restores it" },
+      },
+    },
+    async run(args, c) {
+      const input = {
+        name: str(args.name),
+        status: str(args.status),
+        ...(args.description !== undefined ? { description: str(args.description) ?? null } : {}),
+        ...(args.targetDate !== undefined ? { targetDate: str(args.targetDate) ?? null } : {}),
+        ...(args.owner !== undefined
+          ? { ownerId: args.owner ? (await resolveUser(c, String(args.owner))).id : null }
+          : {}),
+      };
+      if (!args.id) {
+        const name = input.name;
+        if (!name) throw new ToolError("Give a name to create one");
+        const id = await c.act((s) => createInitiative(s, { ...input, name }));
+        return { id, name };
+      }
+      const row = await resolveInitiative(c, String(args.id));
+      await c.act((s) => updateInitiative(s, row.id, input));
+      if (typeof args.archived === "boolean") {
+        const archived = args.archived;
+        await c.act((s) => setInitiativeArchived(s, row.id, archived));
+      }
+      return { id: row.id };
     },
   },
   {
@@ -445,13 +551,14 @@ export const planningTools: Tool<McpContext>[] = [
   {
     name: "update_document",
     title: "Update document",
-    description: "Update a document's title or content (the content is replaced).",
+    description: "Update a document's title or content (the content is replaced), or archive it.",
     inputSchema: {
       type: "object",
       properties: {
         id: { type: "string" },
         title: { type: "string" },
         content: { type: "string", description: "Markdown; replaces the content" },
+        archived: { type: "boolean", description: "true archives it, false restores it" },
       },
       required: ["id"],
     },
@@ -463,6 +570,10 @@ export const planningTools: Tool<McpContext>[] = [
           ...(args.content !== undefined ? { content: str(args.content) ?? "" } : {}),
         }),
       );
+      if (typeof args.archived === "boolean") {
+        const archived = args.archived;
+        await c.act((s) => setDocumentArchived(s, id, archived));
+      }
       return documentSummary(c, await requireDocument(c.db, id), false);
     },
   },
@@ -527,6 +638,26 @@ export const planningTools: Tool<McpContext>[] = [
           };
         }),
       };
+    },
+  },
+  {
+    name: "update_cycle",
+    title: "Update cycle",
+    description: "Name a team's cycle.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        team: { type: "string", description: "Team name, key or id" },
+        cycle: { type: ["string", "integer"], description: '"current", "next", its number, or id' },
+        name: { type: ["string", "null"] },
+      },
+      required: ["team", "cycle", "name"],
+    },
+    async run(args, c) {
+      const team = await resolveTeam(c, String(args.team));
+      const cycle = await resolveCycle(c, team.id, String(args.cycle));
+      await c.act((s) => updateCycle(s, cycle.id, { name: str(args.name) ?? null }));
+      return { id: cycle.id, number: cycle.number };
     },
   },
   {
@@ -616,6 +747,17 @@ export const planningTools: Tool<McpContext>[] = [
         schedule: row.schedule ? describeSchedule(row.schedule) : null,
         nextRunAt: iso(row.nextRunAt),
       };
+    },
+  },
+  {
+    name: "delete_template",
+    title: "Delete template",
+    description: "Delete a template; a recurring issue stops.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => deleteTemplate(s, id));
+      return { id, deleted: true };
     },
   },
 ];

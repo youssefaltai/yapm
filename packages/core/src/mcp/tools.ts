@@ -19,19 +19,38 @@ import type { HubDeps, User } from "../context.js";
 import type { HubDb } from "../db.js";
 import { type IssueFilterShape, queryIssues } from "../graphql/filters.js";
 import type { Loaders } from "../loaders.js";
-import { createComment, createReaction } from "../services/comments.js";
+import {
+  createComment,
+  createReaction,
+  deleteComment,
+  deleteReaction,
+  updateComment,
+} from "../services/comments.js";
 import type { Ctx } from "../services/common.js";
 import {
   createIssue,
   createRelation,
+  deleteRelation,
   findIssue,
   type IssueRow,
+  setIssueArchived,
   updateIssue,
 } from "../services/issues.js";
-import { createLabel } from "../services/labels.js";
-import { archiveNotification, inInbox, updateNotification } from "../services/notifications.js";
-import { cancelRequest, checkPermission, createRequest } from "../services/requests.js";
-import { createTeam } from "../services/teams.js";
+import { createLabel, deleteLabel, updateLabel } from "../services/labels.js";
+import {
+  archiveNotification,
+  inInbox,
+  setSubscribed,
+  updateNotification,
+} from "../services/notifications.js";
+import {
+  approveRequest,
+  cancelRequest,
+  checkPermission,
+  createRequest,
+  rejectRequest,
+} from "../services/requests.js";
+import { createTeam, updateTeam } from "../services/teams.js";
 import { hireAgent, retireAgent, updateUser } from "../services/users.js";
 import { type Tool, ToolError } from "./protocol.js";
 
@@ -174,7 +193,7 @@ export async function resolveCycle(c: McpContext, teamId: string, ref: string) {
     throw new ToolError(
       rows.length
         ? `No cycle "${ref}" in that team. Use list_cycles to see them.`
-        : "That team doesn't use cycles. The owner can turn them on in the team's settings.",
+        : "That team doesn't use cycles. Turn them on with update_team.",
     );
   return row;
 }
@@ -426,6 +445,48 @@ export const tools: Tool<McpContext>[] = [
     },
   },
   {
+    name: "update_team",
+    title: "Update team",
+    description: "Change a team's name, key, lead, triage, cycles, SLAs or auto-archive.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Team name, key or id" },
+        name: { type: "string" },
+        key: { type: "string" },
+        description: { type: ["string", "null"] },
+        lead: { type: ["string", "null"], description: "Member name or id; null for none" },
+        triageEnabled: { type: "boolean", description: "New issues from agents wait in Triage" },
+        cyclesEnabled: { type: "boolean" },
+        cycleDuration: { type: "integer", description: "Weeks per cycle, 1-8" },
+        cycleStartDay: { type: "integer", description: "0 Sunday … 6 Saturday" },
+        cycleCooldown: { type: "integer", description: "Weeks between cycles, 0-4" },
+        upcomingCycleCount: { type: "integer", description: "Future cycles to keep, 1-10" },
+        slaHours: {
+          type: ["object", "null"],
+          description: 'Hours to finish by priority, e.g. { "1": 24 }; null turns SLAs off',
+        },
+        autoArchivePeriod: { type: "integer", description: "Months, 0-24; 0 never" },
+      },
+      required: ["id"],
+    },
+    async run(args, c) {
+      const team = await resolveTeam(c, String(args.id));
+      const { id: _id, lead, ...input } = args;
+      if (lead !== undefined) input.leadId = lead ? (await resolveUser(c, String(lead))).id : null;
+      await c.act((s) => updateTeam(s, team.id, input as Parameters<typeof updateTeam>[2]));
+      const row = await resolveTeam(c, team.id);
+      return {
+        id: row.id,
+        key: row.key,
+        name: row.name,
+        description: row.description,
+        triageEnabled: row.triageEnabled,
+        cyclesEnabled: row.cyclesEnabled,
+      };
+    },
+  },
+  {
     name: "list_users",
     title: "List users",
     description:
@@ -547,6 +608,43 @@ export const tools: Tool<McpContext>[] = [
         }),
       );
       return { id, name: args.name };
+    },
+  },
+  {
+    name: "update_issue_label",
+    title: "Update issue label",
+    description: "Rename a label or change its color or description.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        name: { type: "string" },
+        color: { type: "string", description: "Hex color" },
+        description: { type: ["string", "null"] },
+      },
+      required: ["id"],
+    },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) =>
+        updateLabel(s, id, {
+          name: str(args.name),
+          color: str(args.color),
+          ...(args.description !== undefined ? { description: str(args.description) ?? null } : {}),
+        }),
+      );
+      return { id };
+    },
+  },
+  {
+    name: "delete_issue_label",
+    title: "Delete issue label",
+    description: "Delete a label; it comes off every issue.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => deleteLabel(s, id));
+      return { id, deleted: true };
     },
   },
   {
@@ -682,17 +780,26 @@ export const tools: Tool<McpContext>[] = [
     name: "update_issue",
     title: "Update issue",
     description:
-      "Update an issue's title, description, status, assignee, priority, estimate, labels, parent, due date, project or milestone.",
+      "Update an issue's title, description, status, assignee, priority, estimate, labels, parent, due date, project or milestone; archive it, or follow it.",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string", description: "Issue id or identifier" }, ...issueFields },
+      properties: {
+        id: { type: "string", description: "Issue id or identifier" },
+        ...issueFields,
+        archived: { type: "boolean", description: "true archives it, false restores it" },
+        subscribed: { type: "boolean", description: "Follow it (true) or stop (false)" },
+      },
       required: ["id"],
     },
     async run(args, c) {
       const issue = await requireIssue(c, String(args.id));
-      const { id: _id, ...rest } = args;
+      const { id: _id, archived, subscribed, ...rest } = args;
       const input = await issueInput(c, { ...rest, issueId: issue.id }, issue.teamId);
       await c.act((s) => updateIssue(s, issue.id, input));
+      if (typeof archived === "boolean")
+        await c.act((s) => setIssueArchived(s, issue.id, archived));
+      if (typeof subscribed === "boolean")
+        await c.act((s) => setSubscribed(s, issue.id, c.viewer.id, subscribed));
       c.loaders.issue.clear(issue.id);
       c.loaders.labelsByIssue.clear(issue.id);
       return issueSummary(c, await requireIssue(c, issue.id));
@@ -755,6 +862,32 @@ export const tools: Tool<McpContext>[] = [
     },
   },
   {
+    name: "update_comment",
+    title: "Update comment",
+    description: "Edit one of your comments.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" }, body: { type: "string", description: "Markdown" } },
+      required: ["id", "body"],
+    },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => updateComment(s, id, { body: String(args.body) }));
+      return { id };
+    },
+  },
+  {
+    name: "delete_comment",
+    title: "Delete comment",
+    description: "Delete one of your comments, with its replies.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => deleteComment(s, id));
+      return { id, deleted: true };
+    },
+  },
+  {
     name: "create_reaction",
     title: "React",
     description:
@@ -778,6 +911,17 @@ export const tools: Tool<McpContext>[] = [
         }),
       );
       return { id };
+    },
+  },
+  {
+    name: "delete_reaction",
+    title: "Remove reaction",
+    description: "Remove one of your reactions.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => deleteReaction(s, id));
+      return { id, deleted: true };
     },
   },
   {
@@ -807,6 +951,17 @@ export const tools: Tool<McpContext>[] = [
         }),
       );
       return { id };
+    },
+  },
+  {
+    name: "delete_issue_relation",
+    title: "Unrelate issues",
+    description: "Remove a relation; get_issue lists each relation's id.",
+    inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+    async run(args, c) {
+      const id = String(args.id);
+      await c.act((s) => deleteRelation(s, id));
+      return { id, deleted: true };
     },
   },
   {
@@ -910,7 +1065,7 @@ export const tools: Tool<McpContext>[] = [
     name: "create_request",
     title: "Ask for approval",
     description:
-      "Ask the owner for permission to do something you aren't allowed to do yet. One request covers one action: its title names only that action, so ask separately for each. The owner approves once, always allows it, or rejects it with a reason. Do what doesn't need it meanwhile; if you can't go on without the answer, finish with needs_input and you're woken when it comes. Asking again while one is pending returns the pending one.",
+      "Ask the owner for permission to do something you aren't allowed to do yet. One request covers one action: its title names only that action, so ask separately for each. The owner approves once, always allows it, or rejects it with a reason; a manager above you may also approve once or reject. Do what doesn't need it meanwhile; if you can't go on without the answer, finish with needs_input and you're woken when it comes. Asking again while one is pending returns the pending one.",
     inputSchema: {
       type: "object",
       properties: {
@@ -942,7 +1097,7 @@ export const tools: Tool<McpContext>[] = [
     name: "get_request",
     title: "Get request",
     description:
-      "A request's status (pending, approved, rejected, canceled) and the owner's answer. A one-time approval is used up by the action it allows.",
+      "A request's status (pending, approved, rejected, canceled) and the answer. A one-time approval is used up by the action it allows.",
     readOnly: true,
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
     async run(args, c) {
@@ -988,6 +1143,36 @@ export const tools: Tool<McpContext>[] = [
     inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
     async run(args, c) {
       await c.act((s) => cancelRequest(s, String(args.id)));
+      return requestSummary(c, String(args.id));
+    },
+  },
+  {
+    name: "approve_request",
+    title: "Approve request",
+    description:
+      "Approve once a pending request from someone below you in the reporting line. You can only pass on what a grant already lets you do; only the owner always allows.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" }, note: { type: "string" } },
+      required: ["id"],
+    },
+    async run(args, c) {
+      await c.act((s) => approveRequest(s, String(args.id), { note: str(args.note) ?? null }));
+      return requestSummary(c, String(args.id));
+    },
+  },
+  {
+    name: "reject_request",
+    title: "Reject request",
+    description:
+      "Reject a pending request from someone below you in the reporting line. The reason is required: it tells them what to do instead.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" }, reason: { type: "string" } },
+      required: ["id", "reason"],
+    },
+    async run(args, c) {
+      await c.act((s) => rejectRequest(s, String(args.id), String(args.reason)));
       return requestSummary(c, String(args.id));
     },
   },

@@ -156,7 +156,7 @@ Run.implement({
 });
 
 Machine.implement({
-  description: "A computer running the runner. Agents run there with its tags and MCP servers.",
+  description: "A computer running the runner. Agents run there by its tags.",
   fields: (t) => ({
     id: t.exposeID("id"),
     name: t.string({
@@ -169,7 +169,6 @@ Machine.implement({
     }),
     status: t.field({ type: MachineStatus, resolve: (m) => m.status }),
     tags: t.exposeStringList("tags"),
-    mcps: t.exposeStringList("mcps"),
     capacity: t.exposeInt("capacity"),
     version: t.exposeString("version", { nullable: true }),
     online: t.boolean({

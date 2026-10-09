@@ -58,7 +58,6 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 
 **Phase 6: polish** (done).
 
-- MCP servers per machine, managed from the hub: add one on the Machines page or let an agent ask for it (`add_mcp_server`, with `mcp.install` approved for that machine), and choose which agents get it. When a server needs a sign-in, you get a **Connect** link on your phone; the provider sends you back to the hub, and the machine finishes the OAuth sign-in itself. Tokens stay on the machine.
 - Import from Linear with a personal API key: teams keep their keys and issues their numbers. Export everything as JSON, or issues as CSV in Linear's columns, from the Company page.
 - Light and dark themes (or follow the system) from `⌘K`.
 - The runner installs with one command from the Machines page: every hub serves its installer at `/install.sh` and the matching runner package at `/downloads/life-os-runner.tgz`. It is also packaged for npm as `@life-os/runner` (see `apps/runner/README.md` for releasing).
@@ -138,7 +137,7 @@ node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBo
 node apps/runner/dist/main.js start
 ```
 
-`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent in its own folder under `~/.life-os-runner/work`, streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files, the machine's own MCP servers) asks you first, and the agent waits for your answer. Add the machine's own MCP servers under `mcpServers` in `~/.life-os-runner/config.json`, or add them from the Machines page so the hub sets them up and handles their sign-in; their tokens are kept in `~/.life-os-runner/mcp-auth.json`.
+`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent in its own folder under `~/.life-os-runner/work`, streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents get no MCP servers other than the hub's.
 
 ### Configuration
 

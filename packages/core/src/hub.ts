@@ -9,10 +9,9 @@ import { installScript } from "./install.js";
 import { createLoaders } from "./loaders.js";
 import { mcpHandler } from "./mcp/index.js";
 import { waitUntilOf } from "./push.js";
-import { announce, CLIENT_ID_HEADER } from "./realtime.js";
+import { CLIENT_ID_HEADER } from "./realtime.js";
 import { runnerRoutes } from "./runs/routes.js";
 import { exportCompany, exportIssuesCsv } from "./services/export.js";
-import { receiveOAuthCode } from "./services/mcpServers.js";
 
 /** Error messages along an error's cause chain (Drizzle wraps the driver's error). */
 function messagesOf(error: unknown) {
@@ -38,8 +37,6 @@ export function databaseProblem(error: unknown): string | null {
     return "The hub can't open its database. If it was deleted, run the deploy again to create a new one.";
   return null;
 }
-
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 /**
  * The hub's HTTP surface, independent of where it runs. Platform adapters
@@ -81,27 +78,6 @@ export function createHub(deps: HubDeps) {
 
   app.route("/api/runner", runnerRoutes);
 
-  /**
-   * Where MCP providers send the owner back after signing in. The code is useless without
-   * the PKCE verifier, which never leaves the machine; the runner collects it on check-in.
-   */
-  app.get("/api/mcp/oauth/callback", async (c) => {
-    const state = c.req.query("state") ?? "";
-    const code = c.req.query("code") ?? "";
-    const failure = c.req.query("error_description") ?? c.req.query("error");
-    const at = deps.now?.() ?? Date.now();
-    const server = failure ? null : await receiveOAuthCode(deps.db, state, code, at);
-    if (server) await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
-    const message = failure
-      ? `The sign-in didn't go through: ${failure}`
-      : server
-        ? `Connected ${server.name}. Its machine finishes setting it up in a moment; you can close this tab.`
-        : "This sign-in link has expired or was already used. Start again from Machines.";
-    return c.html(
-      `<!doctype html><meta name="viewport" content="width=device-width"><title>Life OS</title><body style="font:15px system-ui;margin:3rem auto;max-width:28rem;padding:0 1rem"><p>${escapeHtml(message)}</p><p><a href="/machines">Back to Machines</a></p>`,
-      server ? 200 : 400,
-    );
-  });
   app.route("/api", authRoutes);
 
   /** The whole company as JSON, or its issues as CSV in Linear's columns. Owner only. */

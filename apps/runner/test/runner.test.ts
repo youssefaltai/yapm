@@ -8,55 +8,6 @@ import { openDatabase } from "../../hub-node/src/db.js";
 import { Runner } from "../src/daemon.js";
 import type { Engine, EngineRun } from "../src/engine.js";
 import { HubClient } from "../src/hub.js";
-import { McpManager } from "../src/mcp.js";
-
-/** A remote MCP server behind OAuth, with its authorization server, as one fake host. */
-const tokenRequests: Record<string, string>[] = [];
-async function provider(input: RequestInfo | URL, init?: RequestInit) {
-  const request = new Request(input, init);
-  const url = new URL(request.url);
-  const json = (body: unknown, status = 200) => Response.json(body, { status });
-  if (url.host !== "mcp.test") return new Response("Not found", { status: 404 });
-  if (url.pathname.startsWith("/.well-known/oauth-protected-resource"))
-    return json({ resource: "https://mcp.test/mcp", authorization_servers: ["https://mcp.test"] });
-  if (url.pathname.startsWith("/.well-known/oauth-authorization-server"))
-    return json({
-      issuer: "https://mcp.test",
-      authorization_endpoint: "https://mcp.test/authorize",
-      token_endpoint: "https://mcp.test/token",
-      registration_endpoint: "https://mcp.test/register",
-      response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code", "refresh_token"],
-      code_challenge_methods_supported: ["S256"],
-      token_endpoint_auth_methods_supported: ["none"],
-    });
-  if (url.pathname === "/register")
-    return json({ client_id: "client-1", ...((await request.json()) as object) }, 201);
-  if (url.pathname === "/token") {
-    const form = Object.fromEntries(new URLSearchParams(await request.text()));
-    tokenRequests.push(form);
-    if (form.code === "good-code" && form.code_verifier)
-      return json({
-        access_token: "tok-1",
-        token_type: "Bearer",
-        expires_in: 3600,
-        refresh_token: "ref-1",
-      });
-    return json({ error: "invalid_grant" }, 400);
-  }
-  if (url.pathname === "/mcp") {
-    if (request.headers.get("authorization") === "Bearer tok-1")
-      return json({ jsonrpc: "2.0", id: 0, result: {} });
-    return new Response(null, {
-      status: 401,
-      headers: {
-        "www-authenticate":
-          'Bearer resource_metadata="https://mcp.test/.well-known/oauth-protected-resource/mcp"',
-      },
-    });
-  }
-  return new Response("Not found", { status: 404 });
-}
 
 // The daemon against a real hub in memory; only the model is a script.
 describe("runner daemon", () => {
@@ -120,7 +71,6 @@ describe("runner daemon", () => {
     const enrolment = await hub.enrol({
       name: "Test machine",
       tags: [],
-      mcps: [],
       capacity: 2,
       version: "test",
     });
@@ -131,13 +81,6 @@ describe("runner daemon", () => {
       engine,
       capacity: 2,
       version: "test",
-      mcpServers: {},
-      mcp: new McpManager({
-        hubUrl: "http://localhost",
-        machineName: "Test machine",
-        file: join(await mkdtemp(join(tmpdir(), "runner-mcp-")), "mcp-auth.json"),
-        fetch: provider,
-      }),
       workDir: await mkdtemp(join(tmpdir(), "runner-test-")),
       pollMs: 10,
       logFlushMs: 10,
@@ -302,7 +245,6 @@ describe("runner daemon", () => {
     const enrolment = await hub.enrol({
       name: "Plan machine",
       tags: [],
-      mcps: [],
       capacity: 1,
       version: "test",
     });
@@ -318,8 +260,6 @@ describe("runner daemon", () => {
       engine,
       capacity: 1,
       version: "test",
-      mcpServers: {},
-      mcp: new McpManager({ hubUrl: "http://localhost", machineName: "Plan machine" }),
       workDir: await mkdtemp(join(tmpdir(), "runner-test-")),
       pollMs: 10,
       logFlushMs: 10,
@@ -401,77 +341,5 @@ describe("runner daemon", () => {
     });
     // Nothing new: the next check-in doesn't send the reading again.
     expect(planRunner.plan.pending()).toEqual({});
-  });
-
-  it("runs hub-managed MCP servers, signing in through the hub", async () => {
-    const { machines } = await gql<{ machines: { id: string }[] }>("{ machines { id } }");
-    const machineId = machines[0]?.id;
-    const add = (input: Record<string, unknown>) =>
-      gql(
-        "mutation($input: McpServerCreateInput!) { mcpServerCreate(input: $input) { success } }",
-        {
-          input: { machineId, ...input },
-        },
-      );
-    await add({ name: "slack-acme", url: "https://mcp.test/mcp", agentIds: [agentId] });
-    await add({ name: "notes", command: "npx", args: ["notes-mcp"] });
-    type Servers = { mcpServers: { name: string; status: string; authUrl: string | null }[] };
-    const servers = async () =>
-      Object.fromEntries(
-        (await gql<Servers>("{ mcpServers { name status authUrl } }")).mcpServers.map((s) => [
-          s.name,
-          s,
-        ]),
-      );
-
-    await runner.heartbeat();
-    const waiting = await servers();
-    expect(waiting.notes?.status).toBe("ready");
-    expect(waiting["slack-acme"]?.status).toBe("needs_auth");
-    const authUrl = new URL(waiting["slack-acme"]?.authUrl ?? "");
-    expect(authUrl.origin + authUrl.pathname).toBe("https://mcp.test/authorize");
-    expect(authUrl.searchParams.get("redirect_uri")).toBe(
-      "http://localhost/api/mcp/oauth/callback",
-    );
-    expect(authUrl.searchParams.get("code_challenge_method")).toBe("S256");
-    const inbox = await gql<{ notifications: { nodes: { type: string }[] } }>(
-      "{ notifications { nodes { type } } }",
-    );
-    expect(inbox.notifications.nodes.map((n) => n.type)).toContain("mcpServerNeedsAuth");
-
-    // The owner signs in; the provider sends the browser back to the hub with a code.
-    const state = authUrl.searchParams.get("state") ?? "";
-    const stale = await owner.request("/api/mcp/oauth/callback?state=nope&code=good-code");
-    expect(stale.status).toBe(400);
-    const back = await owner.request(
-      `/api/mcp/oauth/callback?state=${encodeURIComponent(state)}&code=good-code`,
-    );
-    expect(back.status).toBe(200);
-    expect(await back.text()).toContain("Connected slack-acme");
-    await runner.heartbeat();
-    expect((await servers())["slack-acme"]?.status).toBe("ready");
-    expect(tokenRequests.at(-1)).toMatchObject({
-      grant_type: "authorization_code",
-      code: "good-code",
-    });
-
-    script = async () => ({
-      output: { outcome: "done", summary: "Read the channel." },
-      sessionId: "session-mcp",
-      usage: {},
-    });
-    await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }", {
-      input: { agentId, goal: "Read the team channel" },
-    });
-    expect(await runner.claim()).toBe(1);
-    await runner.idle();
-    expect(sessions.at(-1)?.mcpServers).toEqual({
-      "slack-acme": {
-        type: "http",
-        url: "https://mcp.test/mcp",
-        headers: { authorization: "Bearer tok-1" },
-      },
-      notes: { type: "stdio", command: "npx", args: ["notes-mcp"] },
-    });
   });
 });

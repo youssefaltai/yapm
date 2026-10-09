@@ -1,4 +1,3 @@
-import type { McpServerReport, McpServerSpec } from "./mcp.js";
 import type { ClaudeAccount, PlanUsage } from "./plan.js";
 
 /** Talks to the hub: the runner protocol with the machine's secret, GraphQL with a run's token. */
@@ -35,8 +34,6 @@ export interface Claim {
   token: string;
   mcpUrl: string;
   input: RunInput;
-  /** Hub-managed MCP servers this agent gets on this machine. */
-  mcpServers?: McpServerSpec[];
 }
 
 export interface Enrolment {
@@ -101,7 +98,6 @@ export class HubClient {
   enrol(input: {
     name: string;
     tags: string[];
-    mcps: string[];
     capacity: number;
     version: string;
     setupToken?: string;
@@ -119,12 +115,10 @@ export class HubClient {
   heartbeat(
     token: string,
     info: {
-      mcps: string[];
       capacity: number;
       version: string;
       runIds: string[];
       tags?: string[];
-      mcpServers?: McpServerReport[];
       claudeAccount?: ClaudeAccount;
       planUsage?: PlanUsage;
     },
@@ -132,7 +126,6 @@ export class HubClient {
     return this.call<{
       status: string;
       stop: { id: string; reason: string | null }[];
-      mcpServers?: McpServerSpec[];
     }>("/api/runner/heartbeat", token, info);
   }
 

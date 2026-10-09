@@ -307,7 +307,7 @@ export interface RunInput {
   systemPrompt: string;
   prompt: string;
   outputSchema: Record<string, unknown>;
-  /** Whether the run may use tools (the hub's MCP server and the machine's). */
+  /** Whether the run may use tools (the hub's MCP server). */
   tools: boolean;
   maxTurns: number;
 }

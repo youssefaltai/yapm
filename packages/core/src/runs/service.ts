@@ -23,14 +23,6 @@ import { event } from "../services/common.js";
 import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
 import { cleanTags } from "../services/machines.js";
-import {
-  listMcpServers,
-  type McpServerReport,
-  type McpServerSpec,
-  reportMcpServers,
-  serverSpec,
-  serversForAgent,
-} from "../services/mcpServers.js";
 import { cleanAccount, cleanPlanUsage, runUsageSet } from "../services/usage.js";
 import {
   type Decision,
@@ -265,8 +257,6 @@ export interface ClaimedRun {
   /** Acts as the agent on the hub, for this run only. */
   token: string;
   input: RunInput;
-  /** The machine's hub-managed MCP servers this agent gets, ready to use. */
-  mcpServers: McpServerSpec[];
 }
 
 /** Gives a machine the oldest queued run it may take, or null. */
@@ -323,12 +313,12 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
       .all();
     const mine = won[0];
     if (!mine) continue; // another machine got it first
-    return prepare(db, mine, machine, at);
+    return prepare(db, mine, at);
   }
   return null;
 }
 
-async function prepare(db: HubDb, run: RunRow, machine: Machine, at: number): Promise<ClaimedRun> {
+async function prepare(db: HubDb, run: RunRow, at: number): Promise<ClaimedRun> {
   const agent = await db.select().from(users).where(eq(users.id, run.agentId)).get();
   if (!agent) throw notFound("Agent");
   const issue = run.issueId ? await findIssue(db, run.issueId) : null;
@@ -364,7 +354,6 @@ async function prepare(db: HubDb, run: RunRow, machine: Machine, at: number): Pr
     agent: { id: agent.id, name: agent.name },
     token,
     input,
-    mcpServers: serversForAgent(await listMcpServers(db, machine.id), agent.id),
   };
 }
 
@@ -725,12 +714,9 @@ export async function heartbeat(
   machine: Machine,
   info: {
     tags?: string[];
-    mcps?: string[];
     capacity?: number;
     version?: string;
     runIds?: string[];
-    /** How each hub-managed MCP server is doing on the machine. */
-    mcpServers?: McpServerReport[];
     /** The Claude login agents use there. */
     claudeAccount?: unknown;
     /** The plan's limits as the machine last read them. */
@@ -748,7 +734,6 @@ export async function heartbeat(
       .update(machines)
       .set({
         lastSeenAt: at,
-        ...(Array.isArray(info.mcps) ? { mcps: info.mcps.map(String).slice(0, 50) } : {}),
         ...(typeof info.capacity === "number"
           ? { capacity: Math.min(Math.max(Math.floor(info.capacity), 1), 16) }
           : {}),
@@ -791,15 +776,9 @@ export async function heartbeat(
         .all()
     : [];
   const gone = runIds.filter((id) => !live.some((r) => r.id === id));
-  const reported = Array.isArray(info.mcpServers)
-    ? await reportMcpServers(db, machine, info.mcpServers, at)
-    : { changed: false, notified: false };
-  const cameOnline = !machine.lastSeenAt || machine.lastSeenAt < at - ONLINE_WINDOW;
   return {
-    notified: reported.notified,
-    /** Something the app shows changed: a server's status, or the machine coming back online. */
-    changed: reported.changed || cameOnline,
-    mcpServers: (await listMcpServers(db, machine.id)).map(serverSpec),
+    /** The app shows whether a machine is online, so coming back is a change. */
+    changed: !machine.lastSeenAt || machine.lastSeenAt < at - ONLINE_WINDOW,
     stop: [
       ...stopping.map((r) => ({ id: r.id, reason: r.reason })),
       ...gone.map((id) => ({ id, reason: "The hub ended this run" })),

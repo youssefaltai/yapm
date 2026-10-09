@@ -209,11 +209,15 @@ const DETAIL = `query($id: String!) { request(id: $id) {
   answeredBy { id name kind }
   issue { identifier title }
   requester { id name kind title teams { nodes { id name } } }
-} }`;
+}
+machines { id name } }`;
 
 /** One request on one screen: where a push notification lands, so approving is two taps. */
 export function RequestPage({ id }: { id: string }) {
-  const { data, error } = useQuery<{ request: RequestDetail }>(DETAIL, { id });
+  const { data, error } = useQuery<{
+    request: RequestDetail;
+    machines: { id: string; name: string }[];
+  }>(DETAIL, { id });
   const workspace = useStore(workspaceStore);
   const [mode, setMode] = useState<"idle" | "always" | "reject">("idle");
   const [busy, setBusy] = useState(false);
@@ -225,6 +229,8 @@ export function RequestPage({ id }: { id: string }) {
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
+  // mcp.install and other machine permissions name the machine by id; show its name.
+  const machine = data.machines.find((m) => m.id === r.resource);
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
     setBusy(true);
@@ -310,10 +316,16 @@ export function RequestPage({ id }: { id: string }) {
               </Property>
               {r.resource && (
                 <Property label="On">
-                  {/* One line: a Bash command can run to 500 characters, and the details show it. */}
-                  <code className="truncate text-ink" title={r.resource}>
-                    {r.resource}
-                  </code>
+                  {machine ? (
+                    <span className="truncate text-ink" title={r.resource}>
+                      {machine.name}
+                    </span>
+                  ) : (
+                    // One line: a Bash command can run to 500 characters, and the details show it.
+                    <code className="truncate text-ink" title={r.resource}>
+                      {r.resource}
+                    </code>
+                  )}
                 </Property>
               )}
               {r.issue && (

@@ -1460,6 +1460,17 @@ export function hubContract(
         events: [{ type: "tool_use", name: "create_comment" }],
         sessionId: "session-abc",
       });
+      // A manager is woken to screen its reports' requests; these steps follow the agent's run instead.
+      const skipScreening = async () => {
+        const queued = await gql<{ runs: { nodes: { id: string }[] } }>(
+          "{ runs(filter: { status: [queued] }) { nodes { id } } }",
+        );
+        for (const run of queued.data?.runs.nodes ?? [])
+          await gql(
+            'mutation($id: String!) { runStop(id: $id, reason: "Not needed") { success } }',
+            { id: run.id },
+          );
+      };
       // A tool that needs permission: the run asks, waits, and uses the one-time approval once.
       const use = () =>
         gql<{ permissionUse: { allowed: boolean; via: string | null } }>(
@@ -1474,6 +1485,7 @@ export function hubContract(
         work.body.token,
       );
       const askedId = asked.data?.requestCreate.request.id;
+      await skipScreening();
       const waiting = await gql<{ run: { waitingOnRequest: { id: string } | null } }>(
         "query($id: String!) { run(id: $id) { waitingOnRequest { id } } }",
         { id: work.body.run.id },
@@ -1650,6 +1662,7 @@ export function hubContract(
         { issue: issue?.id },
         entering.body.token,
       );
+      await skipScreening();
       await runner(`/runs/${entering.body.run.id}/logs`, machine.token, {
         seq: 0,
         events: [],
@@ -1684,6 +1697,7 @@ export function hubContract(
         { issue: raceId },
         paid.body.token,
       );
+      await skipScreening();
       await runner(`/runs/${paid.body.run.id}/complete`, machine.token, {
         status: "completed",
         result: { outcome: "blocked", summary: "Entered; the shop email waits on approval." },
@@ -2033,7 +2047,7 @@ export function hubContract(
         return JSON.parse(text);
       };
 
-      // Only the owner sets the company's time zone, and only to a real one.
+      // Agents need a grant to set the company's time zone, and only to a real one.
       const { organizationUpdate } = await gql<{
         organizationUpdate: { organization: { timezone: string } };
       }>(
@@ -3239,6 +3253,337 @@ export function hubContract(
       } finally {
         fetchSpy.mockRestore();
       }
+    });
+
+    it("lets managers answer their reports' requests and stop their runs, within their grants", async () => {
+      const hire = async (name: string, managerId?: string) => {
+        const made = await client.graphql<{ agentHire: { user: { id: string } } }>(
+          "mutation($n: String!, $m: String) { agentHire(input: { name: $n, managerId: $m }) { user { id } } }",
+          { n: name, m: managerId },
+        );
+        return made.data?.agentHire.user.id ?? "";
+      };
+      const leadId = await hire("Ops Lead");
+      const internId = await hire("Ops Intern", await hire("Ops Analyst", leadId));
+      await hire("Auditor");
+      const [lead, intern, auditor] = await Promise.all(
+        ["Ops Lead", "Ops Intern", "Auditor"].map(agentToken),
+      );
+      const grant = (action: string) =>
+        client.graphql(
+          "mutation($a: String!, $s: String) { grantCreate(input: { action: $a, scope: user, subjectId: $s }) { success } }",
+          { a: action, s: leadId },
+        );
+      const ask = async (token: string, action: string) =>
+        (await callTool(token, "create_request", { title: action, action, reason: "Work." })).json()
+          .id as string;
+
+      // Only someone above the requester answers, and an agent passes on only what its grants allow.
+      const spend = await ask(intern?.token ?? "", "budget.spend");
+      const byPeer = await callTool(auditor?.token ?? "", "reject_request", {
+        id: spend,
+        reason: "No.",
+      });
+      expect(byPeer.text).toContain("managers");
+      const own = await callTool(intern?.token ?? "", "approve_request", { id: spend });
+      expect(own.isError).toBe(true);
+      expect((await callTool(lead?.token ?? "", "approve_request", { id: spend })).text).toContain(
+        "grant",
+      );
+      await grant("budget.spend");
+      const always = await client.graphql(
+        "mutation($id: String!) { requestApprove(id: $id, alwaysAllow: { scope: user }) { success } }",
+        { id: spend },
+        lead?.token,
+      );
+      expect(always.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect(
+        (await callTool(lead?.token ?? "", "approve_request", { id: spend })).json(),
+      ).toMatchObject({ status: "approved", alwaysAllowed: false });
+      expect(
+        (
+          await callTool(intern?.token ?? "", "check_permission", { action: "budget.spend" })
+        ).json(),
+      ).toMatchObject({ allowed: true, via: "approval" });
+
+      // A one-time approval of its own isn't enough to pass on; rejecting needs a reason.
+      const leadDeploy = await ask(lead?.token ?? "", "tool:Deploy");
+      await client.graphql("mutation($id: String!) { requestApprove(id: $id) { success } }", {
+        id: leadDeploy,
+      });
+      const deploy = await ask(intern?.token ?? "", "tool:Deploy");
+      expect((await callTool(lead?.token ?? "", "approve_request", { id: deploy })).isError).toBe(
+        true,
+      );
+      expect(
+        (await callTool(lead?.token ?? "", "reject_request", { id: deploy, reason: " " })).isError,
+      ).toBe(true);
+      expect(
+        (
+          await callTool(lead?.token ?? "", "reject_request", { id: deploy, reason: "Not yet." })
+        ).json(),
+      ).toMatchObject({ status: "rejected", answer: "Not yet." });
+
+      // Managers stop their reports' runs, with a reason.
+      await client.graphql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+        { input: { agentId: internId, goal: "Tidy the shelves" } },
+      );
+      const queued: { id: string; agent: string; status: string; goal: string }[] = (
+        await callTool(lead?.token ?? "", "list_runs", { agent: "Ops Intern", status: "queued" })
+      ).json().runs;
+      expect(queued.every((r) => r.agent === "Ops Intern" && r.status === "queued")).toBe(true);
+      const runId = queued.find((r) => r.goal === "Tidy the shelves")?.id;
+      expect(
+        (await callTool(auditor?.token ?? "", "stop_run", { id: runId, reason: "Stop." })).isError,
+      ).toBe(true);
+      expect(
+        (await callTool(lead?.token ?? "", "stop_run", { id: runId, reason: "" })).isError,
+      ).toBe(true);
+      expect(
+        (await callTool(lead?.token ?? "", "stop_run", { id: runId, reason: "Not now." })).json(),
+      ).toMatchObject({ id: runId, status: "canceled" });
+
+      // Agents rename the company and set its time zone with a grant; model routing stays the owner's.
+      const rename = { name: "Ops Co", timezone: "Europe/Paris" };
+      expect((await callTool(lead?.token ?? "", "update_organization", rename)).text).toContain(
+        "needs approval",
+      );
+      await grant("organization.update");
+      expect((await callTool(lead?.token ?? "", "update_organization", rename)).json()).toEqual(
+        rename,
+      );
+      const routing = await client.graphql(
+        "mutation { organizationUpdate(input: { modelRouting: {} }) { success } }",
+        undefined,
+        lead?.token,
+      );
+      expect(routing.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+    });
+
+    it("lets agents edit, archive and delete what members can, through MCP", async () => {
+      const mcp = async (name: string, args: Record<string, unknown>) => {
+        const result = await callTool(ceoToken, name, args);
+        if (result.isError) throw new Error(result.text);
+        return result.json();
+      };
+      await client.graphql(
+        'mutation { teamCreate(input: { name: "Travel", key: "TRV" }) { success } }',
+      );
+
+      // Teams and cycles: any member may change a team's settings.
+      expect(
+        await mcp("update_team", { id: "TRV", description: "Trips", cyclesEnabled: true }),
+      ).toMatchObject({ key: "TRV", description: "Trips", cyclesEnabled: true });
+      await mcp("update_cycle", { team: "TRV", cycle: "current", name: "Planning" });
+      expect((await mcp("list_cycles", { team: "TRV" })).cycles).toContainEqual(
+        expect.objectContaining({ name: "Planning", status: "current" }),
+      );
+
+      // Issues: relate and unrelate, archive and restore, unfollow and follow.
+      const a = await mcp("create_issue", { title: "Renew passport", team: "TRV" });
+      const b = await mcp("create_issue", { title: "Book flights", team: "TRV" });
+      const relation = await mcp("create_issue_relation", {
+        issueId: a.identifier,
+        relatedIssueId: b.identifier,
+        type: "blocks",
+      });
+      await mcp("delete_issue_relation", { id: relation.id });
+      expect((await mcp("get_issue", { id: a.identifier })).relations).toEqual([]);
+      expect((await mcp("update_issue", { id: b.identifier, archived: true })).archivedAt).toEqual(
+        expect.any(String),
+      );
+      expect((await mcp("update_issue", { id: b.identifier, archived: false })).archivedAt).toBe(
+        null,
+      );
+      const followers = async () =>
+        (
+          await client.graphql<{ issue: { subscribers: { nodes: { name: string }[] } } }>(
+            "query($id: String!) { issue(id: $id) { subscribers { nodes { name } } } }",
+            { id: a.identifier },
+          )
+        ).data?.issue.subscribers.nodes.map((u) => u.name);
+      await mcp("update_issue", { id: a.identifier, subscribed: false });
+      expect(await followers()).not.toContain("CEO");
+      await mcp("update_issue", { id: a.identifier, subscribed: true });
+      expect(await followers()).toContain("CEO");
+
+      // Comments and reactions.
+      const comment = await mcp("create_comment", { issueId: a.identifier, body: "Tpyo" });
+      await mcp("update_comment", { id: comment.id, body: "Typo fixed" });
+      expect((await mcp("list_comments", { issueId: a.identifier }))[0].body).toBe("Typo fixed");
+      const reaction = await mcp("create_reaction", { emoji: "👍", commentId: comment.id });
+      await mcp("delete_reaction", { id: reaction.id });
+      await mcp("delete_comment", { id: comment.id });
+      expect(await mcp("list_comments", { issueId: a.identifier })).toEqual([]);
+
+      // Labels.
+      const label = await mcp("create_issue_label", { name: "Visa", team: "TRV" });
+      await mcp("update_issue_label", { id: label.id, name: "Visas" });
+      const labelNames = async () =>
+        (await mcp("list_issue_labels", { team: "TRV" })).map((l: { name: string }) => l.name);
+      expect(await labelNames()).toContain("Visas");
+      await mcp("delete_issue_label", { id: label.id });
+      expect(await labelNames()).not.toContain("Visas");
+
+      // Initiatives.
+      const initiative = await mcp("save_initiative", { name: "See the world", status: "active" });
+      await mcp("save_initiative", { id: "See the world", targetDate: "2027-06-01" });
+      expect((await mcp("list_initiatives", {})).initiatives).toContainEqual(
+        expect.objectContaining({ name: "See the world", targetDate: "2027-06-01" }),
+      );
+      await mcp("save_initiative", { id: initiative.id, archived: true });
+      expect(JSON.stringify(await mcp("list_initiatives", {}))).not.toContain("See the world");
+
+      // Projects: archive, updates and milestones.
+      await mcp("create_project", { name: "Japan", teams: ["TRV"] });
+      expect((await mcp("update_project", { id: "Japan", archived: true })).archivedAt).toEqual(
+        expect.any(String),
+      );
+      await mcp("update_project", { id: "Japan", archived: false });
+      const update = await mcp("create_project_update", { project: "Japan", body: "Booked" });
+      await mcp("update_project_update", {
+        id: update.id,
+        body: "Flights booked",
+        health: "atRisk",
+      });
+      expect((await mcp("get_project", { query: "Japan" })).latestUpdates).toEqual([
+        expect.objectContaining({ body: "Flights booked", health: "atRisk" }),
+      ]);
+      await mcp("delete_project_update", { id: update.id });
+      const milestone = await mcp("save_milestone", { project: "Japan", name: "Visa" });
+      await mcp("delete_milestone", { id: milestone.id });
+      expect(await mcp("get_project", { query: "Japan" })).toMatchObject({
+        latestUpdates: [],
+        milestones: [],
+      });
+
+      // Documents and templates.
+      const doc = await mcp("create_document", { title: "Packing list", project: "Japan" });
+      await mcp("update_document", { id: doc.id, archived: true });
+      const titles = async () =>
+        (await mcp("list_documents", { project: "Japan" })).documents.map(
+          (d: { title: string }) => d.title,
+        );
+      expect(await titles()).toEqual([]);
+      await mcp("update_document", { id: doc.id, archived: false });
+      expect(await titles()).toEqual(["Packing list"]);
+      const template = await mcp("save_template", { team: "TRV", name: "Trip", title: "Trip" });
+      await mcp("delete_template", { id: template.id });
+      expect((await mcp("list_templates", { team: "TRV" })).templates).toEqual([]);
+    });
+
+    it("tells a manager about its reports' requests and wakes it to screen them", async () => {
+      const hire = async (name: string, managerId?: string) =>
+        (
+          await client.graphql<{ agentHire: { user: { id: string } } }>(
+            "mutation($n: String!, $m: String) { agentHire(input: { name: $n, managerId: $m }) { user { id } } }",
+            { n: name, m: managerId },
+          )
+        ).data?.agentHire.user.id ?? "";
+      const bossId = await hire("Screen Boss");
+      await hire("Screen Report", bossId);
+      const [boss, report] = await Promise.all(["Screen Boss", "Screen Report"].map(agentToken));
+      const inbox = async (token?: string) =>
+        (
+          await client.graphql<{ notifications: { nodes: { type: string; data: unknown }[] } }>(
+            "{ notifications { nodes { type data } } }",
+            undefined,
+            token,
+          )
+        ).data?.notifications.nodes.filter((n) => n.type === "requestCreated") ?? [];
+      const queuedFor = async (name: string) =>
+        (
+          await client.graphql<{ runs: { nodes: { agent: { name: string } }[] } }>(
+            "{ runs(filter: { status: [queued] }) { nodes { agent { name } } } }",
+          )
+        ).data?.runs.nodes.filter((r) => r.agent.name === name).length;
+      const ask = (token: string, action: string) =>
+        callTool(token, "create_request", { title: action, action, reason: "Work." });
+      const ownerBefore = (await inbox()).length;
+
+      // The manager hears about it and wakes; the owner still does too, once.
+      await ask(report?.token ?? "", "budget.spend");
+      expect(await inbox(boss?.token)).toEqual([
+        expect.objectContaining({ data: expect.objectContaining({ title: "budget.spend" }) }),
+      ]);
+      expect(await queuedFor("Screen Boss")).toBe(1);
+      expect((await inbox()).length).toBe(ownerBefore + 1);
+
+      // A manager's own request goes to the owner only, and asking again files nothing new.
+      await ask(boss?.token ?? "", "tool:Deploy");
+      await ask(report?.token ?? "", "budget.spend");
+      expect(await inbox(boss?.token)).toHaveLength(1);
+      expect((await inbox()).length).toBe(ownerBefore + 2);
+    });
+
+    it("keeps metric definitions as data, counted from the audit log", async () => {
+      await client.graphql('mutation { agentHire(input: { name: "Analyst" }) { success } }');
+      const analyst = await agentToken("Analyst");
+      const save = (args: Record<string, unknown>) => callTool(analyst.token, "save_metric", args);
+      const created = { name: "Issues filed", numerator: { action: "issue.create" } };
+
+      // Defining a metric needs metric.update; only structured filters over the log are accepted.
+      expect((await save(created)).text).toContain("needs approval: metric.update");
+      await client.graphql(
+        'mutation($s: String) { grantCreate(input: { action: "metric.update", scope: user, subjectId: $s }) { success } }',
+        { s: analyst.id },
+      );
+      expect((await save({ name: "Bad", numerator: { action: "x' or 1=1 --" } })).isError).toBe(
+        true,
+      );
+      const metric = (await save({ ...created, direction: "up", target: 3 })).json();
+      expect(metric).toMatchObject({ name: "Issues filed", direction: "up", target: 3 });
+      expect((await save(created)).text).toContain("already");
+
+      // The owner defines one too, a ratio; with nothing to divide by it is null.
+      const ratio = await client.graphql<{ metricCreate: { metric: { id: string } } }>(
+        `mutation { metricCreate(input: {
+          name: "Comments per issue", unit: "comments",
+          numerator: { action: "comment.create" },
+          denominator: { action: "never.happens", entityType: "issue" }
+        }) { metric { id } } }`,
+      );
+      expect(ratio.errors).toBeUndefined();
+
+      for (const title of ["Q1 taxes", "Q2 taxes"])
+        await callTool(analyst.token, "create_issue", { title, team: "TRV" });
+      const mine = (await callTool(analyst.token, "get_metrics", { member: "me" })).json();
+      expect(mine.custom).toContainEqual(
+        expect.objectContaining({ name: "Issues filed", current: 2, previous: 0, target: 3 }),
+      );
+      expect(mine.custom).toContainEqual(
+        expect.objectContaining({ name: "Comments per issue", current: null }),
+      );
+
+      // Changes and archiving are audited; archived metrics stop being measured.
+      const update = await client.graphql(
+        'mutation($id: String!) { metricUpdate(id: $id, input: { name: "Issues opened" }) { success } }',
+        { id: metric.id },
+        analyst.token,
+      );
+      expect(update.errors).toBeUndefined();
+      const insights = await client.graphql<{
+        insights: { metrics: { metric: { name: string }; value: number | null }[] };
+      }>("{ insights(days: 7) { metrics { metric { name } value previousValue } } }");
+      expect(insights.data?.insights.metrics).toContainEqual(
+        expect.objectContaining({ metric: { name: "Issues opened" } }),
+      );
+      expect(
+        insights.data?.insights.metrics.find((m) => m.metric.name === "Issues opened")?.value,
+      ).toBeGreaterThanOrEqual(2);
+      expect((await save({ id: metric.id, archived: true })).isError).toBe(false);
+      const left = await client.graphql<{ metrics: { name: string }[] }>("{ metrics { name } }");
+      expect(left.data?.metrics).toEqual([{ name: "Comments per issue" }]);
+      const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
+        { id: metric.id },
+      );
+      expect(log.data?.auditEntries.nodes.map((n) => n.action).sort()).toEqual([
+        "metric.archive",
+        "metric.create",
+        "metric.update",
+      ]);
     });
   });
 }

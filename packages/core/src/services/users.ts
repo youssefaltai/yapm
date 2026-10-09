@@ -75,6 +75,23 @@ async function checkManager(db: HubDb, userId: string | null, managerId: string)
   }
 }
 
+/** Whether `managerId` is above `userId` in the reporting line, however far up. */
+export async function isAbove(db: HubDb, managerId: string, userId: string) {
+  const seen = new Set<string>();
+  let current: string | null = userId;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const row: { managerId: string | null } | undefined = await db
+      .select({ managerId: users.managerId })
+      .from(users)
+      .where(eq(users.id, current))
+      .get();
+    current = row?.managerId ?? null;
+    if (current === managerId) return managerId !== userId;
+  }
+  return false;
+}
+
 export async function hireAgent(ctx: Ctx, input: AgentHireInput): Promise<string> {
   const { db, now } = ctx;
   const allowed = await authorize(ctx, "agent.hire");

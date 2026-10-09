@@ -204,6 +204,9 @@ function GrantList() {
   );
 }
 
+/** Longer resources move from the sidebar into the body. */
+const RESOURCE_SIDEBAR_MAX = 48;
+
 const DETAIL = `query($id: String!) { request(id: $id) {
   ${SUMMARY} resource reason details answer used
   answeredBy { id name kind }
@@ -256,6 +259,12 @@ export function RequestPage({ id }: { id: string }) {
       "Rejected",
     );
 
+  // The resource is what an approval or grant covers, so it shows once: not at all when the
+  // details already show it word for word (the runner's Bash and file requests), else in the
+  // sidebar if it's short, or in the body if it's too long to read there, like a Bash command.
+  const resourceInDetails = r.resource !== null && !!r.details?.includes(r.resource);
+  const longResource =
+    r.resource !== null && (r.resource.length > RESOURCE_SIDEBAR_MAX || r.resource.includes("\n"));
   const statusLabel =
     r.status === "approved"
       ? r.grant
@@ -298,6 +307,14 @@ export function RequestPage({ id }: { id: string }) {
               </div>
               <h1 className="mt-3 text-xl font-semibold [overflow-wrap:anywhere]">{r.title}</h1>
               <RichText source={r.reason} className="mt-3" />
+              {longResource && !resourceInDetails && (
+                <section className="mt-5">
+                  <h2 className="mb-1.5 text-[12px] font-medium text-faint">On</h2>
+                  <pre className="overflow-x-auto rounded-lg border border-line bg-raised px-3 py-2 text-[12px] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">
+                    {r.resource}
+                  </pre>
+                </section>
+              )}
               {/*
                * With the reason, not below the properties: on a phone the properties stack between
                * head and body, which split what the agent asks from exactly what it will do.
@@ -313,9 +330,9 @@ export function RequestPage({ id }: { id: string }) {
               <Property label="Permission">
                 <code className="break-all text-ink">{r.action}</code>
               </Property>
-              {r.resource && (
+              {r.resource && !longResource && !resourceInDetails && (
                 <Property label="On">
-                  <code className="break-all text-ink">{r.resource}</code>
+                  <code className="text-ink [overflow-wrap:anywhere]">{r.resource}</code>
                 </Property>
               )}
               {r.issue && (

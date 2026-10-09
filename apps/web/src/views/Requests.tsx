@@ -296,7 +296,7 @@ export function RequestPage({ id }: { id: string }) {
                   asks · {timeAgo(r.createdAt)}
                 </span>
               </div>
-              <h1 className="mt-3 text-xl font-semibold">{r.title}</h1>
+              <h1 className="mt-3 text-xl font-semibold [overflow-wrap:anywhere]">{r.title}</h1>
               <RichText source={r.reason} className="mt-3" />
               {/*
                * With the reason, not below the properties: on a phone the properties stack between

@@ -148,6 +148,14 @@ export function invalidate() {
   for (const reload of reloaders) reload();
 }
 
+/** Runs `listener` whenever views refetch, for data kept outside `useQuery`. */
+export function onInvalidate(listener: () => void) {
+  reloaders.add(listener);
+  return () => {
+    reloaders.delete(listener);
+  };
+}
+
 /** Runs a GraphQL query and keeps it fresh: it refetches whenever any mutation goes through. */
 export function useQuery<T>(
   query: string | null,
@@ -166,10 +174,17 @@ export function useQuery<T>(
   useEffect(() => {
     if (!query || !key) return;
     let alive = true;
-    const run = () =>
-      graphql<T>(query, variables)
-        .then((data) => alive && setState({ key, data, error: null }))
-        .catch((error: Error) => alive && setState((s) => ({ ...s, key, error: error.message })));
+    // Only the latest request may land: an older one finishing last would show stale data.
+    let latest = 0;
+    const run = () => {
+      const request = ++latest;
+      const current = () => alive && request === latest;
+      return graphql<T>(query, variables)
+        .then((data) => current() && setState({ key, data, error: null }))
+        .catch(
+          (error: Error) => current() && setState((s) => ({ ...s, key, error: error.message })),
+        );
+    };
     run();
     reloaders.add(run);
     const timer = pollMs ? setInterval(run, pollMs) : undefined;

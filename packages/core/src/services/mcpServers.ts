@@ -208,8 +208,8 @@ export async function reportMcpServers(
   machine: Machine,
   reports: McpServerReport[],
   at: number,
-): Promise<boolean> {
-  if (!reports.length) return false;
+): Promise<{ changed: boolean; notified: boolean }> {
+  if (!reports.length) return { changed: false, notified: false };
   const rows = await listMcpServers(db, machine.id);
   const ops: WriteOp[] = [];
   let notified = false;
@@ -257,7 +257,7 @@ export async function reportMcpServers(
     );
   }
   if (ops.length) await commit(db, ops);
-  return notified;
+  return { changed: ops.length > 0, notified };
 }
 
 /** The provider sent the owner back with a code; the runner picks it up on its next check-in. */

@@ -25,3 +25,12 @@ export interface Realtime {
 }
 
 export const CLIENT_ID_HEADER = "x-life-os-client";
+
+/** Publishes an event; a failed broadcast never fails the change it reports. */
+export async function announce(realtime: Realtime | undefined, event: HubEvent) {
+  try {
+    await realtime?.publish(event);
+  } catch (error) {
+    console.error("Live update failed", error);
+  }
+}

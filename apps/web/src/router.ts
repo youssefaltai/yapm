@@ -50,6 +50,7 @@ export type Route =
   | { name: "roadmap" }
   | { name: "handbook" }
   | { name: "insights" }
+  | { name: "usage" }
   | { name: "documents" }
   | { name: "document"; id: string }
   | { name: "notFound" };
@@ -78,6 +79,7 @@ export function parseRoute(path: string): Route {
   if (first === "roadmap") return { name: "roadmap" };
   if (first === "handbook") return { name: "handbook" };
   if (first === "insights") return { name: "insights" };
+  if (first === "usage") return { name: "usage" };
   if (first === "documents") return { name: "documents" };
   if (first === "document" && second) return { name: "document", id: second };
   if (first === "issue" && second) return { name: "issue", identifier: second.toUpperCase() };
@@ -120,6 +122,7 @@ export const paths = {
   roadmap: () => "/roadmap",
   handbook: () => "/handbook",
   insights: () => "/insights",
+  usage: () => "/usage",
   documents: () => "/documents",
   document: (id: string) => `/document/${id}`,
 };

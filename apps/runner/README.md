@@ -30,6 +30,11 @@ offer under `"mcpServers"`, in Claude Code's shape. Servers added from the hub (
 or an agent's approved request) are set up automatically; when one needs a sign-in, the hub
 sends you a Connect link and the tokens are kept in `~/.life-os-runner/mcp-auth.json`.
 
+The runner also tells the hub which Claude login it uses and how full your plan's usage windows
+are (the same numbers as Claude Code's `/usage`), for the Usage page. It reads them when a run
+ends and, while idle, every 10 minutes by opening Claude Code without a prompt, which calls no
+model and uses none of your plan.
+
 ## Releasing
 
 Push a tag `runner-v<version>` matching `version` in `package.json`; the release workflow

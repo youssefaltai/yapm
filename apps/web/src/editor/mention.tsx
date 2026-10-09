@@ -5,7 +5,7 @@ import Suggestion from "@tiptap/suggestion";
 import { useEffect, useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { graphql } from "../api.js";
-import type { StateType } from "../data.js";
+import { onInvalidate, type StateType } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { Avatar, StatusIcon } from "../ui.js";
 import { type SuggestionItem, suggestionMenu } from "./SuggestionMenu.js";
@@ -55,15 +55,22 @@ function issuePreview(identifier: string) {
   return cached;
 }
 
+// A mentioned issue's title and status change like any other data.
+onInvalidate(() => issueCache.clear());
+
 function MentionChip({ node, selected }: ReactNodeViewProps) {
   const { kind, id, label } = node.attrs as { kind: "user" | "issue"; id: string; label: string };
   const [issue, setIssue] = useState<IssuePreview | null>(null);
   useEffect(() => {
     if (kind !== "issue") return;
     let alive = true;
-    void issuePreview(id).then((preview) => alive && setIssue(preview));
+    const load = () =>
+      void issuePreview(id).then((preview) => alive && preview && setIssue(preview));
+    load();
+    const stop = onInvalidate(load);
     return () => {
       alive = false;
+      stop();
     };
   }, [kind, id]);
   const member =

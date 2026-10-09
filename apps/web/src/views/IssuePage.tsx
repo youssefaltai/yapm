@@ -57,6 +57,7 @@ import {
   StatusIcon,
   shortDate,
   timeAgo,
+  tint,
   UnassignedIcon,
   useHotkeys,
   useStore,
@@ -330,7 +331,7 @@ function Properties({ issue, workspace }: { issue: IssueDetail; workspace: Works
     <PropertyList>
       <Property label="Status" control>
         <PropertyButton onClick={open(statusMenu([issue]))} hint="S">
-          <StatusIcon type={issue.state.type} />
+          <StatusIcon type={issue.state.type} color={issue.state.color} />
           {issue.state.name}
         </PropertyButton>
       </Property>
@@ -390,7 +391,11 @@ function Properties({ issue, workspace }: { issue: IssueDetail; workspace: Works
         <PropertyButton onClick={() => void projectMenu([issue]).then(openMenu)} hint="Shift+P">
           {issue.project ? (
             <>
-              <span className="size-2.5 shrink-0 rounded-full bg-muted" aria-hidden />
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ background: tint(issue.project.color, "var(--color-muted)") }}
+                aria-hidden
+              />
               <span className="truncate">
                 {issue.project.name}
                 {issue.projectMilestone && (
@@ -491,7 +496,7 @@ function SubIssues({ issue }: { issue: IssueDetail }) {
             >
               <PriorityIcon priority={child.priority} />
               <span className="w-14 shrink-0 text-faint">{child.identifier}</span>
-              <StatusIcon type={child.state.type} />
+              <StatusIcon type={child.state.type} color={child.state.color} />
               <span className="min-w-0 flex-1 truncate">{child.title}</span>
               {child.assignee ? (
                 <Avatar name={child.assignee.name} kind={child.assignee.kind} />
@@ -568,7 +573,7 @@ function Relations({ issue }: { issue: IssueDetail }) {
           className="group flex items-center gap-2.5 rounded-md px-1 py-1.5 hover:bg-raised"
         >
           <span className="w-24 shrink-0 text-faint">{row.label}</span>
-          <StatusIcon type={row.other.state.type} />
+          <StatusIcon type={row.other.state.type} color={row.other.state.color} />
           <button
             type="button"
             onClick={() => navigate(paths.issue(row.other.identifier))}

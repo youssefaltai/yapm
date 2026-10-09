@@ -329,7 +329,8 @@ builder.mutationFields((t) => ({
   }),
   requestApprove: t.field({
     type: RequestPayload,
-    description: "Approves a request once, or with `alwaysAllow` also grants it from now on.",
+    description:
+      "Approves a request once, or with `alwaysAllow` (owner only) also grants it from now on. An agent answers only requests from below it in the reporting line, and approves only what its grants allow.",
     args: {
       id: t.arg.string({ required: true }),
       note: t.arg.string({ required: false }),

@@ -17,6 +17,7 @@ import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
 import { type Ctx, cleanText, event } from "./common.js";
 import { feedbackOp } from "./feedback.js";
 import { notify, ownerId } from "./notifications.js";
+import { isAbove } from "./users.js";
 
 /**
  * Permissions are plain strings. Org changes use their audit action names (`team.create`,
@@ -234,14 +235,16 @@ function stopWaiting(db: HubDb, requestId: string, now: number): WriteOp {
     .where(eq(runs.waitingOnRequestId, requestId));
 }
 
+/** The owner answers any request; an agent only those from below it in the reporting line. */
 async function pendingRequest(ctx: Ctx, id: string) {
   const actor = await loadActor(ctx.db, ctx.actorId);
-  if (actor.kind !== "owner") throw forbidden("Only the owner answers requests for now");
   const request = await ctx.db.select().from(requests).where(eq(requests.id, id)).get();
   if (!request) throw notFound("Request");
+  if (actor.kind !== "owner" && !(await isAbove(ctx.db, actor.id, request.requesterId)))
+    throw forbidden("Only the owner and the requester's managers answer requests");
   if (request.status !== "pending")
     throw new ServiceError("CONFLICT", `This request was already ${request.status}`);
-  return request;
+  return { actor, request };
 }
 
 export interface AlwaysAllowInput {
@@ -301,7 +304,14 @@ export async function approveRequest(
   input: { note?: string | null; always?: AlwaysAllowInput | null } = {},
 ): Promise<string> {
   const { db, now } = ctx;
-  const request = await pendingRequest(ctx, id);
+  const { actor, request } = await pendingRequest(ctx, id);
+  // An agent passes on only what a standing grant already lets it do; only the owner makes grants.
+  if (actor.kind !== "owner") {
+    if (input.always) throw forbidden("Only the owner can always allow");
+    const own = await checkPermission(db, actor.id, request.action, request.resource);
+    if (!own.allowed || own.via !== "grant")
+      throw forbidden("You can only approve what a grant already lets you do");
+  }
   if (request.action === "mcp.use") {
     const server = await db
       .select({ status: mcpServers.status })
@@ -383,7 +393,7 @@ export async function approveRequest(
 /** Rejects with a reason, which goes back to the agent and into its feedback. */
 export async function rejectRequest(ctx: Ctx, id: string, reason: string): Promise<string> {
   const { db, now } = ctx;
-  const request = await pendingRequest(ctx, id);
+  const { request } = await pendingRequest(ctx, id);
   const answer = cleanText(reason, "A reason", 2000);
   await commit(db, [
     db

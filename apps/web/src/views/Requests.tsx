@@ -310,7 +310,10 @@ export function RequestPage({ id }: { id: string }) {
               </Property>
               {r.resource && (
                 <Property label="On">
-                  <code className="break-all text-ink">{r.resource}</code>
+                  {/* One line: a Bash command can run to 500 characters, and the details show it. */}
+                  <code className="truncate text-ink" title={r.resource}>
+                    {r.resource}
+                  </code>
                 </Property>
               )}
               {r.issue && (

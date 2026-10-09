@@ -288,7 +288,7 @@ function ToolCall({
 
   return (
     <li
-      className={`overflow-hidden rounded-lg border bg-panel ${failed ? "border-red-400/30" : "border-line"}`}
+      className={`overflow-hidden rounded-lg border bg-panel ${failed ? "border-critical/30" : "border-line"}`}
     >
       <button
         type="button"
@@ -298,7 +298,7 @@ function ToolCall({
         title={name}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-raised"
       >
-        <span className={failed ? "text-red-400" : "text-muted"}>{icons[view.icon]}</span>
+        <span className={failed ? "text-critical" : "text-muted"}>{icons[view.icon]}</span>
         <span className="shrink-0 font-medium">{view.title}</span>
         {view.subject && (
           <span
@@ -355,7 +355,7 @@ function ToolCall({
 }
 
 function CallStatus({ result, active }: { result: TranscriptEvent | null; active: boolean }) {
-  if (result?.error) return <span className="text-[12px] text-red-400">Failed</span>;
+  if (result?.error) return <span className="text-[12px] text-critical">Failed</span>;
   if (result) return null;
   if (active)
     return (
@@ -401,7 +401,7 @@ function Output({ text, error }: { text: string; error: boolean }) {
     if (value && typeof value === "object") shown = JSON.stringify(value, null, 2);
   } catch {}
   return (
-    <pre className={`${codeBox} ${error ? "border-red-400/30 bg-red-400/5 text-red-400" : ""}`}>
+    <pre className={`${codeBox} ${error ? "border-critical/30 bg-critical/5 text-critical" : ""}`}>
       {shown}
     </pre>
   );
@@ -442,15 +442,15 @@ function Diff({ before, after }: { before: string; after: string }) {
     <pre className={`${codeBox} px-0`}>
       {lines(before).map((line, n) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: lines have no ids
-        <div key={`-${n}`} className="bg-red-400/10 px-3">
-          <span className="text-red-400 select-none">- </span>
+        <div key={`-${n}`} className="bg-critical/10 px-3">
+          <span className="text-critical select-none">- </span>
           {line}
         </div>
       ))}
       {lines(after).map((line, n) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: lines have no ids
-        <div key={`+${n}`} className="bg-emerald-400/10 px-3">
-          <span className="text-emerald-400 select-none">+ </span>
+        <div key={`+${n}`} className="bg-success/10 px-3">
+          <span className="text-success select-none">+ </span>
           {line}
         </div>
       ))}
@@ -469,7 +469,7 @@ function Todos({ todos }: { todos: Input[] }) {
             <span
               className={`grid size-3.5 shrink-0 place-items-center rounded-full border ${
                 status === "completed"
-                  ? "border-emerald-400 bg-emerald-400 text-canvas"
+                  ? "border-success bg-success text-canvas"
                   : status === "in_progress"
                     ? "border-accent"
                     : "border-faint"
@@ -493,9 +493,9 @@ function Todos({ todos }: { todos: Input[] }) {
 // Other events ---------------------------------------------------------------
 
 const PERMISSION: Record<string, { label: string; className: string }> = {
-  waiting: { label: "Waiting for your approval to use", className: "text-amber-400" },
-  approved: { label: "Approved", className: "text-emerald-400" },
-  rejected: { label: "Rejected", className: "text-red-400" },
+  waiting: { label: "Waiting for your approval to use", className: "text-warning" },
+  approved: { label: "Approved", className: "text-success" },
+  rejected: { label: "Rejected", className: "text-critical" },
 };
 
 function PermissionLine({

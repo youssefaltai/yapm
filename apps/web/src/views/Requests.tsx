@@ -89,9 +89,9 @@ const STATUS_LABEL: Record<Status, string> = {
 };
 
 const STATUS_STYLE: Record<Status, string> = {
-  pending: "text-amber-400",
-  approved: "text-emerald-400",
-  rejected: "text-red-400",
+  pending: "text-warning",
+  approved: "text-success",
+  rejected: "text-critical",
   canceled: "text-faint",
 };
 
@@ -135,7 +135,7 @@ function RequestList({ answered }: { answered: boolean }) {
   const { data, error } = useQuery<{ requests: { nodes: RequestSummary[] } }>(
     `{ requests(first: 100, filter: { status: ${status} }) { nodes { ${SUMMARY} } } }`,
   );
-  if (error) return <p className="p-6 text-red-400">{error}</p>;
+  if (error) return <p className="p-6 text-critical">{error}</p>;
   if (!data) return <ListSkeleton rows={5} />;
   const rows = data.requests.nodes;
   if (rows.length === 0)
@@ -184,7 +184,7 @@ function GrantList() {
   const { data, error } = useQuery<{ grants: { nodes: Grant[] } }>(
     "{ grants(first: 200) { nodes { id action resource scope useCount lastUsedAt createdAt user { id name kind } team { id name } } } }",
   );
-  if (error) return <p className="p-6 text-red-400">{error}</p>;
+  if (error) return <p className="p-6 text-critical">{error}</p>;
   if (!data) return <ListSkeleton rows={4} />;
   const isOwner = workspace?.viewer.kind === "owner";
   if (data.grants.nodes.length === 0)
@@ -428,7 +428,7 @@ export function RequestPage({ id }: { id: string }) {
           <div className="space-y-6">
             {canAnswer && server && (
               <section className="rounded-lg border border-line p-4">
-                {connectError && <p className="mb-3 text-red-400">{connectError}</p>}
+                {connectError && <p className="mb-3 text-critical">{connectError}</p>}
                 {server.pastesCallback ? (
                   <div className="space-y-3">
                     <button
@@ -506,7 +506,7 @@ export function RequestPage({ id }: { id: string }) {
                   type="button"
                   disabled={busy || server?.status === "pending"}
                   onClick={approveOnce}
-                  className="rounded-lg bg-accent px-3 py-3 font-medium text-white disabled:opacity-40"
+                  className="rounded-lg bg-accent px-3 py-3 font-medium text-on-accent disabled:opacity-40"
                 >
                   Approve
                 </button>
@@ -522,7 +522,7 @@ export function RequestPage({ id }: { id: string }) {
                   type="button"
                   disabled={busy}
                   onClick={() => setMode("reject")}
-                  className="rounded-lg border border-line px-3 py-3 font-medium text-red-400 hover:bg-raised"
+                  className="rounded-lg border border-line px-3 py-3 font-medium text-critical hover:bg-raised"
                 >
                   Reject
                 </button>

@@ -530,7 +530,7 @@ export const tools: Tool<McpContext>[] = [
       type: "object",
       properties: {
         name: { type: "string" },
-        color: { type: "string", description: "Hex color, e.g. #5e6ad2" },
+        color: { type: "string", description: "Hex color, e.g. #8b8b90" },
         description: { type: "string" },
         team: { type: "string", description: "Team name, key or id; leave out for workspace-wide" },
       },

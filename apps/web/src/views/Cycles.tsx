@@ -42,7 +42,7 @@ export function CyclesView({ team }: { team: Team }) {
         <PageTitle>{team.name}</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {error && <p className="p-6 text-red-400">{error}</p>}
+        {error && <p className="p-6 text-critical">{error}</p>}
         {team.cyclesEnabled && !data && !error && <ListSkeleton rows={4} />}
         {!team.cyclesEnabled && (
           <EmptyState

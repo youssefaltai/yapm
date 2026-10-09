@@ -13,7 +13,7 @@ type Status = "planned" | "active" | "completed";
 const STATUS: Record<Status, { label: string; className: string }> = {
   planned: { label: "Planned", className: "text-muted" },
   active: { label: "Active", className: "text-accent" },
-  completed: { label: "Completed", className: "text-emerald-400" },
+  completed: { label: "Completed", className: "text-success" },
 };
 
 interface Initiative {
@@ -82,7 +82,7 @@ export function InitiativesView() {
         <PageTitle>Projects</PageTitle>
       </PageHeader>
       <PageBody>
-        {error && <p className="text-red-400">{error}</p>}
+        {error && <p className="text-critical">{error}</p>}
         <p className="mb-4 text-muted">
           The few big things the company is going after this year. Link projects to them from here.
         </p>
@@ -205,7 +205,7 @@ export function InitiativesView() {
                         ])}
                         className="flex w-full animate-fade-in items-center gap-3 px-4 py-2 text-left hover:bg-raised"
                       >
-                        <ProjectDot color={p.color} />
+                        <ProjectDot />
                         <span className="min-w-0 flex-1 truncate">{p.name}</span>
                         <HealthBadge health={p.health} />
                         <span className="w-10 text-right text-[12px] text-muted">
@@ -254,7 +254,7 @@ function LinkProject({
           items: options.map((p) => ({
             id: p.id,
             label: p.name,
-            icon: <ProjectDot color={p.color} />,
+            icon: <ProjectDot />,
             onSelect: () =>
               void mutate(
                 "mutation($id: String!, $i: String!) { projectUpdate(id: $id, input: { initiativeId: $i }) { success } }",

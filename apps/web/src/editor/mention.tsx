@@ -96,7 +96,7 @@ function MentionChip({ node, selected }: ReactNodeViewProps) {
         </>
       ) : (
         <>
-          {issue && <StatusIcon type={issue.state.type} color={issue.state.color} size={12} />}
+          {issue && <StatusIcon type={issue.state.type} size={12} />}
           <span className="mention-id">{label}</span>
           {issue && <span className="mention-title">{issue.title}</span>}
         </>
@@ -238,7 +238,7 @@ export const Mention = Node.create({
             id: `issue:${i.identifier}`,
             label: `${i.identifier} ${i.title}`,
             section: "Issues",
-            icon: <StatusIcon type={i.state.type} color={i.state.color} size={13} />,
+            icon: <StatusIcon type={i.state.type} size={13} />,
             run: ({ editor, range }) =>
               editor
                 .chain()

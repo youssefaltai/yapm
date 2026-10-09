@@ -69,13 +69,13 @@ interface Filters {
 
 const NO_FILTERS: Filters = { stateTypes: [], priorities: [], assigneeIds: [], labelIds: [] };
 
-const STATE_TYPES: { type: StateType; label: string; color: string }[] = [
-  { type: "triage", label: "Triage", color: "#fc7840" },
-  { type: "backlog", label: "Backlog", color: "#bec2c8" },
-  { type: "unstarted", label: "Todo", color: "#e2e2e2" },
-  { type: "started", label: "In Progress", color: "#f2c94c" },
-  { type: "completed", label: "Done", color: "#5e6ad2" },
-  { type: "canceled", label: "Canceled", color: "#95a2b3" },
+const STATE_TYPES: { type: StateType; label: string }[] = [
+  { type: "triage", label: "Triage" },
+  { type: "backlog", label: "Backlog" },
+  { type: "unstarted", label: "Todo" },
+  { type: "started", label: "In Progress" },
+  { type: "completed", label: "Done" },
+  { type: "canceled", label: "Canceled" },
 ];
 
 const VIEW_TYPES: Record<TeamView, StateType[] | null> = {
@@ -289,7 +289,7 @@ export function IssuesView({
           <FilterChips filters={filters} setFilters={setFilters} />
           {banner}
 
-          {error && <p className="px-6 py-4 text-red-400">{error}</p>}
+          {error && <p className="px-6 py-4 text-critical">{error}</p>}
           {!data && !error && <ListSkeleton />}
           {data && issues.length === 0 && (
             <IssuesEmpty
@@ -315,7 +315,7 @@ export function IssuesView({
                 group.issues.length === 0 ? null : (
                   <section key={group.key} aria-label={group.label}>
                     <GroupHeader
-                      icon={<StatusIcon type={group.type} color={group.color} />}
+                      icon={<StatusIcon type={group.type} />}
                       label={group.label}
                       count={group.issues.length}
                       actions={
@@ -385,7 +385,6 @@ interface Group {
   key: string;
   label: string;
   type: StateType;
-  color: string;
   state: WorkflowState | null;
   issues: Issue[];
 }
@@ -402,7 +401,6 @@ function groupIssues(
         key: state.id,
         label: state.name,
         type: state.type,
-        color: state.color,
         state,
         issues: [],
       }))
@@ -410,7 +408,6 @@ function groupIssues(
         key: t.type,
         label: t.label,
         type: t.type,
-        color: t.color,
         state: null,
         issues: [],
       }));
@@ -535,7 +532,7 @@ function IssueRow({
       />
       <PriorityIcon priority={issue.priority} />
       <span className="w-14 shrink-0 text-faint max-sm:hidden">{issue.identifier}</span>
-      <StatusIcon type={issue.state.type} color={issue.state.color} />
+      <StatusIcon type={issue.state.type} />
       <span className="min-w-0 flex-1 truncate">
         {issue.title}
         {issue.parent && (
@@ -552,7 +549,7 @@ function IssueRow({
         open={issue.state.type !== "completed" && issue.state.type !== "canceled"}
       />
       {due && (
-        <span className={`shrink-0 text-[12px] ${due.overdue ? "text-red-400" : "text-muted"}`}>
+        <span className={`shrink-0 text-[12px] ${due.overdue ? "text-critical" : "text-muted"}`}>
           {due.text}
         </span>
       )}
@@ -623,7 +620,7 @@ function Board({
           className={`flex w-72 shrink-0 flex-col rounded-lg transition-colors duration-150 ${over === group.key ? "bg-raised" : ""}`}
         >
           <div className="flex items-center gap-2 px-2 py-2">
-            <StatusIcon type={group.type} color={group.color} />
+            <StatusIcon type={group.type} />
             <span className="font-medium">{group.label}</span>
             <span className="text-faint">{group.issues.length}</span>
             {team && group.state && (
@@ -717,7 +714,7 @@ function BoardCard({
           <LabelChip key={label.id} label={label} />
         ))}
         {due && (
-          <span className={`text-[12px] ${due.overdue ? "text-red-400" : "text-muted"}`}>
+          <span className={`text-[12px] ${due.overdue ? "text-critical" : "text-muted"}`}>
             {due.text}
           </span>
         )}
@@ -916,7 +913,7 @@ function FilterButton({
                   STATE_TYPES.map((t) => ({
                     value: t.type,
                     label: t.label,
-                    icon: <StatusIcon type={t.type} color={t.color} />,
+                    icon: <StatusIcon type={t.type} />,
                   })),
                 ),
             },
@@ -957,9 +954,7 @@ function FilterButton({
                   labels.map((l) => ({
                     value: l.id,
                     label: l.name,
-                    icon: (
-                      <span className="size-2.5 rounded-full" style={{ background: l.color }} />
-                    ),
+                    icon: <span className="size-2.5 rounded-full bg-muted" />,
                   })),
                 ),
             },

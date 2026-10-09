@@ -11,11 +11,11 @@ import { SelectedPill } from "./states.js";
 type ButtonVariant = "primary" | "destructive" | "secondary" | "ghost" | "danger";
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "border-transparent bg-accent font-medium text-white hover:bg-accent-hover",
-  destructive: "border-transparent bg-red-500/90 font-medium text-white hover:bg-red-500",
+  primary: "border-transparent bg-accent font-medium text-on-accent hover:bg-accent-hover",
+  destructive: "border-transparent bg-critical/15 font-medium text-critical hover:bg-critical/25",
   secondary: "border-line text-ink hover:bg-raised",
   ghost: "border-transparent text-muted hover:bg-raised hover:text-ink",
-  danger: "border-line text-red-400 hover:bg-raised",
+  danger: "border-line text-critical hover:bg-raised",
 };
 
 /**

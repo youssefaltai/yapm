@@ -4,7 +4,7 @@ import { confirmDialog } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
-import { openMenu, timeAgo, useStore } from "../ui.js";
+import { Crumb, openMenu, timeAgo, useStore } from "../ui.js";
 
 interface Machine {
   id: string;
@@ -69,14 +69,7 @@ export function MachinesView() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.runs())}
-          className="text-muted hover:text-ink"
-        >
-          Runs
-        </button>
-        <span className="text-faint">›</span>
+        <Crumb onClick={() => navigate(paths.runs())}>Runs</Crumb>
         <span className="font-medium">Machines</span>
         {isOwner && !setup && (
           <button

@@ -6,6 +6,7 @@ import { navigate, paths, type RequestsTab } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
 import {
   Avatar,
+  Crumb,
   DetailLayout,
   Property,
   PropertyList,
@@ -269,14 +270,11 @@ export function RequestPage({ id }: { id: string }) {
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
+        <Crumb
           onClick={() => navigate(paths.requests(r.status === "pending" ? "pending" : "answered"))}
-          className="text-muted hover:text-ink"
         >
           Approvals
-        </button>
-        <span className="text-faint">›</span>
+        </Crumb>
         <span className="truncate font-medium">{r.title}</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">

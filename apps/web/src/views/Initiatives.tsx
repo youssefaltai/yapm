@@ -5,7 +5,7 @@ import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
-import { Avatar, type MenuSpec, openMenu, shortDate } from "../ui.js";
+import { Avatar, Crumb, type MenuSpec, openMenu, shortDate } from "../ui.js";
 import { type Health, HealthBadge, ProjectDot } from "./Projects.js";
 
 type Status = "planned" | "active" | "completed";
@@ -73,14 +73,7 @@ export function InitiativesView() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.projects())}
-          className="text-muted hover:text-ink"
-        >
-          Projects
-        </button>
-        <span className="text-faint">›</span>
+        <Crumb onClick={() => navigate(paths.projects())}>Projects</Crumb>
         <span className="font-medium">Initiatives</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">

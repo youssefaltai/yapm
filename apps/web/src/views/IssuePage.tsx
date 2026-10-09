@@ -42,6 +42,7 @@ import { navigate, paths } from "../router.js";
 import { EmptyState, PageSkeleton } from "../states.js";
 import {
   Avatar,
+  Crumb,
   dueLabel,
   Kbd,
   LabelChip,
@@ -172,14 +173,9 @@ export function IssuePage({ identifier }: { identifier: string }) {
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <button
-          type="button"
-          onClick={() => navigate(paths.team(issue.team.key))}
-          className="text-muted hover:text-ink"
-        >
+        <Crumb onClick={() => navigate(paths.team(issue.team.key))}>
           {team?.name ?? issue.team.key}
-        </button>
-        <span className="text-faint">›</span>
+        </Crumb>
         <span className="font-medium">{issue.identifier}</span>
         {issue.archivedAt && (
           <span className="rounded bg-raised px-1.5 text-[12px] text-muted">Archived</span>

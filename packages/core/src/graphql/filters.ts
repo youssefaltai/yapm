@@ -224,7 +224,7 @@ export interface IssueFilterShape {
 }
 
 export const IssueFilter = builder.inputRef<IssueFilterShape>("IssueFilter").implement({
-  description: "Filters issues like Linear's IssueFilter; all given fields must match.",
+  description: "Filters issues; all given fields must match.",
   fields: (t) => ({
     id: t.field({ type: IDComparator, required: false }),
     number: t.field({ type: NullableNumberComparator, required: false }),

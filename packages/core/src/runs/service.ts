@@ -129,12 +129,19 @@ async function wake(
   )
     return false;
   if (note.type === "requestAnswered" && note.requestId) {
-    // A run waiting on its own request hears the answer directly.
+    // A run still going hears the answer to its own request directly; one that ended wakes.
     const request = await db.select().from(requests).where(eq(requests.id, note.requestId)).get();
-    if (request?.runId) return false;
+    const asker = request?.runId
+      ? await db.select().from(runs).where(eq(runs.id, request.runId)).get()
+      : undefined;
+    if (asker?.status === "running") return false;
   }
   const paused = onIssue.find((r) => r.status === "needs_input");
-  const isComment = note.type === "issueNewComment" || note.type === "issueCommentMention";
+  // Comments and answers to requests are what a paused session waits for.
+  const answers =
+    note.type === "issueNewComment" ||
+    note.type === "issueCommentMention" ||
+    note.type === "requestAnswered";
   if (note.type === "issueNewComment" && !paused) {
     // Followers hear about every comment; only the assignee wakes for them.
     const issue = issueId ? await findIssue(db, issueId) : null;
@@ -144,7 +151,7 @@ async function wake(
   if (onIssue.some((r) => r.kind === "work" && r.status === "running")) return false;
   if (!(await withinLimits(db, agentId, issueId, at))) return false;
 
-  if (paused && isComment) {
+  if (paused && answers) {
     const routed = await routeRun(db, { kind: "work", agentId, issueId, resumes: paused }, at);
     await commit(db, [
       db.update(runs).set({ status: "completed", updatedAt: at }).where(eq(runs.id, paused.id)),
@@ -643,12 +650,9 @@ async function threadOf(db: HubDb, commentId: string | null) {
 async function applyWorkResult(ctx: Ctx, run: RunRow, work: ReturnType<typeof parseWorkResult>) {
   const { db } = ctx;
   if (!run.issueId) return;
-  if (work.outcome === "needs_input") {
-    await createComment(ctx, {
-      issueId: run.issueId,
-      body: work.question ?? work.summary,
-      parentId: null,
-    });
+  // A question is the ask, so it's always posted.
+  if (work.outcome === "needs_input" && work.question) {
+    await createComment(ctx, { issueId: run.issueId, body: work.question, parentId: null });
     return;
   }
   // The agent usually reports as it goes; only post the summary if it said nothing.

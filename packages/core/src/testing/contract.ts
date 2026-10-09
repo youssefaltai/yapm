@@ -1605,6 +1605,80 @@ export function hubContract(
         result: { outcome: "done", summary: "Gym is open 6-22." },
       });
 
+      // A run that pauses on its own request resumes when the owner answers it.
+      const race = await gql<{ issueCreate: { issue: { id: string } } }>(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
+        { input: { teamId, title: "Enter the spring race" } },
+      );
+      const raceId = race.data?.issueCreate.issue.id;
+      await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }", {
+        input: { agentId: coachId, issueId: raceId, goal: "Enter the race" },
+      });
+      const entering = await runner<Claim>("/claim", machine.token, {});
+      await client.request("/mcp", {
+        method: "POST",
+        token: entering.body.token,
+        json: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "create_comment",
+            arguments: { issueId: raceId, body: "Found the race; the fee needs your approval." },
+          },
+        },
+      });
+      const fee = await gql<{ requestCreate: { request: { id: string } } }>(
+        'mutation($issue: String!) { requestCreate(input: { title: "Pay the race fee", action: "spend", reason: "Entry fee", issueId: $issue }) { request { id } } }',
+        { issue: raceId },
+        entering.body.token,
+      );
+      await runner(`/runs/${entering.body.run.id}/logs`, machine.token, {
+        seq: 0,
+        events: [],
+        sessionId: "session-race",
+      });
+      await runner(`/runs/${entering.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "needs_input", summary: "Asked to pay the fee." },
+      });
+      // The agent already said so; its summary isn't posted again.
+      const raceComments = await gql<{ issue: { comments: { nodes: { body: string }[] } } }>(
+        "query($id: String!) { issue(id: $id) { comments { nodes { body } } } }",
+        { id: raceId },
+      );
+      expect(raceComments.data?.issue.comments.nodes.map((c) => c.body)).toEqual([
+        "Found the race; the fee needs your approval.",
+      ]);
+      await gql("mutation($id: String!) { requestApprove(id: $id) { success } }", {
+        id: fee.data?.requestCreate.request.id,
+      });
+      const paid = await runner<Claim>("/claim", machine.token, {});
+      expect(paid.body.run).toMatchObject({ kind: "work", sessionId: "session-race" });
+      expect(paid.body.input.prompt).toContain('approved your request "Pay the race fee"');
+
+      // A run that ended without pausing is woken by the answer to its request.
+      const shoes = await gql<{ requestCreate: { request: { id: string } } }>(
+        'mutation($issue: String!) { requestCreate(input: { title: "Email the shoe shop", action: "contact", reason: "Ask about race shoes", issueId: $issue }) { request { id } } }',
+        { issue: raceId },
+        paid.body.token,
+      );
+      await runner(`/runs/${paid.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "blocked", summary: "Entered; the shop email waits on approval." },
+      });
+      await gql(
+        'mutation($id: String!) { requestReject(id: $id, reason: "Keep the old shoes") { success } }',
+        { id: shoes.data?.requestCreate.request.id },
+      );
+      const heard = await runner<Claim>("/claim", machine.token, {});
+      expect(heard.body.run.kind).toBe("decision");
+      expect(heard.body.input.prompt).toContain('rejected your request "Email the shoe shop"');
+      await runner(`/runs/${heard.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { action: "ignore", reason: "Nothing more to do" },
+      });
+
       // Model routing: the owner pins each tier's model and routes labels; rules decide the rest.
       const routing = await gql<{
         organizationUpdate: { organization: { modelRouting: Record<string, unknown> } };

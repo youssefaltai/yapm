@@ -1,5 +1,5 @@
 import { type McpAuth, mcpServers } from "@life-os/schema";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import type { HubDeps } from "../context.js";
 import { newId, open, randomToken, seal, toBase64Url } from "../crypto.js";
@@ -226,18 +226,25 @@ export async function createMcpServer(
   const name = cleanServerName(input.name);
   const permitted = (await checkPermission(db, ctx.actorId, "mcp.use", name)).allowed;
   const existing = await db.select().from(mcpServers).where(eq(mcpServers.name, name)).get();
-  if (existing && permitted) return { serverId: existing.id, requestId: null };
+  // Asking again for an OAuth server it may use is how an agent says its sign-in stopped working.
+  if (existing && permitted && existing.auth !== "oauth")
+    return { serverId: existing.id, requestId: null };
   const server = existing ?? (await newServer(deps, input, name, now));
-  const request = permitted
-    ? null
-    : await requestOps(ctx, {
-        title: `Use the ${name} MCP server`,
-        action: "mcp.use",
-        resource: name,
-        reason: input.reason,
-        details: describe(server),
-        issueId: input.issueId ?? null,
-      });
+  const request =
+    permitted && !existing
+      ? null
+      : await requestOps(
+          ctx,
+          {
+            title: permitted ? `Sign in to ${name} again` : `Use the ${name} MCP server`,
+            action: "mcp.use",
+            resource: name,
+            reason: input.reason,
+            details: describe(server),
+            issueId: input.issueId ?? null,
+          },
+          permitted,
+        );
   await commit(db, [
     ...(existing
       ? []
@@ -424,9 +431,24 @@ export async function finishOAuth(
         .get()
     : undefined;
   const { state: _, verifier, ...oauth } = server?.oauth ?? {};
-  if (!server || !verifier)
+  // Claim the flow before using its code, so a callback that arrives twice exchanges it once.
+  const claimed =
+    server && verifier
+      ? await db
+          .update(mcpServers)
+          .set({ oauth, updatedAt: at })
+          .where(
+            and(
+              eq(mcpServers.id, server.id),
+              sql`json_extract(${mcpServers.oauth}, '$.state') = ${query.state}`,
+            ),
+          )
+          .returning({ id: mcpServers.id })
+          .all()
+      : [];
+  if (!server || !claimed.length)
     return {
-      requestId: null,
+      requestId: server?.requestId ?? null,
       error: "This sign-in has expired or was already used. Connect again from the request.",
     };
   try {
@@ -439,7 +461,7 @@ export async function finishOAuth(
         code: query.code ?? "",
         redirect_uri: oauth.redirectUri ?? "",
         client_id: oauth.clientId ?? "",
-        code_verifier: await open(deps.config.secret, verifier),
+        code_verifier: await open(deps.config.secret, verifier ?? ""),
         resource: server.url ?? "",
       },
       at,
@@ -450,7 +472,6 @@ export async function finishOAuth(
         .update(mcpServers)
         .set({
           secret: await seal(deps.config.secret, JSON.stringify(tokens)),
-          oauth,
           status: "ready",
           updatedAt: at,
         })

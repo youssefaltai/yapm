@@ -25,6 +25,8 @@ interface Config {
 
 const home = process.env.LIFE_OS_RUNNER_HOME ?? join(homedir(), ".life-os-runner");
 const configPath = join(home, "config.json");
+// Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
+process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
 
 async function loadConfig(): Promise<Config> {
   try {
@@ -169,7 +171,7 @@ async function main() {
       probe: probePlan,
       capacity: config.capacity,
       version: VERSION,
-      workDir: join(home, "work"),
+      cwd: homedir(),
       log: (line) => console.log(`${new Date().toISOString()} ${line}`),
     });
     let stopping = false;

@@ -1,5 +1,3 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import { type Engine, type EngineRun, MODELS, type PlanProbe } from "./engine.js";
 import { type Claim, type Completion, type HubClient, HubError, type Usage } from "./hub.js";
 import { decideTool } from "./permissions.js";
@@ -14,8 +12,8 @@ export interface RunnerOptions {
   version: string;
   /** The machine's own MCP servers, from its config; the hub's for the run come on top. */
   mcpServers?: EngineRun["mcpServers"];
-  /** Where agents work; each gets its own folder, so resumed sessions find their files. */
-  workDir: string;
+  /** Where agents start; they may work anywhere on the machine. */
+  cwd: string;
   /** Reads the plan's limits while no session is running; left out, only sessions read them. */
   probe?: PlanProbe;
   /** How often to take a full reading of the plan's limits. */
@@ -32,12 +30,6 @@ interface Active {
   stopReason: string | null;
   done: Promise<void>;
 }
-
-const slug = (name: string) =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "") || "agent";
 
 /**
  * The runner daemon: checks in, claims what this machine may run, runs it, streams the
@@ -160,8 +152,6 @@ export class Runner {
       if (buffer.length >= 50) void flush();
     };
 
-    const cwd = join(this.options.workDir, slug(claim.agent.name));
-    await mkdir(cwd, { recursive: true });
     let completion: Completion;
     try {
       const result = await this.options.engine({
@@ -171,7 +161,7 @@ export class Runner {
         hubMcp: { url: claim.mcpUrl, token: claim.token },
         mcpServers: { ...this.options.mcpServers, ...claim.mcpServers },
         resume: claim.run.sessionId,
-        cwd,
+        cwd: this.options.cwd,
         signal: abort.signal,
         canUseTool: (tool, input) =>
           decideTool(

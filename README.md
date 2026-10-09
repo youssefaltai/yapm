@@ -126,7 +126,7 @@ Agents think and work on machines you own (macOS or Linux), signed in with your 
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
-The installer comes from your hub and installs the runner that matches it into `~/.life-os-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs in to Claude through your browser if the machine isn't already (the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux. Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `life-os-runner logs` follows its output, and `life-os-runner service uninstall` stops it.
+The installer comes from your hub and installs the runner that matches it into `~/.life-os-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs the runner in to Claude through your browser (its own sign-in, separate from your Claude Code) (the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux. Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `life-os-runner logs` follows its output, and `life-os-runner service uninstall` stops it.
 
 Without the installer, from a checkout:
 
@@ -136,7 +136,7 @@ node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBo
 node apps/runner/dist/main.js start
 ```
 
-`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent in its own folder under `~/.life-os-runner/work`, streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents get no MCP servers other than the hub's.
+`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent starting in your home folder (it may work anywhere on the machine), streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents connect other MCP servers by asking you (see `docs/plan.md`, section 6a). Their Claude sign-in, sessions and settings live in `~/.life-os-runner/claude`, apart from your own `~/.claude`.
 
 ### Configuration
 

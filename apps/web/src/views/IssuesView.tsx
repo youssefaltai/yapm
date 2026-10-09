@@ -248,11 +248,17 @@ export function IssuesView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="isolate flex h-11 shrink-0 items-center gap-3 border-b border-line px-4 md:px-6">
-        <div className="flex shrink-0 items-center gap-2 font-medium whitespace-nowrap">
+      {/*
+       * One row from sm up. On a phone the title, tabs and controls don't fit one row, and the tabs
+       * got cut off mid-word, so the tabs take a row of their own under the title and controls.
+       */}
+      <header className="isolate flex shrink-0 flex-wrap items-center gap-x-3 border-b border-line px-4 sm:h-11 sm:flex-nowrap md:px-6">
+        <div className="flex h-11 min-w-0 shrink-0 items-center gap-2 font-medium whitespace-nowrap max-sm:shrink">
           {title}
         </div>
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">{tabs}</div>
+        <div className="order-last flex min-w-0 items-center gap-1 overflow-x-auto max-sm:-mx-4 max-sm:basis-[calc(100%+2rem)] max-sm:px-4 max-sm:pb-2 sm:order-none">
+          {tabs}
+        </div>
         <div className="ml-auto flex items-center gap-1">
           {filter && source.kind !== "view" && (
             <button

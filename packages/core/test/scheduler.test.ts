@@ -13,9 +13,12 @@ import { createIssue, updateIssue } from "../src/services/issues.js";
 import { autoArchive, checkSlas } from "../src/services/maintenance.js";
 import {
   countAll,
+  createMetric,
   deriveMetrics,
   emptyCounts,
+  lastDays,
   metricHistory,
+  metricValues,
   snapshotMetrics,
 } from "../src/services/metrics.js";
 import { createTeam, updateTeam } from "../src/services/teams.js";
@@ -359,5 +362,18 @@ describe("metrics", () => {
     expect(history.map((h) => [h.date, h.counts.completed, h.counts.tokens])).toEqual([
       ["2026-10-08", 1, 2000],
     ]);
+  });
+
+  it("counts what happened in the very millisecond it is asked", async () => {
+    const at = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", at);
+    const ctx = { db, actorId: "owner", now: at };
+    await createMetric(ctx, { name: "Issues filed", numerator: { action: "issue.create" } });
+    await createIssue(ctx, {
+      teamId: await createTeam(ctx, { name: "Home" }),
+      title: "Fix the tap",
+    });
+    const [filed] = await metricValues(db, ...lastDays(at, 7));
+    expect(filed?.value).toBe(1);
   });
 });

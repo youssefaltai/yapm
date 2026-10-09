@@ -908,7 +908,7 @@ export const tools: Tool<McpContext>[] = [
     name: "create_request",
     title: "Ask for approval",
     description:
-      "Ask the owner for permission to do something you aren't allowed to do yet. The owner approves once, always allows it, or rejects it with a reason. Then poll get_request (or wait for its answer) before acting. Asking again while one is pending returns the pending one.",
+      "Ask the owner for permission to do something you aren't allowed to do yet. One request covers one action: its title names only that action, so ask separately for each. The owner approves once, always allows it, or rejects it with a reason. Do what doesn't need it meanwhile; if you can't go on without the answer, finish with needs_input and you're woken when it comes. Asking again while one is pending returns the pending one.",
     inputSchema: {
       type: "object",
       properties: {

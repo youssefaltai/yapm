@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { graphql } from "./api.js";
 
 export type StateType = "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled";
@@ -142,10 +142,46 @@ export const ISSUE_FIELDS = `
 `;
 
 // Every mounted query registers here; mutations call `invalidate()` so all views refetch.
-const reloaders = new Set<() => void>();
+const reloaders = new Set<() => unknown>();
 
+/** Refetches every view; settles once they've all landed. */
 export function invalidate() {
-  for (const reload of reloaders) reload();
+  return Promise.allSettled([...reloaders].map((reload) => reload()));
+}
+
+// Changes shown before the hub confirms them, like Linear: each patches the issues it names
+// wherever they appear in a query's result, until the refetch after it lands.
+type Patch = { ids: Set<string>; change: (issue: Issue) => Partial<Issue> };
+let patches: Patch[] = [];
+const patchListeners = new Set<() => void>();
+const setPatches = (next: Patch[]) => {
+  patches = next;
+  for (const listener of patchListeners) listener();
+};
+const subscribePatches = (listener: () => void) => {
+  patchListeners.add(listener);
+  return () => {
+    patchListeners.delete(listener);
+  };
+};
+
+/** Applies the patches, keeping untouched objects as they are so their views don't re-render. */
+function applyPatches<T>(value: T, list: Patch[]): T {
+  if (!value || typeof value !== "object") return value;
+  let changed = false;
+  const entries = Object.entries(value).map(([key, field]) => {
+    const next = applyPatches(field, list);
+    if (next !== field) changed = true;
+    return [key, next] as const;
+  });
+  if (Array.isArray(value)) return (changed ? entries.map(([, item]) => item) : value) as T;
+  let next = (changed ? Object.fromEntries(entries) : value) as Record<string, unknown>;
+  const id = next.id;
+  for (const patch of list) {
+    if (typeof id === "string" && patch.ids.has(id))
+      next = { ...next, ...patch.change(next as unknown as Issue) };
+  }
+  return next as T;
 }
 
 /** Runs `listener` whenever views refetch, for data kept outside `useQuery`. */
@@ -176,16 +212,16 @@ export function useQuery<T>(
     let alive = true;
     // Only the latest request may land: an older one finishing last would show stale data.
     let latest = 0;
-    const run = () => {
+    const run = (quiet = true) => {
       const request = ++latest;
       const current = () => alive && request === latest;
-      return graphql<T>(query, variables)
+      return graphql<T>(query, variables, { quiet })
         .then((data) => current() && setState({ key, data, error: null }))
         .catch(
           (error: Error) => current() && setState((s) => ({ ...s, key, error: error.message })),
         );
     };
-    run();
+    run(false);
     reloaders.add(run);
     const timer = pollMs ? setInterval(run, pollMs) : undefined;
     return () => {
@@ -198,8 +234,13 @@ export function useQuery<T>(
   // When the variables change (a new filter, another period), keep showing the last result until
   // the new one lands, like Linear, rather than blanking the view; `stale` says it's outdated.
   const current = state.key === key;
+  const pending = useSyncExternalStore(subscribePatches, () => patches);
+  const data = useMemo(
+    () => (state.data && pending.length ? applyPatches(state.data, pending) : state.data),
+    [state.data, pending],
+  );
   return {
-    data: key ? state.data : null,
+    data: key ? data : null,
     error: current ? state.error : null,
     stale: !current && state.data !== null,
   };
@@ -248,19 +289,52 @@ export function useToast() {
   return { toast: current, dismiss: useCallback(() => setCurrent(null), []) };
 }
 
-export const updateIssues = (ids: string[], input: Record<string, unknown>) => {
+const PLAIN_FIELDS = ["title", "priority", "estimate", "dueDate"] as const;
+
+/**
+ * Updates issues, showing the change at once: plain fields from `input`, plus `change` for the
+ * related ones (state, assignee, labels). A failure rolls it back and says why.
+ */
+export async function updateIssues(
+  ids: string[],
+  input: Record<string, unknown>,
+  change?: Partial<Issue> | ((issue: Issue) => Partial<Issue>),
+) {
+  const plain = Object.fromEntries(
+    PLAIN_FIELDS.filter((f) => f in input).map((f) => [f, input[f]]),
+  );
+  const patch: Patch = {
+    ids: new Set(ids),
+    change: (issue) => ({
+      ...plain,
+      ...(typeof change === "function" ? change(issue) : change),
+    }),
+  };
+  setPatches([...patches, patch]);
+  const drop = () => setPatches(patches.filter((p) => p !== patch));
   // The API takes up to 50 issues per batch.
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
-  return Promise.all(
-    chunks.map((chunk) =>
-      mutate(
-        "mutation($ids: [String!]!, $input: IssueUpdateInput!) { issueBatchUpdate(ids: $ids, input: $input) { success } }",
-        { ids: chunk, input },
+  try {
+    await Promise.all(
+      chunks.map((chunk) =>
+        graphql(
+          "mutation($ids: [String!]!, $input: IssueUpdateInput!) { issueBatchUpdate(ids: $ids, input: $input) { success } }",
+          { ids: chunk, input },
+          { quiet: true },
+        ),
       ),
-    ),
-  );
-};
+    );
+  } catch (error) {
+    drop();
+    toast(error instanceof Error ? error.message : String(error));
+    // Other chunks may have gone through.
+    void invalidate();
+    return;
+  }
+  await invalidate();
+  drop();
+}
 
 export const PRIORITIES = [
   { value: 0, label: "No priority" },

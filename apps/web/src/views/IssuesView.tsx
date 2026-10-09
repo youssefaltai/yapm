@@ -466,13 +466,13 @@ function TriageActions({ issue, team }: { issue: Issue; team: Team }) {
   const accept =
     states.find((s) => s.type === "unstarted") ?? states.find((s) => s.type === "backlog");
   const decline = states.find((s) => s.type === "canceled");
-  const button = (label: string, stateId: string | undefined) =>
-    stateId && (
+  const button = (label: string, state: WorkflowState | undefined) =>
+    state && (
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          void updateIssues([issue.id], { stateId });
+          void updateIssues([issue.id], { stateId: state.id }, { state });
         }}
         className="rounded-md border border-line px-2 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-ink"
       >
@@ -481,8 +481,8 @@ function TriageActions({ issue, team }: { issue: Issue; team: Team }) {
     );
   return (
     <span className="flex shrink-0 items-center gap-1">
-      {button("Accept", accept?.id)}
-      {button("Decline", decline?.id)}
+      {button("Accept", accept)}
+      {button("Decline", decline)}
     </span>
   );
 }
@@ -605,7 +605,8 @@ function Board({
       group.state ??
       teams.find((t) => t.id === issue.team.id)?.states.nodes.find((s) => s.type === group.type) ??
       null;
-    if (state && state.id !== issue.state.id) void updateIssues([issue.id], { stateId: state.id });
+    if (state && state.id !== issue.state.id)
+      void updateIssues([issue.id], { stateId: state.id }, { state });
   }
 
   return (

@@ -346,7 +346,6 @@ function newLabelMenu(team: Team | undefined, issueIds: string[]): MenuSpec {
               {
                 id: "team",
                 label: `Create “${query}” in ${team.name}`,
-                icon: <span className="size-2.5 rounded-full bg-muted" />,
                 onSelect: () => create(team.id),
               },
             ]
@@ -354,7 +353,6 @@ function newLabelMenu(team: Team | undefined, issueIds: string[]): MenuSpec {
         {
           id: "workspace",
           label: `Create “${query}” for all teams`,
-          icon: <span className="size-2.5 rounded-full bg-muted" />,
           onSelect: () => create(null),
         },
       ];

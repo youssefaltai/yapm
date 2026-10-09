@@ -2840,6 +2840,35 @@ export function hubContract(
             return new Response(null, { status: 401 });
           case "POST https://open.example.com/mcp":
             return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+          // Like Slack: OAuth with the owner's own app, and errors as HTTP 200 with ok: false.
+          case "POST https://chat.example.com/mcp":
+            return new Response(null, {
+              status: 401,
+              headers: {
+                "www-authenticate":
+                  'Bearer resource_metadata="https://chat.example.com/.well-known/oauth-protected-resource"',
+              },
+            });
+          case "GET https://chat.example.com/.well-known/oauth-protected-resource":
+            return Response.json({
+              resource: "https://chat.example.com",
+              authorization_servers: ["https://chat.example.com"],
+              scopes_supported: ["channels:history", "chat:write", "users:read"],
+            });
+          case "GET https://chat.example.com/.well-known/oauth-authorization-server":
+            return Response.json({
+              issuer: "https://chat.example.com",
+              authorization_endpoint: "https://chat.example.com/oauth/authorize",
+              token_endpoint: "https://chat.example.com/api/oauth.access",
+              token_endpoint_auth_methods_supported: ["client_secret_post"],
+            });
+          case "POST https://chat.example.com/api/oauth.access": {
+            const form = new URLSearchParams(await request.text());
+            tokenForms.push(form);
+            if (form.get("code") !== "good-code")
+              return Response.json({ ok: false, error: "invalid_code" });
+            return Response.json({ ok: true, access_token: "xoxp-1" });
+          }
         }
         return new Response("Not found", { status: 404 });
       };
@@ -3093,6 +3122,62 @@ export function hubContract(
           "github",
           "weather",
         ]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("signs in with the owner's own OAuth app where the provider registers no clients", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        const coach = await agentToken("Coach");
+        const asked = await callTool(coach.token, "create_mcp_server", {
+          name: "chat",
+          url: "https://chat.example.com/mcp",
+          scopes: ["channels:history"],
+          reason: "Read the team's channel.",
+        });
+        const requestId = asked.json().id as string;
+        type Server = { id: string; auth: string; needsClient: boolean; redirectUri: string };
+        const request = async () =>
+          (
+            await client.graphql<{ request: { details: string; mcpServer: Server } }>(
+              "query($id: String!) { request(id: $id) { details mcpServer { id auth needsClient redirectUri } } }",
+              { id: requestId },
+            )
+          ).data?.request;
+        const filed = await request();
+        const redirectUri = "http://localhost/api/mcp/oauth/callback";
+        expect(filed?.mcpServer).toMatchObject({ auth: "oauth", needsClient: true, redirectUri });
+        expect(filed?.details).toContain(redirectUri);
+
+        const connected = await client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
+          'mutation($id: String!) { mcpServerConnect(id: $id, clientId: "app-1", clientSecret: "shh") { authorizationUrl } }',
+          { id: filed?.mcpServer.id },
+        );
+        const authorize = new URL(connected.data?.mcpServerConnect.authorizationUrl ?? "");
+        expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
+          client_id: "app-1",
+          scope: "channels:history",
+          code_challenge_method: "S256",
+        });
+        expect((await request())?.mcpServer.needsClient).toBe(false);
+
+        const state = authorize.searchParams.get("state");
+        const refused = await client.request(`/api/mcp/oauth/callback?code=bad&state=${state}`);
+        expect(refused.headers.get("location")).toContain("invalid_code");
+        await client.request(`/api/mcp/oauth/callback?code=good-code&state=${state}`);
+        expect(tokenForms.at(-1)?.get("client_secret")).toBe("shh");
+
+        await client.graphql(
+          "mutation($id: String!) { requestApprove(id: $id, alwaysAllow: { scope: user }) { success } }",
+          { id: requestId },
+        );
+        expect((await claimFor(coach.id)).mcpServers.chat).toEqual({
+          type: "http",
+          url: "https://chat.example.com/mcp",
+          headers: { Authorization: "Bearer xoxp-1" },
+        });
       } finally {
         fetchSpy.mockRestore();
       }

@@ -912,4 +912,36 @@ test.describe
       await page.waitForURL("**/signed-in-elsewhere");
       await page.unroute("**/graphql");
     });
+
+    test("signs in with the owner's own OAuth app where the provider needs one", async () => {
+      // As above, the page is told the server needs the owner's app, and connecting answers a URL.
+      const asked = await mcp("create_mcp_server", {
+        name: "slack",
+        url: "https://mcp.example.com/slack",
+        auth: "token",
+        reason: "I need to read the team channel.",
+      });
+      let sent: Record<string, unknown> = {};
+      await page.route("**/graphql", async (route) => {
+        const body = route.request().postDataJSON();
+        if (body.query.includes("mcpServerConnect")) {
+          sent = body.variables;
+          return route.fulfill({
+            json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-elsewhere" } } },
+          });
+        }
+        const response = await route.fetch();
+        const json = await response.json();
+        if (json.data?.request?.mcpServer)
+          Object.assign(json.data.request.mcpServer, { auth: "oauth", needsClient: true });
+        return route.fulfill({ response, json });
+      });
+      await page.goto(`/request/${asked.id}`);
+      await page.getByLabel("Client ID").fill("app-1");
+      await page.getByLabel("Client secret").fill("shh");
+      await page.getByRole("button", { name: "Sign in to slack" }).click();
+      await page.waitForURL("**/signed-in-elsewhere");
+      expect(sent).toMatchObject({ clientId: "app-1", clientSecret: "shh" });
+      await page.unroute("**/graphql");
+    });
   });

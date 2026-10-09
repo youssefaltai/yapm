@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { workspaceStore } from "../actions.js";
+import { copyText, workspaceStore } from "../actions.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { navigate, paths } from "../router.js";
@@ -131,12 +131,7 @@ export function MachinesView() {
               <MachineCard key={m.id} machine={m} canEdit={isOwner} />
             ))}
           </div>
-          {machines.length > 0 && (
-            <p className="mt-6 text-[12px] text-faint">
-              To update a machine's runner, run{" "}
-              <code className="break-all">curl -fsSL {location.origin}/install.sh | sh</code> on it.
-            </p>
-          )}
+          {machines.length > 0 && <UpdateCommand />}
         </div>
       </div>
     </div>
@@ -174,7 +169,7 @@ function SetupPanel({
   return (
     <div className="rounded-lg border border-accent/50 bg-accent/5 p-4">
       <p className="font-medium">Paste this into Terminal on the computer you're adding</p>
-      <code className="mt-2 block rounded bg-canvas px-3 py-2 text-[12px] break-all">
+      <code className="mt-2 block rounded bg-canvas px-3 py-2 text-[12px] [overflow-wrap:anywhere]">
         {setup.command}
       </code>
       <p className="mt-2 text-muted">
@@ -540,4 +535,27 @@ function planSummary(m: Machine) {
   if (week) parts.push(`week ${Math.round(week.utilization ?? 0)}%`);
   if (m.planUsage && !m.planUsage.available) parts.push("no plan limits");
   return parts.join(" · ") || "Signed in";
+}
+
+/**
+ * How to update a machine's runner, as a command to copy. Inline in a sentence it broke mid-word
+ * ("loca|lhost") on a phone, and there was no way to copy it short of selecting it by hand.
+ */
+function UpdateCommand() {
+  const command = `curl -fsSL ${location.origin}/install.sh | sh`;
+  return (
+    <section className="mt-6">
+      <p className="text-[12px] text-faint">To update a machine's runner, run this on it:</p>
+      <div className="mt-1.5 flex items-center gap-3 rounded-md border border-line bg-raised px-3 py-1.5">
+        <code className="min-w-0 flex-1 text-[12px] [overflow-wrap:anywhere]">{command}</code>
+        <button
+          type="button"
+          onClick={() => copyText(command, "the update command")}
+          className="shrink-0 text-[12px] text-muted hover:text-ink"
+        >
+          Copy
+        </button>
+      </div>
+    </section>
+  );
 }

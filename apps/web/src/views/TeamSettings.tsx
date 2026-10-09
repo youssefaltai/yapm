@@ -1,8 +1,9 @@
 import { createIssueStore } from "../actions.js";
-import { confirmDialog, Select as Dropdown } from "../controls.js";
-import { mutate, type Team, toast } from "../data.js";
+import { confirmDialog, Select as Dropdown, promptDialog } from "../controls.js";
+import { mutate, type StateType, type Team, toast, type WorkflowState } from "../data.js";
 import { Breadcrumbs, button, PageHeader } from "../layout.js";
 import { paths } from "../router.js";
+import { StatusIcon } from "../ui.js";
 import { SettingsLayout, SettingsPanel, SettingsRow } from "./SettingsLayout.js";
 
 const PRIORITY_SLAS = [
@@ -90,6 +91,12 @@ export function TeamSettings({ team }: { team: Team }) {
       </PageHeader>
       <SettingsLayout
         sections={[
+          {
+            id: "statuses",
+            title: "Statuses",
+            description: "The steps an issue moves through. Agents can change them too.",
+            children: <Statuses team={team} />,
+          },
           {
             id: "triage",
             title: "Triage",
@@ -295,6 +302,98 @@ function Templates({ team }: { team: Team }) {
           >
             Delete
           </button>
+        </div>
+      ))}
+    </SettingsPanel>
+  );
+}
+
+const STATE_TYPES: { type: StateType; label: string }[] = [
+  { type: "triage", label: "Triage" },
+  { type: "backlog", label: "Backlog" },
+  { type: "unstarted", label: "Unstarted" },
+  { type: "started", label: "Started" },
+  { type: "completed", label: "Completed" },
+  { type: "canceled", label: "Canceled" },
+];
+
+function Statuses({ team }: { team: Team }) {
+  const add = async (type: StateType, label: string) => {
+    const name = await promptDialog({
+      title: `New ${label.toLowerCase()} status`,
+      label: "Status name",
+      confirmLabel: "Add",
+    });
+    if (!name) return;
+    await mutate(
+      "mutation($input: WorkflowStateCreateInput!) { workflowStateCreate(input: $input) { success } }",
+      { input: { teamId: team.id, name, type } },
+    );
+  };
+  const rename = async (state: WorkflowState) => {
+    const name = await promptDialog({
+      title: `Rename ${state.name}`,
+      label: "Status name",
+      initial: state.name,
+    });
+    if (!name || name === state.name) return;
+    await mutate(
+      "mutation($id: String!, $input: WorkflowStateUpdateInput!) { workflowStateUpdate(id: $id, input: $input) { success } }",
+      { id: state.id, input: { name } },
+    );
+  };
+  const remove = async (state: WorkflowState) => {
+    if (
+      !(await confirmDialog({
+        title: `Remove the status “${state.name}”?`,
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
+    await mutate("mutation($id: String!) { workflowStateArchive(id: $id) { success } }", {
+      id: state.id,
+    });
+  };
+  return (
+    <SettingsPanel>
+      {STATE_TYPES.map(({ type, label }) => (
+        <div key={type}>
+          <div className="flex items-center justify-between px-4 pt-3 pb-1 text-[12px] text-faint">
+            {label}
+            <button
+              type="button"
+              aria-label={`Add ${type} status`}
+              onClick={() => void add(type, label)}
+              className={templateButton}
+            >
+              Add
+            </button>
+          </div>
+          {team.states.nodes
+            .filter((s) => s.type === type)
+            .map((state) => (
+              <div key={state.id} className="flex min-h-11 items-center gap-3 px-4 py-1.5">
+                <StatusIcon type={state.type} />
+                <span className="min-w-0 flex-1 truncate">{state.name}</span>
+                <button
+                  type="button"
+                  aria-label={`Rename ${state.name}`}
+                  onClick={() => void rename(state)}
+                  className={templateButton}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${state.name}`}
+                  onClick={() => void remove(state)}
+                  className={templateButton}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
         </div>
       ))}
     </SettingsPanel>

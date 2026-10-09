@@ -16,7 +16,7 @@ export interface LabelInput {
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 
-function checkColor(color: string) {
+export function checkColor(color: string) {
   if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #8b8b90");
 }
 

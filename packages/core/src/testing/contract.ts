@@ -3585,5 +3585,99 @@ export function hubContract(
         "metric.update",
       ]);
     });
+
+    it("lets the owner and agents shape a team's statuses", async () => {
+      const home = await client.graphql<{ teamCreate: { team: { id: string } } }>(
+        'mutation { teamCreate(input: { name: "Home", key: "HOM" }) { team { id } } }',
+      );
+      const t = home.data?.teamCreate.team.id;
+      const states = async () =>
+        (
+          await client.graphql<{ team: { states: { nodes: { id: string; name: string }[] } } }>(
+            '{ team(id: "HOM") { states { nodes { id name } } } }',
+          )
+        ).data?.team.states.nodes ?? [];
+      const id = async (name: string) => (await states()).find((s) => s.name === name)?.id;
+      const names = async () => (await states()).map((s) => s.name);
+
+      // The owner adds a status: it lands after the others of its type, in their color.
+      const created = await client.graphql<{
+        workflowStateCreate: { workflowState: { id: string; type: string; color: string } };
+      }>(
+        `mutation($t: String!) { workflowStateCreate(input: { teamId: $t, name: "Waiting", type: started }) {
+          success workflowState { id type color }
+        } }`,
+        { t },
+      );
+      expect(created.errors).toBeUndefined();
+      const waiting = created.data?.workflowStateCreate.workflowState;
+      expect(waiting).toMatchObject({ type: "started", color: "#aaaaae" });
+      expect(await names()).toEqual([
+        "Triage",
+        "Backlog",
+        "Todo",
+        "In Progress",
+        "In Review",
+        "Waiting",
+        "Done",
+        "Canceled",
+        "Duplicate",
+      ]);
+      const clash = await client.graphql(
+        'mutation($t: String!) { workflowStateCreate(input: { teamId: $t, name: "done", type: completed }) { success } }',
+        { t },
+      );
+      expect(clash.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+
+      // Renames and moves it; the position is its place in the list.
+      const moved = await client.graphql(
+        'mutation($id: String!) { workflowStateUpdate(id: $id, input: { name: "On hold", position: 1 }) { success workflowState { name } } }',
+        { id: waiting?.id },
+      );
+      expect(moved.errors).toBeUndefined();
+      expect((await names()).slice(0, 3)).toEqual(["Triage", "On hold", "Backlog"]);
+
+      // A status can go once no issue uses it, and each type keeps at least one.
+      const archive = (stateId: string | undefined) =>
+        client.graphql("mutation($id: String!) { workflowStateArchive(id: $id) { success } }", {
+          id: stateId,
+        });
+      await client.graphql(
+        'mutation($t: String!) { issueCreate(input: { teamId: $t, title: "Fix the tap" }) { success } }',
+        { t },
+      );
+      expect((await archive(await id("Backlog"))).errors?.[0]?.message).toContain("issue");
+      expect((await archive(await id("Todo"))).errors?.[0]?.message).toContain("last");
+      expect((await archive(waiting?.id)).errors).toBeUndefined();
+      expect(await names()).not.toContain("On hold");
+      const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
+        { id: waiting?.id },
+      );
+      expect(log.data?.auditEntries.nodes.map((n) => n.action).sort()).toEqual([
+        "workflowState.archive",
+        "workflowState.create",
+        "workflowState.update",
+      ]);
+
+      // Agents do the same through MCP.
+      const mcp = async (name: string, args: Record<string, unknown>) => {
+        const result = await callTool(ceoToken, name, args);
+        if (result.isError) throw new Error(result.text);
+        return result.json();
+      };
+      const errands = await mcp("create_issue_status", {
+        team: "HOM",
+        name: "Errands",
+        type: "unstarted",
+      });
+      await mcp("update_issue_status", { id: errands.id, name: "Chores", position: 0 });
+      expect((await mcp("list_issue_statuses", { team: "HOM" }))[0]).toMatchObject({
+        name: "Chores",
+        type: "unstarted",
+      });
+      await mcp("archive_issue_status", { id: errands.id });
+      expect(await names()).not.toContain("Chores");
+    });
   });
 }

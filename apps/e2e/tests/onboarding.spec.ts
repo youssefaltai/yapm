@@ -944,4 +944,62 @@ test.describe
       expect(pasted).toBe(landed);
       await page.unroute("**/graphql");
     });
+
+    test("changes show at once on a slow network, and a failed one rolls back", async () => {
+      await page.goto("/team/PF");
+      await page.getByRole("button", { name: "list" }).click();
+      await page.keyboard.press("c");
+      await page.getByLabel("Issue title").fill("Renew the passport");
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("status")).toContainText("Created");
+      const row = page.getByRole("button", { name: /Renew the passport/ });
+
+      // The hub answers changes only when released: the list must not wait for it.
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let fail = false;
+      await page.route("**/graphql", async (route) => {
+        if (!route.request().postDataJSON().query.includes("issueBatchUpdate"))
+          return route.fallback();
+        if (fail) return route.fulfill({ json: { errors: [{ message: "The hub said no." }] } });
+        await held;
+        return route.fallback();
+      });
+      await row.hover();
+      await page.keyboard.press("s");
+      await page.getByRole("option", { name: "Todo" }).click();
+      const todo = page.getByRole("region", { name: "Todo" });
+      await expect(todo.getByRole("button", { name: /Renew the passport/ })).toBeVisible({
+        timeout: 1000,
+      });
+      release();
+
+      fail = true;
+      await row.hover();
+      await page.keyboard.press("s");
+      await page.getByRole("option", { name: "Done" }).click();
+      await expect(page.getByRole("status")).toContainText("The hub said no.");
+      await expect(todo.getByRole("button", { name: /Renew the passport/ })).toBeVisible();
+      await page.unroute("**/graphql");
+    });
+
+    test("shows a loading bar while waiting on the hub", async () => {
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route("**/graphql", async (route) => {
+        if (route.request().postDataJSON().query.includes("projects(")) await held;
+        return route.fallback();
+      });
+      await page.getByRole("button", { name: /Renew the passport/ }).hover();
+      await page.keyboard.press("Shift+P");
+      await expect(page.getByRole("progressbar", { name: "Loading" })).toBeVisible();
+      release();
+      await expect(page.getByRole("progressbar", { name: "Loading" })).toBeHidden();
+      await page.keyboard.press("Escape");
+      await page.unroute("**/graphql");
+    });
   });

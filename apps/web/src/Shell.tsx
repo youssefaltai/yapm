@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   commandPalette,
   copyText,
@@ -8,7 +8,7 @@ import {
   shortcutsStore,
   workspaceStore,
 } from "./actions.js";
-import type { Viewer } from "./api.js";
+import { type Viewer, waitingStore } from "./api.js";
 import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { EmojiPickerHost } from "./emoji/EmojiPicker.js";
@@ -130,6 +130,7 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
       <ContextMenuHost />
       <EmojiPickerHost />
       <ToastHost />
+      <LoadingBar />
     </div>
   );
 }
@@ -581,6 +582,11 @@ function NavLink({
       {children}
     </a>
   );
+}
+
+function LoadingBar() {
+  const waiting = useSyncExternalStore(waitingStore.subscribe, waitingStore.get);
+  return waiting ? <div role="progressbar" aria-label="Loading" className="loading-bar" /> : null;
 }
 
 function ToastHost() {

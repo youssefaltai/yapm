@@ -1678,6 +1678,19 @@ export function hubContract(
         status: "completed",
         result: { action: "ignore", reason: "Nothing more to do" },
       });
+      // The agent decides what deserves a reaction, so every mention reaches it, however busy.
+      for (const n of [1, 2, 3, 4]) {
+        await gql(
+          "mutation($id: String!, $body: String!) { commentCreate(input: { issueId: $id, body: $body }) { success } }",
+          { id: raceId, body: `@Coach check-in ${n}` },
+        );
+        const checkIn = await runner<Claim>("/claim", machine.token, {});
+        expect(checkIn.body.input.prompt).toContain(`check-in ${n}`);
+        await runner(`/runs/${checkIn.body.run.id}/complete`, machine.token, {
+          status: "completed",
+          result: { action: "ignore", reason: "Just checking in" },
+        });
+      }
 
       // Model routing: the owner pins each tier's model and routes labels; rules decide the rest.
       const routing = await gql<{

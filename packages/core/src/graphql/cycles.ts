@@ -94,7 +94,7 @@ Cycle.implement({
 });
 
 CustomView.implement({
-  description: "A saved issue filter, like Linear's custom views.",
+  description: "A saved issue filter.",
   fields: (t) => ({
     id: t.exposeID("id"),
     name: t.exposeString("name"),

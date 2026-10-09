@@ -75,7 +75,7 @@ function viewerId(ctx: GraphQLContext): string {
 }
 
 Organization.implement({
-  description: "The company. Named after Linear's organization.",
+  description: "The company.",
   fields: (t) => ({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
@@ -182,7 +182,7 @@ User.implement({
 });
 
 Team.implement({
-  description: "A unit of the company, like a team in Linear.",
+  description: "A unit of the company.",
   fields: (t) => ({
     id: t.exposeID("id"),
     key: t.exposeString("key"),
@@ -296,7 +296,7 @@ AuditEntry.implement({
 });
 
 Issue.implement({
-  description: "A unit of work, like an issue in Linear.",
+  description: "A unit of work.",
   fields: (t) => ({
     id: t.exposeID("id"),
     identifier: t.string({

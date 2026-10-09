@@ -38,7 +38,7 @@ const ScheduleInput = builder.inputType("ScheduleInput", {
 export const Template = builder.objectRef<TemplateRow>("Template");
 
 Template.implement({
-  description: "An issue template, like Linear's. With a schedule it creates a recurring issue.",
+  description: "An issue template. With a schedule it creates a recurring issue.",
   fields: (t) => ({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
@@ -83,7 +83,7 @@ builder.objectField(Team, "templates", (t) =>
 builder.queryFields((t) => ({
   templates: t.field({
     type: [Template],
-    description: "Every issue template, like Linear's `templates`.",
+    description: "Every issue template.",
     resolve: (_root, _args, ctx) => {
       requireViewer(ctx);
       return db(ctx).select().from(templates).orderBy(asc(templates.name)).all();

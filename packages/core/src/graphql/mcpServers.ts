@@ -1,10 +1,9 @@
 import { MCP_AUTHS, MCP_SERVER_STATUSES, mcpServers, requests } from "@life-os/schema";
 import { eq } from "drizzle-orm";
 import {
-  clientMetadata,
   connectMcpServer,
   createMcpServer,
-  needsClient,
+  pastesCallback,
   requireMcpServer,
 } from "../services/mcpServers.js";
 import { act, builder, db } from "./builder.js";
@@ -37,16 +36,10 @@ export const McpServer = builder.objectRef<McpServerRow>("McpServer").implement(
       nullable: true,
       description: "The env var a local server's token goes in.",
     }),
-    needsClient: t.boolean({
+    pastesCallback: t.boolean({
       description:
-        "Whether connecting needs the client ID (and secret) of the owner's own OAuth app at the provider.",
-      resolve: (s) => needsClient(s),
-    }),
-    redirectUri: t.string({
-      nullable: true,
-      description: "The redirect URL an OAuth app for it must allow.",
-      resolve: (s, _args, ctx) =>
-        s.auth === "oauth" ? (clientMetadata(ctx.origin ?? "").redirect_uris[0] ?? null) : null,
+        "Whether its sign-in ends on a localhost page, whose address the owner pastes back as `callbackUrl`.",
+      resolve: (s) => pastesCallback(s),
     }),
   }),
 });
@@ -63,6 +56,14 @@ builder.objectField(Request, "mcpServer", (t) =>
         : null,
   }),
 );
+
+const McpOAuthClientInput = builder.inputType("McpOAuthClientInput", {
+  description: "As in Claude Code's `mcpServers` config.",
+  fields: (t) => ({
+    clientId: t.string({ required: true }),
+    callbackPort: t.int({ required: true }),
+  }),
+});
 
 const McpServerCreateInput = builder.inputType("McpServerCreateInput", {
   fields: (t) => ({
@@ -86,6 +87,11 @@ const McpServerCreateInput = builder.inputType("McpServerCreateInput", {
     scopes: t.stringList({
       required: false,
       description: "The OAuth scopes you need, as few as will do. Defaults to the server's.",
+    }),
+    oauth: t.field({
+      type: McpOAuthClientInput,
+      required: false,
+      description: "The client the provider publishes for Claude Code, when it registers none.",
     }),
     reason: t.string({ required: true }),
     issueId: t.string({ required: false }),
@@ -136,18 +142,16 @@ builder.mutationFields((t) => ({
     description:
       "Asks to connect an outside MCP server, filing an `mcp.use` request for it. A name already taken only files the request.",
     args: { input: t.arg({ type: McpServerCreateInput, required: true }) },
-    resolve: (_root, args, ctx) =>
-      act(ctx, (s) => createMcpServer(s, ctx.deps, args.input, ctx.origin ?? "")),
+    resolve: (_root, args, ctx) => act(ctx, (s) => createMcpServer(s, ctx.deps, args.input)),
   }),
   mcpServerConnect: t.field({
     type: McpServerConnectPayload,
     description:
-      "Owner only: stores a pasted token, or starts the OAuth sign-in and returns where to go. Servers that need it take the owner's own OAuth app's client ID and secret.",
+      "Owner only: stores a pasted token, or starts the OAuth sign-in and returns where to go. Then, for a sign-in that ends on localhost, pass the address it landed on as `callbackUrl`.",
     args: {
       id: t.arg.string({ required: true }),
       token: t.arg.string({ required: false }),
-      clientId: t.arg.string({ required: false }),
-      clientSecret: t.arg.string({ required: false }),
+      callbackUrl: t.arg.string({ required: false }),
     },
     resolve: async (_root, args, ctx) => ({
       serverId: args.id,

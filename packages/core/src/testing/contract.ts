@@ -1426,6 +1426,7 @@ export function hubContract(
       expect(await use()).toEqual({ allowed: false, via: null });
       const paused = await runner(`/runs/${work.body.run.id}/complete`, machine.token, {
         status: "completed",
+        usage: { inputTokens: 1000, outputTokens: 100, costUsd: 0.5 },
         result: {
           outcome: "needs_input",
           summary: "Weeks 1-4 drafted",
@@ -1460,6 +1461,19 @@ export function hubContract(
       const resumed = await runner<Claim>("/claim", machine.token, {});
       expect(resumed.body.run).toMatchObject({ kind: "work", sessionId: "session-abc" });
       expect(resumed.body.input.prompt).toContain("April 12th.");
+      // The resumed session's totals carry on from the paused run; the run keeps only its own.
+      await runner(`/runs/${resumed.body.run.id}/logs`, machine.token, {
+        seq: 0,
+        events: [],
+        sessionId: "session-abc",
+        usage: { inputTokens: 1600, outputTokens: 130, costUsd: 0.75 },
+      });
+      const ownUsage = await gql<{
+        run: { inputTokens: number; outputTokens: number; costUsd: number };
+      }>("query($id: String!) { run(id: $id) { inputTokens outputTokens costUsd } }", {
+        id: resumed.body.run.id,
+      });
+      expect(ownUsage.data?.run).toEqual({ inputTokens: 600, outputTokens: 30, costUsd: 0.25 });
 
       // Stopping: the owner gives a reason, the machine hears it on its next check-in.
       const noReason = await gql(
@@ -2502,6 +2516,163 @@ export function hubContract(
       await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
         id: joined.body.id,
       });
+    });
+
+    it("shows each Claude login's plan limits and what runs used, per day", async () => {
+      const gql = <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+      ) => client.graphql<T>(query, variables);
+      const runner = async <T = Record<string, unknown>>(
+        path: string,
+        token: string,
+        json: unknown,
+      ) => client.json<T>(`/api/runner${path}`, { method: "POST", json, token });
+      const addMachine = async (name: string) => {
+        const made = await gql<{ machineSetupTokenCreate: { token: string } }>(
+          "mutation { machineSetupTokenCreate { token } }",
+        );
+        const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+          method: "POST",
+          json: {
+            name,
+            tags: ["personal", "gym"],
+            setupToken: made.data?.machineSetupTokenCreate.token,
+          },
+        });
+        return joined.body;
+      };
+      const laptop = await addMachine("Laptop");
+      const desktop = await addMachine("Desktop");
+      const now = Date.now();
+      const resets = new Date(now + 3 * 3_600_000).toISOString();
+      await runner("/heartbeat", laptop.token, {
+        claudeAccount: {
+          email: "Owner@Example.com",
+          subscriptionType: "max",
+          apiProvider: "firstParty",
+        },
+        planUsage: {
+          observedAt: now - 60_000,
+          source: "usage",
+          available: true,
+          limits: [
+            { kind: "five_hour", label: "Current session", utilization: 42, resetsAt: resets },
+            // Out-of-range numbers are clamped; entries without a kind are dropped.
+            { kind: "seven_day", label: "This week", utilization: 250, resetsAt: "not a date" },
+            { label: "No kind" },
+          ],
+          extraUsage: { enabled: false, monthlyLimit: null, usedCredits: null, utilization: null },
+        },
+      });
+      // The second machine uses the same login, and read the limits earlier.
+      await runner("/heartbeat", desktop.token, {
+        claudeAccount: { email: "owner@example.com", subscriptionType: "max" },
+        planUsage: { observedAt: now - 600_000, source: "rate_limit", limits: [] },
+      });
+      // An older reading arriving late doesn't replace a newer one.
+      await runner("/heartbeat", laptop.token, {
+        planUsage: { observedAt: now - 3_600_000, source: "usage", limits: [] },
+      });
+      const subscriptions = await gql<{
+        claudeSubscriptions: {
+          id: string;
+          account: { subscriptionType: string } | null;
+          machines: { name: string }[];
+          reportedBy: { name: string } | null;
+          planUsage: {
+            source: string;
+            available: boolean;
+            limits: { kind: string; label: string; utilization: number; resetsAt: string | null }[];
+          } | null;
+        }[];
+      }>(
+        "{ claudeSubscriptions { id account { subscriptionType } machines { name } reportedBy { name } planUsage { source available limits { kind label utilization resetsAt } } } }",
+      );
+      const mine = subscriptions.data?.claudeSubscriptions.find(
+        (s) => s.id === "owner@example.com",
+      );
+      expect(mine).toMatchObject({
+        account: { subscriptionType: "max" },
+        reportedBy: { name: "Laptop" },
+        planUsage: {
+          source: "usage",
+          available: true,
+          limits: [
+            { kind: "five_hour", label: "Current session", utilization: 42, resetsAt: resets },
+            { kind: "seven_day", label: "This week", utilization: 100, resetsAt: null },
+          ],
+        },
+      });
+      expect(mine?.machines.map((m) => m.name).sort()).toEqual(["Desktop", "Laptop"]);
+      const machineUsage = await gql<{
+        machines: { name: string; planUsage: { source: string } | null }[];
+      }>("{ machines { name planUsage { source } } }");
+      expect(machineUsage.data?.machines).toContainEqual({
+        name: "Desktop",
+        planUsage: { source: "rate_limit" },
+      });
+
+      // A run's usage is summed per day, by machine, agent and model.
+      const queued = await gql<{ runs: { nodes: { id: string }[] } }>(
+        "{ runs(filter: { status: [queued] }) { nodes { id } } }",
+      );
+      for (const run of queued.data?.runs.nodes ?? [])
+        await gql('mutation($id: String!) { runStop(id: $id, reason: "Clearing") { success } }', {
+          id: run.id,
+        });
+      const people = await gql<{ users: { nodes: { id: string; name: string }[] } }>(
+        "{ users { nodes { id name } } }",
+      );
+      const coachId = people.data?.users.nodes.find((u) => u.name === "Coach")?.id ?? "";
+      const started = await gql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+        {
+          input: { agentId: coachId, goal: "Plan the week" },
+        },
+      );
+      expect(started.errors).toBeUndefined();
+      const claimed = await runner<{ run: { id: string; model: string } }>(
+        "/claim",
+        laptop.token,
+        {},
+      );
+      await runner(`/runs/${claimed.body.run.id}/complete`, laptop.token, {
+        status: "completed",
+        result: { outcome: "done", summary: "Planned." },
+        usage: { inputTokens: 1200, outputTokens: 80, numTurns: 3, costUsd: 0.75 },
+      });
+      const history = async (groupBy: string) =>
+        (
+          await gql<{
+            usageHistory: {
+              key: string;
+              label: string;
+              runs: number;
+              inputTokens: number;
+              outputTokens: number;
+              costUsd: number;
+            }[];
+          }>(
+            "query($g: UsageGroupBy!) { usageHistory(groupBy: $g, days: 1) { key label runs inputTokens outputTokens costUsd } }",
+            { g: groupBy },
+          )
+        ).data?.usageHistory ?? [];
+      expect((await history("machine")).find((p) => p.key === laptop.id)).toEqual({
+        key: laptop.id,
+        label: "Laptop",
+        runs: 1,
+        inputTokens: 1200,
+        outputTokens: 80,
+        costUsd: 0.75,
+      });
+      expect((await history("agent")).find((p) => p.key === coachId)?.label).toBe("Coach");
+      expect((await history("model")).map((p) => p.key)).toContain(claimed.body.run.model);
+
+      for (const machine of [laptop, desktop])
+        await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+          id: machine.id,
+        });
     });
   });
 }

@@ -1,4 +1,5 @@
 import type { McpServerReport, McpServerSpec } from "./mcp.js";
+import type { ClaudeAccount, PlanUsage } from "./plan.js";
 
 /** Talks to the hub: the runner protocol with the machine's secret, GraphQL with a run's token. */
 export class HubError extends Error {
@@ -48,6 +49,7 @@ export interface Enrolment {
 }
 
 export interface Usage {
+  /** Totals for the whole session, subagents included; a resumed session carries on counting. */
   inputTokens?: number;
   outputTokens?: number;
   numTurns?: number;
@@ -123,6 +125,8 @@ export class HubClient {
       runIds: string[];
       tags?: string[];
       mcpServers?: McpServerReport[];
+      claudeAccount?: ClaudeAccount;
+      planUsage?: PlanUsage;
     },
   ) {
     return this.call<{

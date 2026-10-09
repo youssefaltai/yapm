@@ -249,6 +249,15 @@ async function describeTriggers(db: HubDb, notes: TriggerNote[]) {
         );
         break;
       }
+      case "requestCreated": {
+        const request = note.requestId
+          ? await db.select().from(requests).where(eq(requests.id, note.requestId)).get()
+          : undefined;
+        lines.push(
+          `- ${who} asks for approval: "${request?.title ?? ""}" (${request?.action ?? ""}${request?.resource ? ` on ${request.resource}` : ""}), because: ${clip(request?.reason ?? "", 500)} Screen it: approve_request if a grant of yours already allows it, reject_request with a reason if it shouldn't happen, else leave it for the owner.`,
+        );
+        break;
+      }
       case "issueSlaBreached":
         lines.push(
           "- The issue missed its SLA: it's overdue for its priority. Finish it or say why.",

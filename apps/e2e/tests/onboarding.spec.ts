@@ -374,6 +374,38 @@ test.describe
       ).toBeVisible();
     });
 
+    test("colours statuses, labels, projects and agents, like Linear", async () => {
+      /** Whether a computed CSS colour has a visible hue rather than being a grey. */
+      const hued = async (locator: ReturnType<Page["locator"]>, property: string) => {
+        const css = await locator.evaluate(
+          (el, p) => getComputedStyle(el).getPropertyValue(p),
+          property,
+        );
+        const [r = 0, g = 0, b = 0] = (css.match(/\d+/g) ?? []).map(Number);
+        return Math.max(r, g, b) - Math.min(r, g, b) > 12;
+      };
+
+      // Ada makes a label without picking a colour and puts it on the bill.
+      await mcp("create_issue_label", { name: "Bills", team: "PF" });
+      await mcp("update_issue", { id: "PF-1", labels: ["Bills"] });
+
+      await page.goto("/team/PF");
+      const row = page.getByRole("button", { name: /PF-1 Pay the electricity bill/ });
+      await expect(row.getByText("Bills")).toBeVisible();
+      expect(await hued(row.locator("svg circle").first(), "stroke")).toBe(true);
+      expect(
+        await hued(
+          row.getByText("Bills").locator("xpath=preceding-sibling::span"),
+          "background-color",
+        ),
+      ).toBe(true);
+
+      await page.getByRole("link", { name: "Projects" }).click();
+      const project = page.getByRole("button", { name: /Pay off the car/ });
+      expect(await hued(project.locator("span").first(), "background-color")).toBe(true);
+      expect(await hued(project.getByTitle("Ada"), "color")).toBe(true);
+    });
+
     test("runs the team in cycles, triages agents' issues and saves a view", async () => {
       await page.getByRole("link", { name: /Personal Finance/ }).click();
       await page.getByRole("link", { name: "Settings" }).click();

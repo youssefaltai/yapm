@@ -30,7 +30,16 @@ import {
 } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
-import { Avatar, DetailLayout, Modal, openMenu, shortDate, timeAgo, useStore } from "../ui.js";
+import {
+  Avatar,
+  DetailLayout,
+  Modal,
+  openMenu,
+  ProjectDot,
+  shortDate,
+  timeAgo,
+  useStore,
+} from "../ui.js";
 import { IssuesView } from "./IssuesView.js";
 
 export type ProjectState = "backlog" | "planned" | "started" | "paused" | "completed" | "canceled";
@@ -66,16 +75,6 @@ interface ProjectRow {
 
 const PROJECT_ROW =
   "id name summary color state health targetDate lead { id name kind } progress { progress scope } initiative { id name }";
-
-export function ProjectDot({ size = 10 }: { size?: number }) {
-  return (
-    <span
-      className="inline-block shrink-0 rounded-[3px] bg-muted"
-      style={{ width: size, height: size }}
-      aria-hidden
-    />
-  );
-}
 
 export function HealthBadge({ health }: { health: Health | null }) {
   if (!health) return <span className="text-[12px] text-faint">No updates</span>;
@@ -152,7 +151,7 @@ export function ProjectsView() {
                     onContextMenu={contextMenu(() => projectContextMenu(p))}
                     className={listRow}
                   >
-                    <ProjectDot />
+                    <ProjectDot color={p.color} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{p.name}</span>
                       {p.summary && (
@@ -488,7 +487,7 @@ export function ProjectPage({ id, tab }: { id: string; tab: "overview" | "issues
 function ProjectCrumbs({ project: p }: { project: ProjectDetail }) {
   return (
     <Breadcrumbs trail={[{ label: "Projects", to: paths.projects() }]}>
-      <ProjectDot />
+      <ProjectDot color={p.color} />
       <span className="max-w-48 truncate">{p.name}</span>
     </Breadcrumbs>
   );

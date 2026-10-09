@@ -19,6 +19,7 @@ import {
   openMenu,
   PriorityIcon,
   StatusIcon,
+  tint,
   UnassignedIcon,
   useStore,
 } from "../ui.js";
@@ -285,13 +286,13 @@ function CreateIssue({
             states.map((s) => ({
               id: s.id,
               label: s.name,
-              icon: <StatusIcon type={s.type} />,
+              icon: <StatusIcon type={s.type} color={s.color} />,
               checked: s.id === state?.id,
               onSelect: () => setStateId(s.id),
             })),
           )}
         >
-          {state && <StatusIcon type={state.type} />}
+          {state && <StatusIcon type={state.type} color={state.color} />}
           {state?.name}
         </Chip>
         <Chip
@@ -342,7 +343,12 @@ function CreateIssue({
                 team.labels.nodes.map((l) => ({
                   id: l.id,
                   label: l.name,
-                  icon: <span className="size-2.5 rounded-full bg-muted" />,
+                  icon: (
+                    <span
+                      className="size-2.5 rounded-full"
+                      style={{ background: tint(l.color, "var(--color-muted)") }}
+                    />
+                  ),
                   checked: chosen.has(l.id),
                   onSelect: () => {
                     if (chosen.has(l.id)) chosen.delete(l.id);

@@ -6,8 +6,8 @@ import { mutate, useQuery } from "../data.js";
 import { button, field, Page, PageBody, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton } from "../states.js";
-import { Avatar, type MenuSpec, openMenu, shortDate } from "../ui.js";
-import { type Health, HealthBadge, ProjectDot, ProjectsTabs } from "./Projects.js";
+import { Avatar, type MenuSpec, openMenu, ProjectDot, shortDate } from "../ui.js";
+import { type Health, HealthBadge, ProjectsTabs } from "./Projects.js";
 
 type Status = "planned" | "active" | "completed";
 const STATUS: Record<Status, { label: string; className: string }> = {
@@ -205,7 +205,7 @@ export function InitiativesView() {
                         ])}
                         className="flex w-full animate-fade-in items-center gap-3 px-4 py-2 text-left hover:bg-raised"
                       >
-                        <ProjectDot />
+                        <ProjectDot color={p.color} />
                         <span className="min-w-0 flex-1 truncate">{p.name}</span>
                         <HealthBadge health={p.health} />
                         <span className="w-10 text-right text-[12px] text-muted">
@@ -254,7 +254,7 @@ function LinkProject({
           items: options.map((p) => ({
             id: p.id,
             label: p.name,
-            icon: <ProjectDot />,
+            icon: <ProjectDot color={p.color} />,
             onSelect: () =>
               void mutate(
                 "mutation($id: String!, $i: String!) { projectUpdate(id: $id, input: { initiativeId: $i }) { success } }",

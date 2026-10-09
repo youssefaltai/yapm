@@ -19,14 +19,15 @@ import { badRequest, notFound } from "../errors.js";
 // step may ask for a tier; the rules, the agent's limits and its weekly top-tier budget decide.
 
 /**
- * Starting points from Anthropic's published guidance (October 2026): Haiku 5.5 at low effort
- * for short, simple, high-volume calls; Opus 5.5 at its default medium for most agentic work,
- * which measured cheaper per solved task than smaller models; high for hard problems. Tune them
- * per company from the route metrics on the Insights page.
+ * Starting points: Sonnet 5.5 at medium effort for decisions and small work, since a decision
+ * gates everything after it and Haiku at low effort misread plain events; Opus 5.5 at its
+ * default medium for most agentic work, which measured cheaper per solved task than smaller
+ * models; high for hard problems. Tune them per company from the route metrics on the Insights
+ * page.
  */
 export const DEFAULT_ROUTING: ModelRouting = {
   tiers: {
-    small: { model: "claude-haiku-5-5", effort: "low" },
+    small: { model: "claude-sonnet-5-5", effort: "medium" },
     standard: { model: "claude-opus-5-5", effort: "medium" },
     top: { model: "claude-opus-5-5", effort: "high" },
   },

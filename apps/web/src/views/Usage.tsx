@@ -5,7 +5,7 @@ import { navigate, paths } from "../router.js";
 import { Bone } from "../states.js";
 import { timeAgo } from "../ui.js";
 
-interface PlanLimit {
+export interface PlanLimit {
   kind: string;
   label: string;
   utilization: number | null;
@@ -111,7 +111,7 @@ function untilLabel(iso: string) {
   return `Resets ${new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}`;
 }
 
-const planName = (type: string | null) =>
+export const planName = (type: string | null) =>
   !type ? null : type.length <= 12 ? `${type[0]?.toUpperCase()}${type.slice(1)} plan` : type;
 
 /** The Claude subscription: how close each login is to its limits, and what agents used. */
@@ -271,7 +271,7 @@ function SubscriptionCard({ subscription: s }: { subscription: Subscription }) {
   );
 }
 
-function Meter({ limit: l }: { limit: PlanLimit }) {
+export function Meter({ limit: l }: { limit: PlanLimit }) {
   const stale = !!l.resetsAt && new Date(l.resetsAt).getTime() <= Date.now();
   const used = stale ? null : l.utilization;
   const level =
@@ -489,7 +489,7 @@ function History({
                 groupBy === "agent" && p.key
                   ? () => navigate(paths.member(p.key))
                   : groupBy === "machine" && p.key
-                    ? () => navigate(paths.machines())
+                    ? () => navigate(paths.machine(p.key))
                     : undefined;
               return (
                 <tr

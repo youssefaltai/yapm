@@ -5,6 +5,7 @@ import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, notFound, ServiceError } from "../errors.js";
 import { type Ctx, event } from "./common.js";
+import { machineName } from "./machines.js";
 import { notify, ownerId } from "./notifications.js";
 import { authorize } from "./requests.js";
 
@@ -81,7 +82,10 @@ export async function createMcpServer(ctx: Ctx, input: McpServerInput): Promise<
     .where(and(eq(mcpServers.machineId, machine.id), eq(mcpServers.name, name)))
     .get();
   if (clash)
-    throw new ServiceError("CONFLICT", `${machine.name} already has a server called ${name}`);
+    throw new ServiceError(
+      "CONFLICT",
+      `${machineName(machine)} already has a server called ${name}`,
+    );
   const actor = await db.select().from(users).where(eq(users.id, ctx.actorId)).get();
   const agentIds =
     input.agentIds === undefined && actor?.kind === "agent"
@@ -109,7 +113,7 @@ export async function createMcpServer(ctx: Ctx, input: McpServerInput): Promise<
       [
         event(ctx, "mcpServer.create", "mcpServer", id, {
           name,
-          machine: machine.name,
+          machine: machineName(machine),
           url,
           command,
         }),
@@ -235,7 +239,12 @@ export async function reportMcpServers(
             {
               userId: owner,
               type: "mcpServerNeedsAuth",
-              data: { serverId: row.id, name: row.name, machine: machine.name, authUrl },
+              data: {
+                serverId: row.id,
+                name: row.name,
+                machine: machineName(machine),
+                authUrl,
+              },
             },
           ]),
         );

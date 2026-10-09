@@ -668,6 +668,20 @@ test.describe
       await expect(page.getByText("Studio Mac is connected.")).toBeVisible();
       await page.getByRole("button", { name: "Done" }).click();
       await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
+
+      // Renamed, it keeps the name it enrolled with, and goes back to it when cleared.
+      const name = page.getByLabel("Name for Studio Mac");
+      await expect(name).toHaveAttribute("placeholder", "Studio Mac");
+      await name.fill("Music room");
+      await name.press("Enter");
+      await expect(page.getByText("Music room", { exact: true })).toBeVisible();
+      await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
+      await page.reload();
+      await expect(name).toHaveValue("Music room");
+      await name.fill("");
+      await name.press("Enter");
+      await expect(page.getByText("Music room", { exact: true })).toBeHidden();
+      await expect(name).toHaveValue("");
     });
 
     test("switches between light and dark themes from the command menu", async () => {

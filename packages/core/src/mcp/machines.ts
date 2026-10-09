@@ -1,5 +1,6 @@
 import { machines } from "@life-os/schema";
 import { asc, eq, or, sql } from "drizzle-orm";
+import { machineName } from "../services/machines.js";
 import { createMcpServer, listMcpServers } from "../services/mcpServers.js";
 import { type Tool, ToolError } from "./protocol.js";
 import { type McpContext, resolveUser, str } from "./tools.js";
@@ -10,7 +11,15 @@ async function resolveMachine(c: McpContext, ref: string) {
   const row = await c.db
     .select()
     .from(machines)
-    .where(or(eq(machines.id, ref), sql`lower(${machines.name}) = ${ref.toLowerCase()}`))
+    .where(
+      or(
+        eq(machines.id, ref),
+        sql`lower(${machines.displayName}) = ${ref.toLowerCase()}`,
+        sql`lower(${machines.name}) = ${ref.toLowerCase()}`,
+      ),
+    )
+    // A name the owner gave wins over another machine's original name.
+    .orderBy(sql`${machines.displayName} is null`)
     .get();
   if (!row) throw new ToolError(`No machine matches "${ref}". Use list_machines to see them.`);
   return row;
@@ -25,14 +34,19 @@ export const machineTools: Tool<McpContext>[] = [
     readOnly: true,
     inputSchema: { type: "object", properties: {} },
     async run(_args, c) {
-      const rows = await c.db.select().from(machines).orderBy(asc(machines.name)).all();
+      const rows = await c.db
+        .select()
+        .from(machines)
+        .orderBy(asc(sql`coalesce(${machines.displayName}, ${machines.name})`))
+        .all();
       const servers = await listMcpServers(c.db);
       return Promise.all(
         rows
           .filter((m) => m.status !== "revoked")
           .map(async (m) => ({
             id: m.id,
-            name: m.name,
+            name: machineName(m),
+            ...(m.displayName ? { originalName: m.name } : {}),
             status: m.status,
             tags: m.tags,
             localMcpServers: m.mcps,
@@ -93,7 +107,7 @@ export const machineTools: Tool<McpContext>[] = [
           ...(agents ? { agentIds: agents.map((a) => a.id) } : {}),
         }),
       );
-      return { id, status: "installing", machine: machine.name };
+      return { id, status: "installing", machine: machineName(machine) };
     },
   },
 ];

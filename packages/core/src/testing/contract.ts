@@ -1355,8 +1355,8 @@ export function hubContract(
         run: {
           kind: "decision",
           modelTier: "small",
-          model: "claude-haiku-5-5",
-          effort: "low",
+          model: "claude-sonnet-5-5",
+          effort: "medium",
           issue: issue?.identifier,
         },
         agent: { name: "Coach" },
@@ -1729,7 +1729,7 @@ export function hubContract(
       );
       expect(routing.data?.organizationUpdate.organization.modelRouting).toEqual({
         tiers: {
-          small: { model: "claude-haiku-5-5", effort: "low" },
+          small: { model: "claude-sonnet-5-5", effort: "medium" },
           standard: { model: "claude-sonnet-5-5", effort: "high" },
           top: { model: "claude-opus-5-5", effort: "high" },
         },

@@ -9,7 +9,7 @@ export const mcpServerTools: Tool<McpContext>[] = [
     name: "create_mcp_server",
     title: "Connect an MCP server",
     description:
-      "Ask to connect an outside service's MCP server so you can use its tools. First research its official remote MCP URL (preferred) or its official package and command, e.g. with WebSearch and WebFetch; don't guess. The hub works out how a url signs in; when the owner must paste a token, say in howToConnect where to create it and which scopes it needs. This files a request: the owner connects the server and approves. Finish with needs_input while you wait; its tools appear as mcp__<name>__<tool> in your next run. If the name is taken, this asks to use that server.",
+      "Ask to connect an outside service's MCP server so you can use its tools. First research its official remote MCP URL (preferred) or its official package and command, e.g. with WebSearch and WebFetch; don't guess. The hub works out how a url signs in. Ask for the fewest OAuth scopes the work needs. In howToConnect, tell the owner what to set up at the provider: where to create a token and its scopes, or, when the provider needs the owner's own OAuth app, how to create it (e.g. Slack: create an app at api.slack.com/apps, add the redirect URL and the user token scopes, turn on Agents & AI Apps → Model Context Protocol, copy the Client ID and Secret). The hub adds the exact redirect URL itself. This files a request: the owner connects the server and approves. Finish with needs_input while you wait; its tools appear as mcp__<name>__<tool> in your next run. If the name is taken, this asks to use that server.",
     inputSchema: {
       type: "object",
       properties: {
@@ -30,6 +30,11 @@ export const mcpServerTools: Tool<McpContext>[] = [
           type: "string",
           description: "Markdown for the owner: where to get the token and which scopes",
         },
+        scopes: {
+          type: "array",
+          items: { type: "string" },
+          description: "OAuth scopes you need, as few as will do; defaults to the server's",
+        },
         reason: { type: "string", description: "What you need it for" },
         issue: { type: "string", description: "The issue you are working on, e.g. PF-3" },
       },
@@ -38,17 +43,23 @@ export const mcpServerTools: Tool<McpContext>[] = [
     async run(args, c) {
       const issue = str(args.issue) ? await requireIssue(c, String(args.issue)) : null;
       const { requestId } = await c.act((s) =>
-        createMcpServer(s, c.deps, {
-          name: String(args.name),
-          url: str(args.url) ?? null,
-          command: str(args.command) ?? null,
-          args: Array.isArray(args.args) ? args.args.map(String) : null,
-          auth: (str(args.auth) as "none" | "oauth" | "token" | undefined) ?? null,
-          secretEnv: str(args.secretEnv) ?? null,
-          howToConnect: str(args.howToConnect) ?? null,
-          reason: String(args.reason),
-          issueId: issue?.id ?? null,
-        }),
+        createMcpServer(
+          s,
+          c.deps,
+          {
+            name: String(args.name),
+            url: str(args.url) ?? null,
+            command: str(args.command) ?? null,
+            args: Array.isArray(args.args) ? args.args.map(String) : null,
+            auth: (str(args.auth) as "none" | "oauth" | "token" | undefined) ?? null,
+            secretEnv: str(args.secretEnv) ?? null,
+            howToConnect: str(args.howToConnect) ?? null,
+            scopes: Array.isArray(args.scopes) ? args.scopes.map(String) : null,
+            reason: String(args.reason),
+            issueId: issue?.id ?? null,
+          },
+          c.appUrl,
+        ),
       );
       if (!requestId)
         return {

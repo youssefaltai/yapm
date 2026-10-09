@@ -1,6 +1,12 @@
 import { MCP_AUTHS, MCP_SERVER_STATUSES, mcpServers, requests } from "@life-os/schema";
 import { eq } from "drizzle-orm";
-import { connectMcpServer, createMcpServer, requireMcpServer } from "../services/mcpServers.js";
+import {
+  clientMetadata,
+  connectMcpServer,
+  createMcpServer,
+  needsClient,
+  requireMcpServer,
+} from "../services/mcpServers.js";
 import { act, builder, db } from "./builder.js";
 import { Request } from "./requests.js";
 
@@ -30,6 +36,17 @@ export const McpServer = builder.objectRef<McpServerRow>("McpServer").implement(
     secretEnv: t.exposeString("secretEnv", {
       nullable: true,
       description: "The env var a local server's token goes in.",
+    }),
+    needsClient: t.boolean({
+      description:
+        "Whether connecting needs the client ID (and secret) of the owner's own OAuth app at the provider.",
+      resolve: (s) => needsClient(s),
+    }),
+    redirectUri: t.string({
+      nullable: true,
+      description: "The redirect URL an OAuth app for it must allow.",
+      resolve: (s, _args, ctx) =>
+        s.auth === "oauth" ? (clientMetadata(ctx.origin ?? "").redirect_uris[0] ?? null) : null,
     }),
   }),
 });
@@ -65,6 +82,10 @@ const McpServerCreateInput = builder.inputType("McpServerCreateInput", {
     howToConnect: t.string({
       required: false,
       description: "Markdown for the owner: where to get the token, with which scopes.",
+    }),
+    scopes: t.stringList({
+      required: false,
+      description: "The OAuth scopes you need, as few as will do. Defaults to the server's.",
     }),
     reason: t.string({ required: true }),
     issueId: t.string({ required: false }),
@@ -115,17 +136,23 @@ builder.mutationFields((t) => ({
     description:
       "Asks to connect an outside MCP server, filing an `mcp.use` request for it. A name already taken only files the request.",
     args: { input: t.arg({ type: McpServerCreateInput, required: true }) },
-    resolve: (_root, args, ctx) => act(ctx, (s) => createMcpServer(s, ctx.deps, args.input)),
+    resolve: (_root, args, ctx) =>
+      act(ctx, (s) => createMcpServer(s, ctx.deps, args.input, ctx.origin ?? "")),
   }),
   mcpServerConnect: t.field({
     type: McpServerConnectPayload,
     description:
-      "Owner only: stores a pasted token, or starts the OAuth sign-in and returns where to go.",
-    args: { id: t.arg.string({ required: true }), token: t.arg.string({ required: false }) },
+      "Owner only: stores a pasted token, or starts the OAuth sign-in and returns where to go. Servers that need it take the owner's own OAuth app's client ID and secret.",
+    args: {
+      id: t.arg.string({ required: true }),
+      token: t.arg.string({ required: false }),
+      clientId: t.arg.string({ required: false }),
+      clientSecret: t.arg.string({ required: false }),
+    },
     resolve: async (_root, args, ctx) => ({
       serverId: args.id,
       ...(await act(ctx, (s) =>
-        connectMcpServer(s, ctx.deps, { id: args.id, token: args.token, origin: ctx.origin ?? "" }),
+        connectMcpServer(s, ctx.deps, { ...args, origin: ctx.origin ?? "" }),
       )),
     }),
   }),

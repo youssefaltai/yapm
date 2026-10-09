@@ -53,6 +53,7 @@ interface RequestDetail extends RequestSummary {
     name: string;
     auth: "none" | "oauth" | "token";
     status: "pending" | "ready";
+    needsClient: boolean;
   } | null;
   requester: Person & { title: string | null; teams: { nodes: { id: string; name: string }[] } };
 }
@@ -245,7 +246,7 @@ const DETAIL = `query($id: String!) { request(id: $id) {
   ${SUMMARY} resource reason details answer used
   answeredBy { id name kind }
   issue { identifier title }
-  mcpServer { id name auth status }
+  mcpServer { id name auth status needsClient }
   requester { id name kind title teams { nodes { id name } } }
 } }`;
 
@@ -259,6 +260,8 @@ export function RequestPage({ id }: { id: string }) {
   const [scope, setScope] = useState<string>("user");
   const [anyResource, setAnyResource] = useState(false);
   const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   const r = data?.request;
@@ -267,12 +270,12 @@ export function RequestPage({ id }: { id: string }) {
   const server = r.mcpServer?.status === "pending" ? r.mcpServer : null;
   const connectError = new URLSearchParams(window.location.search).get("error");
 
-  async function connect(token?: string) {
+  async function connect(variables: { token?: string; clientId?: string; clientSecret?: string }) {
     if (!server) return;
     setBusy(true);
     const result = await mutate<{ mcpServerConnect: { authorizationUrl: string | null } }>(
-      "mutation($id: String!, $token: String) { mcpServerConnect(id: $id, token: $token) { authorizationUrl } }",
-      { id: server.id, token },
+      "mutation($id: String!, $token: String, $clientId: String, $clientSecret: String) { mcpServerConnect(id: $id, token: $token, clientId: $clientId, clientSecret: $clientSecret) { authorizationUrl } }",
+      { id: server.id, ...variables },
     );
     setBusy(false);
     const url = result?.mcpServerConnect.authorizationUrl;
@@ -406,11 +409,44 @@ export function RequestPage({ id }: { id: string }) {
             {canAnswer && server && (
               <section className="rounded-lg border border-line p-4">
                 {connectError && <p className="mb-3 text-red-400">{connectError}</p>}
-                {server.auth === "oauth" ? (
+                {server.needsClient ? (
+                  <form
+                    className="space-y-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      connect({ clientId, clientSecret });
+                    }}
+                  >
+                    <input
+                      aria-label="Client ID"
+                      placeholder="Client ID"
+                      autoComplete="off"
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                      className={`${dialogField} w-full`}
+                    />
+                    <input
+                      type="password"
+                      aria-label="Client secret"
+                      placeholder="Client secret"
+                      autoComplete="off"
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      className={`${dialogField} w-full`}
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy || !clientId}
+                      className={button("primary")}
+                    >
+                      Sign in to {server.name}
+                    </button>
+                  </form>
+                ) : server.auth === "oauth" ? (
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => connect()}
+                    onClick={() => connect({})}
                     className={button("primary")}
                   >
                     Sign in to {server.name}
@@ -419,7 +455,7 @@ export function RequestPage({ id }: { id: string }) {
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      connect(token);
+                      connect({ token });
                     }}
                   >
                     <div className="flex gap-2">

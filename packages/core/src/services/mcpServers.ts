@@ -23,6 +23,8 @@ export interface McpServerCreateInput {
   auth?: McpAuth | null;
   secretEnv?: string | null;
   howToConnect?: string | null;
+  /** The least the agent needs; else what the server asks for. */
+  scopes?: string[] | null;
   reason: string;
   issueId?: string | null;
 }
@@ -67,9 +69,10 @@ async function getJson(deps: HubDeps, url: string): Promise<Record<string, unkno
 /**
  * How a remote server signs in, worked out as the MCP authorization spec says: an
  * unauthenticated call, then the protected resource's metadata, then its authorization server's.
- * OAuth only when the server accepts the hub as a client without setting one up by hand.
+ * OAuth whenever there is an authorization server; when it registers no clients itself, the
+ * owner brings their own app's credentials (`ownerApp`).
  */
-async function discoverAuth(deps: HubDeps, url: string) {
+async function discoverAuth(deps: HubDeps, url: string, scopes: string[]) {
   const probe = await reach(deps, url, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
@@ -103,22 +106,32 @@ async function discoverAuth(deps: HubDeps, url: string) {
     (await getJson(deps, `${issuer.origin}${path}/.well-known/openid-configuration`));
   const cimd = meta?.client_id_metadata_document_supported === true;
   const registration = typeof meta?.registration_endpoint === "string";
-  if (!meta || !(cimd || registration)) return { auth: "token" as const, oauth: null };
-  const scopes = resource?.scopes_supported;
-  const scope = param("scope") ?? (Array.isArray(scopes) ? scopes.join(" ") : "");
+  if (typeof meta?.authorization_endpoint !== "string" || typeof meta.token_endpoint !== "string")
+    return { auth: "token" as const, oauth: null };
+  const supported = resource?.scopes_supported;
+  const scope =
+    scopes.join(" ") || param("scope") || (Array.isArray(supported) ? supported.join(" ") : "");
   return {
     auth: "oauth" as const,
     oauth: {
-      authorizationEndpoint: String(meta.authorization_endpoint),
-      tokenEndpoint: String(meta.token_endpoint),
-      ...(cimd ? {} : { registrationEndpoint: String(meta.registration_endpoint) }),
+      authorizationEndpoint: meta.authorization_endpoint,
+      tokenEndpoint: meta.token_endpoint,
+      ...(cimd
+        ? {}
+        : registration
+          ? { registrationEndpoint: String(meta.registration_endpoint) }
+          : { ownerApp: "true" }),
       ...(scope ? { scope } : {}),
     },
   };
 }
 
+/** Whether the owner still has to bring their own OAuth app's client ID. */
+export const needsClient = (server: Pick<McpServerRow, "oauth">) =>
+  server.oauth?.ownerApp === "true" && !server.oauth.clientId;
+
 /** What the owner approves, in markdown. */
-function describe(server: Omit<McpServerRow, "requestId" | "secret" | "oauth">) {
+function describe(server: Omit<McpServerRow, "requestId" | "secret">, origin: string) {
   const command = [server.command ?? "", ...(server.args ?? [])]
     .map((part) => (/\s/.test(part) ? JSON.stringify(part) : part))
     .join(" ");
@@ -132,6 +145,9 @@ function describe(server: Omit<McpServerRow, "requestId" | "secret" | "oauth">) 
       ? `Connect the remote MCP server **${server.name}** at ${server.url}.`
       : `Connect the local MCP server **${server.name}**, which the runner starts with:\n\n\`\`\`\n${command}\n\`\`\``,
     `Sign-in: ${signIn}`,
+    needsClient(server)
+      ? `The provider needs your own OAuth app: create one with the redirect URL \`${clientMetadata(origin).redirect_uris[0]}\`, then paste its client ID and secret here.`
+      : "",
     server.howToConnect ? `How to connect:\n\n${server.howToConnect}` : "",
     `Its tools reach the agent as \`mcp__${server.name}__<tool>\`.`,
   ]
@@ -150,7 +166,8 @@ async function newServer(deps: HubDeps, input: McpServerCreateInput, name: strin
   let auth: McpAuth;
   let oauth: Record<string, string> | null = null;
   if (url && input.auth !== "none" && input.auth !== "token") {
-    ({ auth, oauth } = await discoverAuth(deps, url));
+    const scopes = (input.scopes ?? []).map((scope) => scope.trim()).filter(Boolean);
+    ({ auth, oauth } = await discoverAuth(deps, url, scopes));
     if (input.auth === "oauth" && auth !== "oauth")
       throw badRequest(
         `${url} offers no OAuth sign-in the hub can use. Ask with auth token, and say in howToConnect where the owner gets one.`,
@@ -189,6 +206,7 @@ export async function createMcpServer(
   ctx: Ctx,
   deps: HubDeps,
   input: McpServerCreateInput,
+  origin: string,
 ): Promise<{ serverId: string; requestId: string | null }> {
   const { db, now } = ctx;
   const name = cleanServerName(input.name);
@@ -203,7 +221,7 @@ export async function createMcpServer(
         action: "mcp.use",
         resource: name,
         reason: input.reason,
-        details: describe(server),
+        details: describe(server, origin),
         issueId: input.issueId ?? null,
       });
   await commit(db, [
@@ -242,7 +260,13 @@ export async function requireMcpServer(db: HubDb, id: string) {
 export async function connectMcpServer(
   ctx: Ctx,
   deps: HubDeps,
-  input: { id: string; token?: string | null; origin: string },
+  input: {
+    id: string;
+    token?: string | null;
+    clientId?: string | null;
+    clientSecret?: string | null;
+    origin: string;
+  },
 ): Promise<{ authorizationUrl: string | null }> {
   const { db, now } = ctx;
   await requireOwner(ctx, "connect MCP servers");
@@ -270,8 +294,12 @@ export async function connectMcpServer(
   const oauth = server.oauth;
   const { client_id, ...client } = clientMetadata(input.origin);
   const redirectUri = client.redirect_uris[0] ?? "";
+  const clientSecret = input.clientSecret?.trim();
+  if (needsClient(server) && !input.clientId?.trim())
+    throw badRequest(`Paste the client ID of your OAuth app for ${server.name}`);
   const clientId =
-    oauth.clientId ??
+    input.clientId?.trim() ||
+    oauth.clientId ||
     (oauth.registrationEndpoint
       ? await register(deps, oauth.registrationEndpoint, client)
       : client_id);
@@ -296,6 +324,7 @@ export async function connectMcpServer(
       oauth: {
         ...oauth,
         clientId,
+        ...(clientSecret ? { clientSecret: await seal(deps.config.secret, clientSecret) } : {}),
         redirectUri,
         state,
         verifier: await seal(deps.config.secret, verifier),
@@ -332,6 +361,16 @@ export function clientMetadata(origin: string) {
   };
 }
 
+/** How the hub identifies itself at the token endpoint: `client_secret_post` with a secret. */
+async function client(deps: HubDeps, oauth: Record<string, string>) {
+  return {
+    client_id: oauth.clientId ?? "",
+    ...(oauth.clientSecret
+      ? { client_secret: await open(deps.config.secret, oauth.clientSecret) }
+      : {}),
+  };
+}
+
 async function tokenRequest(
   deps: HubDeps,
   endpoint: string,
@@ -344,6 +383,7 @@ async function tokenRequest(
     body: new URLSearchParams(params),
   });
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  // Some providers (Slack) answer errors with HTTP 200 and `ok: false`.
   if (!response.ok || typeof body.access_token !== "string")
     throw new Error(String(body.error_description ?? body.error ?? `HTTP ${response.status}`));
   return {
@@ -386,7 +426,7 @@ export async function finishOAuth(
         grant_type: "authorization_code",
         code: query.code ?? "",
         redirect_uri: oauth.redirectUri ?? "",
-        client_id: oauth.clientId ?? "",
+        ...(await client(deps, oauth)),
         code_verifier: await open(deps.config.secret, verifier),
         resource: server.url ?? "",
       },
@@ -439,7 +479,7 @@ async function accessToken(deps: HubDeps, server: McpServerRow, at: number) {
         {
           grant_type: "refresh_token",
           refresh_token: tokens.refreshToken,
-          client_id: server.oauth?.clientId ?? "",
+          ...(await client(deps, server.oauth ?? {})),
           resource: server.url ?? "",
         },
         at,

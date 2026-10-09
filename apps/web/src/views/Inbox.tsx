@@ -3,6 +3,7 @@ import { linkEntries } from "../actions.js";
 import { type ContextEntry, contextMenu } from "../contextMenu.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { plainText } from "../editor/plain.js";
+import { button, PageHeader, PageTitle } from "../layout.js";
 import { usePushState } from "../push.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton } from "../states.js";
@@ -161,18 +162,21 @@ export function InboxView() {
   return (
     <div className="flex h-full">
       <section className="flex w-full min-w-0 flex-col border-line md:w-96 md:shrink-0 md:border-r">
-        <header className="flex h-11 shrink-0 items-center border-b border-line px-4">
-          <span className="font-medium">Inbox</span>
-          {items.some((n) => !n.readAt) && (
-            <button
-              type="button"
-              onClick={() => void mutate("mutation { notificationMarkReadAll { success } }")}
-              className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
-            >
-              Mark all read
-            </button>
-          )}
-        </header>
+        <PageHeader
+          actions={
+            items.some((n) => !n.readAt) && (
+              <button
+                type="button"
+                onClick={() => void mutate("mutation { notificationMarkReadAll { success } }")}
+                className={button("ghost", "sm")}
+              >
+                Mark all read
+              </button>
+            )
+          }
+        >
+          <PageTitle>Inbox</PageTitle>
+        </PageHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <PushBanner />
           {error && <p className="p-6 text-red-400">{error}</p>}
@@ -192,12 +196,12 @@ export function InboxView() {
                   type="button"
                   onClick={() => open(n)}
                   onContextMenu={contextMenu(() => notificationMenu(n, () => open(n)))}
-                  className={`flex w-full gap-3 border-b border-line px-4 py-3 text-left hover:bg-raised ${
+                  className={`flex w-full gap-3 border-b border-line px-4 py-3 text-left hover:bg-raised md:px-6 ${
                     n.id === selected ? "bg-raised" : ""
                   }`}
                 >
                   <span className="relative mt-0.5">
-                    <Avatar name={n.actor?.name ?? "?"} kind={n.actor?.kind} size={24} />
+                    <Avatar name={n.actor?.name ?? "?"} kind={n.actor?.kind} size={20} />
                     {!n.readAt && (
                       <span
                         role="img"
@@ -226,7 +230,7 @@ export function InboxView() {
                   aria-label="Archive"
                   title="Archive"
                   onClick={() => void archive(n)}
-                  className="absolute right-3 bottom-2 hidden animate-fade-in rounded px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
+                  className="absolute right-4 bottom-2 hidden md:right-6 animate-fade-in rounded px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
                 >
                   Archive
                 </button>
@@ -275,11 +279,7 @@ function PushBanner() {
       <p className="flex-1 text-[13px] text-muted">
         Get a notification when an agent needs your approval.
       </p>
-      <button
-        type="button"
-        onClick={() => void turnOn()}
-        className="shrink-0 rounded-md bg-accent px-2.5 py-1 font-medium text-white"
-      >
+      <button type="button" onClick={() => void turnOn()} className={button("primary", "sm")}>
         Turn on
       </button>
     </div>

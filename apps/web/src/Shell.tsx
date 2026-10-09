@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   commandPalette,
   copyText,
@@ -12,9 +12,10 @@ import type { Viewer } from "./api.js";
 import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
 import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { EmojiPickerHost } from "./emoji/EmojiPicker.js";
+import { eyebrow, TabLink, TabRow } from "./layout.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
-import { EmptyState, SelectedPill, TabLink } from "./states.js";
+import { EmptyState, SelectedPill } from "./states.js";
 import { Kbd, MenuHost, openMenu, useHotkeys, usePresence } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
@@ -37,6 +38,7 @@ import { RunPage, RunsView, useRunningCount } from "./views/Runs.js";
 import { deleteView, renameView, ViewPage } from "./views/SavedView.js";
 import { ShortcutsHost } from "./views/Shortcuts.js";
 import { TeamSettings } from "./views/TeamSettings.js";
+import { TeamTabs } from "./views/TeamTabs.js";
 import { UsageView } from "./views/Usage.js";
 
 export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => void }) {
@@ -142,7 +144,7 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
           source={{ kind: "my", tab: route.tab }}
           title="My issues"
           tabs={
-            <>
+            <TabRow>
               <TabLink
                 group="view-tabs"
                 active={route.tab === "assigned"}
@@ -157,7 +159,7 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
               >
                 Created
               </TabLink>
-            </>
+            </TabRow>
           }
         />
       );
@@ -169,45 +171,7 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
           key={`${team.id}-${route.view}`}
           source={{ kind: "team", team, view: route.view }}
           title={team.name}
-          tabs={
-            <>
-              <TabLink
-                group="view-tabs"
-                active={route.view === "all"}
-                to={paths.team(team.key, "all")}
-              >
-                All issues
-              </TabLink>
-              <TabLink
-                group="view-tabs"
-                active={route.view === "active"}
-                to={paths.team(team.key, "active")}
-              >
-                Active
-              </TabLink>
-              <TabLink
-                group="view-tabs"
-                active={route.view === "backlog"}
-                to={paths.team(team.key, "backlog")}
-              >
-                Backlog
-              </TabLink>
-              {team.triageEnabled && (
-                <TabLink
-                  group="view-tabs"
-                  active={route.view === "triage"}
-                  to={paths.team(team.key, "triage")}
-                >
-                  Triage
-                </TabLink>
-              )}
-              {team.cyclesEnabled && (
-                <TabLink group="view-tabs" active={false} to={paths.cycles(team.key)}>
-                  Cycles
-                </TabLink>
-              )}
-            </>
-          }
+          tabs={<TeamTabs team={team} active={route.view} />}
         />
       );
     }
@@ -292,6 +256,17 @@ function Sidebar({
   const pending = usePendingCount();
   const running = useRunningCount();
   const unread = useUnreadCount();
+  // A team stays open while you're in its issues and cycles, so the sidebar holds still.
+  const lastTeam = useRef<string | null>(null);
+  const expanded =
+    "key" in route
+      ? route.key
+      : route.name === "issue"
+        ? (route.identifier.split("-")[0] ?? null)
+        : route.name === "cycle"
+          ? lastTeam.current
+          : null;
+  lastTeam.current = expanded;
   return (
     <>
       <div className="flex items-center gap-2 px-2 py-1.5">
@@ -384,7 +359,7 @@ function Sidebar({
         </NavLink>
       </nav>
       <div className="mt-6 flex items-center px-2">
-        <p className="text-[11px] font-medium text-faint uppercase">Teams</p>
+        <p className={eyebrow}>Teams</p>
         <button
           type="button"
           aria-label="Create team"
@@ -397,7 +372,7 @@ function Sidebar({
       <nav className="mt-1 min-h-0 space-y-0.5 overflow-y-auto">
         {workspace?.teams.nodes.length === 0 && <p className="px-2 py-1.5 text-faint">None yet</p>}
         {workspace?.teams.nodes.map((team) => {
-          const active = "key" in route && route.key === team.key;
+          const active = expanded === team.key;
           const view = route.name === "team" ? route.view : null;
           return (
             <div key={team.id}>
@@ -440,7 +415,7 @@ function Sidebar({
       </nav>
       {!!workspace?.customViews.nodes.length && (
         <>
-          <p className="mt-6 px-2 text-[11px] font-medium text-faint uppercase">Views</p>
+          <p className={`mt-6 px-2 ${eyebrow}`}>Views</p>
           <nav className="mt-1 space-y-0.5">
             {workspace.customViews.nodes.map((v) => (
               <NavLink

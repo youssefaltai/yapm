@@ -3,11 +3,19 @@ import { workspaceStore } from "../actions.js";
 import { confirmDialog, promptDialog, Select } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
+import {
+  Breadcrumbs,
+  button,
+  field,
+  PageHeader,
+  pageHeading,
+  Section,
+  TitleTag,
+} from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { PageSkeleton } from "../states.js";
 import {
   Avatar,
-  Crumb,
   DetailLayout,
   openMenu,
   Property,
@@ -16,8 +24,14 @@ import {
   timeAgo,
   useStore,
 } from "../ui.js";
-import { FeedbackSection, Prose, RevisionList } from "./Learning.js";
-import { RunsSection } from "./Runs.js";
+import {
+  FeedbackSection,
+  Prose,
+  RevisionList,
+  useAgentFeedback,
+  useRevisions,
+} from "./Learning.js";
+import { AGENT_RUNS, type RunSummary, RunsSection } from "./Runs.js";
 
 interface Token {
   id: string;
@@ -68,12 +82,21 @@ const MEMBER_QUERY = `query($id: String!) { user(id: $id) {
 
 export function MemberPage({ id }: { id: string }) {
   const { data, error } = useQuery<{ user: MemberDetail }>(MEMBER_QUERY, { id });
+  // The agent parts of the page load alongside it, so it renders once, complete.
+  const charterHistory = useRevisions("charter", id);
+  const lessonsHistory = useRevisions("lessons", id);
+  const feedback = useAgentFeedback(id);
+  const runs = useQuery<{ runs: { nodes: RunSummary[] } }>(AGENT_RUNS, {
+    filter: { agentId: id },
+  });
+  const runRows = runs.data?.runs.nodes ?? (runs.error ? [] : null);
   const workspace = useStore(workspaceStore);
   const member = data?.user;
   const [newToken, setNewToken] = useState<string | null>(null);
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
-  if (!member || !workspace) return <PageSkeleton />;
+  if (!member || !workspace || !charterHistory || !lessonsHistory || !feedback || !runRows)
+    return <PageSkeleton />;
   const canEdit = workspace.viewer.kind === "owner";
   const update = (input: Record<string, unknown>) =>
     mutate(
@@ -85,40 +108,44 @@ export function MemberPage({ id }: { id: string }) {
     );
 
   const editable = canEdit && member.active;
-  const field =
+  const lineField =
     "rounded-md px-2 py-1 text-ink hover:bg-raised focus:bg-raised disabled:hover:bg-transparent";
 
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <Crumb onClick={() => navigate(paths.company())}>Company</Crumb>
-        <span className="truncate font-medium">{member.name}</span>
-        {!member.active && (
-          <span className="rounded bg-raised px-1.5 text-[12px] text-muted">Retired</span>
-        )}
-        {canEdit && member.kind === "agent" && member.active && (
-          <button
-            type="button"
-            onClick={async () => {
-              if (
-                await confirmDialog({
-                  title: `Retire ${member.name}?`,
-                  body: "Its tokens stop working and its reports move to its manager.",
-                  confirmLabel: "Retire",
-                  destructive: true,
-                })
-              ) {
-                void mutate("mutation($id: String!) { agentRetire(id: $id) { success } }", {
-                  id: member.id,
-                });
-              }
-            }}
-            className="ml-auto rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-red-400"
-          >
-            Retire
-          </button>
-        )}
-      </header>
+      <PageHeader
+        actions={
+          canEdit &&
+          member.kind === "agent" &&
+          member.active && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  await confirmDialog({
+                    title: `Retire ${member.name}?`,
+                    body: "Its tokens stop working and its reports move to its manager.",
+                    confirmLabel: "Retire",
+                    destructive: true,
+                  })
+                ) {
+                  void mutate("mutation($id: String!) { agentRetire(id: $id) { success } }", {
+                    id: member.id,
+                  });
+                }
+              }}
+              className={button("ghost", "sm")}
+            >
+              Retire
+            </button>
+          )
+        }
+      >
+        <Breadcrumbs trail={[{ label: "Company", to: paths.company() }]}>
+          <span className="truncate">{member.name}</span>
+          {!member.active && <TitleTag>Retired</TitleTag>}
+        </Breadcrumbs>
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <DetailLayout
           head={
@@ -130,7 +157,7 @@ export function MemberPage({ id }: { id: string }) {
                   value={member.name}
                   disabled={!editable}
                   onSave={(name) => update({ name })}
-                  className="text-xl font-semibold"
+                  className={pageHeading}
                 />
                 <EditableLine
                   label="Title"
@@ -220,7 +247,7 @@ export function MemberPage({ id }: { id: string }) {
                             .filter(Boolean),
                         })
                       }
-                      className={field}
+                      className={lineField}
                     />
                   </Property>
                   <Property label="Cheapest tier" control={editable}>
@@ -230,6 +257,7 @@ export function MemberPage({ id }: { id: string }) {
                         value={member.modelFloor}
                         options={TIERS}
                         onChange={(modelFloor) => update({ modelFloor })}
+                        className={`${propertyButton} w-full`}
                       />
                     ) : (
                       tierLabel(member.modelFloor)
@@ -242,6 +270,7 @@ export function MemberPage({ id }: { id: string }) {
                         value={member.modelCeiling}
                         options={TIERS}
                         onChange={(modelCeiling) => update({ modelCeiling })}
+                        className={`${propertyButton} w-full`}
                       />
                     ) : (
                       tierLabel(member.modelCeiling)
@@ -256,7 +285,7 @@ export function MemberPage({ id }: { id: string }) {
                         const n = Number(value);
                         if (Number.isInteger(n) && n >= 0) update({ topRunsPerWeek: n });
                       }}
-                      className={field}
+                      className={lineField}
                     />
                   </Property>
                 </PropertyList>
@@ -267,11 +296,10 @@ export function MemberPage({ id }: { id: string }) {
           {member.kind === "agent" && canEdit && member.active && <GiveWork agent={member} />}
 
           {member.kind === "agent" && (
-            <section className="mt-8">
-              <h2 className="mb-2 font-medium">Charter</h2>
-              <p className="mb-2 text-faint">
-                The agent's job: what it owns, how it works, and when it escalates to you.
-              </p>
+            <Section
+              title="Charter"
+              description="The agent's job: what it owns, how it works, and when it escalates to you."
+            >
               <Prose
                 label="Charter"
                 value={member.charter ?? ""}
@@ -280,17 +308,15 @@ export function MemberPage({ id }: { id: string }) {
                 onSave={(charter) => update({ charter })}
                 className="min-h-16"
               />
-              <RevisionList subject="charter" entityId={member.id} />
-            </section>
+              <RevisionList rows={charterHistory} />
+            </Section>
           )}
 
           {member.kind === "agent" && (
-            <section className="mt-8">
-              <h2 className="mb-2 font-medium">Lessons</h2>
-              <p className="mb-2 text-faint">
-                What {member.name} has learned, in its own words. It reads them on every run and
-                rewrites them as it learns.
-              </p>
+            <Section
+              title="Lessons"
+              description={`What ${member.name} has learned, in its own words. It reads them on every run and rewrites them as it learns.`}
+            >
               <Prose
                 label="Lessons"
                 value={member.lessons ?? ""}
@@ -299,21 +325,22 @@ export function MemberPage({ id }: { id: string }) {
                 onSave={(lessons) => update({ lessons })}
                 className="min-h-16"
               />
-              <RevisionList subject="lessons" entityId={member.id} />
-            </section>
+              <RevisionList rows={lessonsHistory} />
+            </Section>
           )}
 
           {member.kind === "agent" && (
-            <FeedbackSection agent={member} canGive={canEdit && member.active} />
+            <FeedbackSection agent={member} canGive={canEdit && member.active} rows={feedback} />
           )}
 
-          {member.kind === "agent" && <RunsSection agentId={member.id} />}
+          {member.kind === "agent" && <RunsSection runs={runRows} showAgent={false} />}
 
           {(canEdit || member.isMe) && (
-            <section className="mt-8">
-              <div className="mb-2 flex items-center">
-                <h2 className="font-medium">API tokens</h2>
-                {canEdit && member.active && (
+            <Section
+              title="API tokens"
+              actions={
+                canEdit &&
+                member.active && (
                   <button
                     type="button"
                     onClick={async () => {
@@ -331,12 +358,13 @@ export function MemberPage({ id }: { id: string }) {
                       );
                       if (result) setNewToken(result.apiTokenCreate.token);
                     }}
-                    className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+                    className={button("ghost", "sm")}
                   >
                     + New token
                   </button>
-                )}
-              </div>
+                )
+              }
+            >
               {newToken && (
                 <NewToken token={newToken} name={member.name} onDone={() => setNewToken(null)} />
               )}
@@ -369,7 +397,7 @@ export function MemberPage({ id }: { id: string }) {
                   </div>
                 ))}
               </div>
-            </section>
+            </Section>
           )}
         </DetailLayout>
       </div>
@@ -413,18 +441,14 @@ function GiveWork({ agent }: { agent: { id: string; name: string } }) {
   const [issue, setIssue] = useState("");
   if (!open)
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-4 rounded-md border border-line px-3 py-1.5 text-muted hover:bg-raised hover:text-ink"
-      >
+      <button type="button" onClick={() => setOpen(true)} className={button("secondary")}>
         Give {agent.name} work
       </button>
     );
   return (
     <form
       ref={form}
-      className="mt-4 rounded-lg border border-line p-4"
+      className="rounded-lg border border-line p-4"
       onSubmit={async (e) => {
         e.preventDefault();
         const result = await mutate<{ runCreate: { run: { id: string } } }>(
@@ -454,22 +478,14 @@ function GiveWork({ agent }: { agent: { id: string; name: string } }) {
           value={issue}
           placeholder="Optional, e.g. FIT-3"
           onChange={(e) => setIssue(e.target.value)}
-          className="w-40 rounded-md border border-line bg-panel px-2 py-1 outline-none placeholder:text-faint focus:border-faint"
+          className={`w-40 ${field}`}
         />
       </label>
       <div className="mt-3 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
-        >
+        <button type="button" onClick={() => setOpen(false)} className={button("ghost")}>
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={!goal.trim()}
-          className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-        >
+        <button type="submit" disabled={!goal.trim()} className={button("primary")}>
           Start
         </button>
       </div>
@@ -493,15 +509,11 @@ function NewToken({ token, name, onDone }: { token: string; name: string; onDone
         <button
           type="button"
           onClick={() => void navigator.clipboard?.writeText(command)}
-          className="rounded-md bg-accent px-3 py-1 text-white"
+          className={button("primary")}
         >
           Copy command
         </button>
-        <button
-          type="button"
-          onClick={onDone}
-          className="rounded-md px-3 py-1 text-muted hover:text-ink"
-        >
+        <button type="button" onClick={onDone} className={button("ghost")}>
           Done
         </button>
       </div>

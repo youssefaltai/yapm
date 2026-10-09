@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { button, dialogField } from "./layout.js";
 import { createStore, Modal, useLayer, useStore } from "./ui.js";
 
 // Linear-style replacements for the browser's own alert, confirm, prompt,
@@ -732,7 +733,6 @@ function Dialog({ spec }: { spec: DialogSpec }) {
     if (spec.kind === "confirm") spec.resolve(answer);
     else spec.resolve(answer && text.trim() ? text.trim() : null);
   };
-  const button = "rounded-md px-3 py-1.5";
   return (
     <Modal label={spec.title} onClose={() => finish(false)}>
       <form
@@ -755,15 +755,11 @@ function Dialog({ spec }: { spec: DialogSpec }) {
             onChange={(e) => setText(e.target.value)}
             onFocus={(e) => e.target.select()}
             placeholder={spec.placeholder ?? spec.label}
-            className="mt-3 w-full rounded-md border border-line bg-canvas px-3 py-2 outline-none placeholder:text-faint focus:border-faint"
+            className={`mt-3 ${dialogField}`}
           />
         )}
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => finish(false)}
-            className={`${button} text-muted hover:bg-raised hover:text-ink`}
-          >
+          <button type="button" onClick={() => finish(false)} className={button("ghost")}>
             Cancel
           </button>
           <button
@@ -771,10 +767,10 @@ function Dialog({ spec }: { spec: DialogSpec }) {
             // biome-ignore lint/a11y/noAutofocus: Enter confirms, like the browser's dialog
             autoFocus={spec.kind === "confirm"}
             disabled={spec.kind === "prompt" && !text.trim()}
-            className={`${button} font-medium text-white outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-panel disabled:opacity-40 ${
+            className={`${button(spec.kind === "confirm" && spec.destructive ? "destructive" : "primary")} outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-panel ${
               spec.kind === "confirm" && spec.destructive
-                ? "bg-red-500/90 hover:bg-red-500 focus-visible:ring-red-400"
-                : "bg-accent hover:bg-accent-hover focus-visible:ring-accent"
+                ? "focus-visible:ring-red-400"
+                : "focus-visible:ring-accent"
             }`}
           >
             {spec.confirmLabel}

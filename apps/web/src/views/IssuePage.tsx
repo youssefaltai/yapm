@@ -38,17 +38,21 @@ import {
   reactionMenu,
   SmileyPlus,
 } from "../emoji/Reactions.js";
+import { Breadcrumbs, button, PageHeader, pageHeading, Section, TitleTag } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, PageSkeleton } from "../states.js";
 import {
   Avatar,
-  Crumb,
+  DetailLayout,
   dueLabel,
   Kbd,
   LabelChip,
   type MenuSpec,
   openMenu,
   PriorityIcon,
+  Property,
+  PropertyList,
+  propertyButton,
   SlaBadge,
   StatusIcon,
   shortDate,
@@ -58,7 +62,7 @@ import {
   useStore,
 } from "../ui.js";
 import { canCoach, FeedbackForm } from "./Learning.js";
-import { RunsSection } from "./Runs.js";
+import { RUN_SUMMARY, type RunSummary, RunsSection } from "./Runs.js";
 
 interface MiniIssue {
   id: string;
@@ -96,6 +100,7 @@ interface IssueDetail extends Issue {
   reactions: Reaction[];
   history: { nodes: HistoryEntry[] };
   subscribers: { nodes: { id: string; isMe: boolean }[] };
+  runs: { nodes: RunSummary[] };
 }
 
 interface IssueFeedback {
@@ -127,6 +132,7 @@ const ISSUE_QUERY = `query($id: String!) { issue(id: $id) {
   comments(first: 250) { nodes { id body createdAt editedAt parent { id } user { id name kind isMe } ${REACTIONS} } }
   ${REACTIONS}
   history(first: 250) { nodes { id action createdAt reason data actor { id name kind } } }
+  runs(first: 20) { nodes { ${RUN_SUMMARY} } }
 } } ${ISSUE_FIELDS}`;
 
 export function IssuePage({ identifier }: { identifier: string }) {
@@ -167,65 +173,65 @@ export function IssuePage({ identifier }: { identifier: string }) {
       <p className="px-6 py-10 text-center text-muted">{error}</p>
     );
   }
-  if (!issue || !workspace) return <PageSkeleton />;
+  // Everything the page shows arrives before it renders, so nothing pops in and pushes it down.
+  const feedbackItems = feedback.data?.feedbacks ?? (feedback.error ? [] : null);
+  if (!issue || !workspace || !feedbackItems) return <PageSkeleton />;
   const team = workspace.teams.nodes.find((t) => t.id === issue.team.id);
 
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <Crumb onClick={() => navigate(paths.team(issue.team.key))}>
-          {team?.name ?? issue.team.key}
-        </Crumb>
-        <span className="font-medium">{issue.identifier}</span>
-        {issue.archivedAt && (
-          <span className="rounded bg-raised px-1.5 text-[12px] text-muted">Archived</span>
-        )}
-        <div className="ml-auto flex items-center gap-1">
-          <SubscribeButton issue={issue} />
-          {issue.archivedAt ? (
-            <ToolbarButton
-              onClick={() =>
-                void mutate("mutation($id: String!) { issueUnarchive(id: $id) { success } }", {
-                  id: issue.id,
-                })
-              }
-            >
-              Unarchive
-            </ToolbarButton>
-          ) : (
-            <ToolbarButton onClick={() => void archiveIssues([issue])}>Archive</ToolbarButton>
-          )}
-        </div>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 lg:flex-row">
-          <div className="min-w-0 flex-1 px-4 py-6 md:px-10">
-            {issue.parent && (
-              <button
-                type="button"
-                onClick={() => issue.parent && navigate(paths.issue(issue.parent.identifier))}
-                className="mb-2 text-muted hover:text-ink"
+      <PageHeader
+        actions={
+          <>
+            <SubscribeButton issue={issue} />
+            {issue.archivedAt ? (
+              <ToolbarButton
+                onClick={() =>
+                  void mutate("mutation($id: String!) { issueUnarchive(id: $id) { success } }", {
+                    id: issue.id,
+                  })
+                }
               >
-                Sub-issue of {issue.parent.identifier} {issue.parent.title}
-              </button>
+                Unarchive
+              </ToolbarButton>
+            ) : (
+              <ToolbarButton onClick={() => void archiveIssues([issue])}>Archive</ToolbarButton>
             )}
-            <EditableTitle issue={issue} />
-            <EditableDescription issue={issue} />
-            <Reactions reactions={issue.reactions} target={{ issueId: issue.id }} />
-            <Properties issue={issue} workspace={workspace} className="mt-6 lg:hidden" />
-            <SubIssues issue={issue} />
-            <Relations issue={issue} />
-            <RunsSection issueId={issue.id} />
-            <Activity
-              issue={issue}
-              workspace={workspace}
-              feedback={feedback.data?.feedbacks ?? []}
-            />
-          </div>
-          <aside className="hidden w-72 shrink-0 border-l border-line px-5 py-6 lg:block">
-            <Properties issue={issue} workspace={workspace} />
-          </aside>
-        </div>
+          </>
+        }
+      >
+        <Breadcrumbs
+          trail={[{ label: team?.name ?? issue.team.key, to: paths.team(issue.team.key) }]}
+        >
+          {issue.identifier}
+          {issue.archivedAt && <TitleTag>Archived</TitleTag>}
+        </Breadcrumbs>
+      </PageHeader>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <DetailLayout
+          head={
+            <>
+              {issue.parent && (
+                <button
+                  type="button"
+                  onClick={() => issue.parent && navigate(paths.issue(issue.parent.identifier))}
+                  className="mb-2 text-muted hover:text-ink"
+                >
+                  Sub-issue of {issue.parent.identifier} {issue.parent.title}
+                </button>
+              )}
+              <EditableTitle issue={issue} />
+              <EditableDescription issue={issue} />
+              <Reactions reactions={issue.reactions} target={{ issueId: issue.id }} />
+            </>
+          }
+          side={<Properties issue={issue} workspace={workspace} />}
+        >
+          <SubIssues issue={issue} />
+          <Relations issue={issue} />
+          <RunsSection runs={issue.runs.nodes} showIssue={false} />
+          <Activity issue={issue} workspace={workspace} feedback={feedbackItems} />
+        </DetailLayout>
       </div>
     </div>
   );
@@ -233,11 +239,7 @@ export function IssuePage({ identifier }: { identifier: string }) {
 
 function ToolbarButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-md px-2 py-1 text-muted hover:bg-raised hover:text-ink"
-    >
+    <button type="button" onClick={onClick} className={button("ghost", "sm")}>
       {children}
     </button>
   );
@@ -286,7 +288,7 @@ function EditableTitle({ issue }: { issue: IssueDetail }) {
           e.currentTarget.blur();
         }
       }}
-      className="w-full bg-transparent text-2xl font-semibold outline-none"
+      className={`w-full bg-transparent outline-none ${pageHeading}`}
     />
   );
 }
@@ -320,133 +322,125 @@ function EditableDescription({ issue }: { issue: IssueDetail }) {
   );
 }
 
-function Properties({
-  issue,
-  workspace,
-  className = "",
-}: {
-  issue: IssueDetail;
-  workspace: Workspace;
-  className?: string;
-}) {
+function Properties({ issue, workspace }: { issue: IssueDetail; workspace: Workspace }) {
   const open = (spec: MenuSpec | undefined) => () => spec && openMenu(spec);
   const due = issue.dueDate ? dueLabel(issue.dueDate) : null;
   const priority = PRIORITIES.find((p) => p.value === issue.priority)?.label ?? "No priority";
   return (
-    <div className={`grid grid-cols-[6rem_1fr] items-center gap-x-3 gap-y-1 ${className}`}>
-      <PropertyLabel>Status</PropertyLabel>
-      <PropertyButton onClick={open(statusMenu([issue]))} hint="S">
-        <StatusIcon type={issue.state.type} color={issue.state.color} />
-        {issue.state.name}
-      </PropertyButton>
-      <PropertyLabel>Priority</PropertyLabel>
-      <PropertyButton onClick={open(priorityMenu([issue]))} hint="P">
-        <PriorityIcon priority={issue.priority} />
-        {priority}
-      </PropertyButton>
-      <PropertyLabel>Assignee</PropertyLabel>
-      <PropertyButton onClick={open(assigneeMenu([issue]))} hint="A">
-        {issue.assignee ? (
-          <>
-            <Avatar name={issue.assignee.name} kind={issue.assignee.kind} />
-            {issue.assignee.name}
-          </>
-        ) : (
-          <>
-            <UnassignedIcon />
-            <span className="text-faint">Unassigned</span>
-          </>
-        )}
-      </PropertyButton>
-      <PropertyLabel>Labels</PropertyLabel>
-      <PropertyButton onClick={open(labelsMenu([issue]))} hint="L">
-        {issue.labels.nodes.length ? (
-          <span className="flex flex-wrap gap-1">
-            {issue.labels.nodes.map((label) => (
-              <LabelChip key={label.id} label={label} />
-            ))}
-          </span>
-        ) : (
-          <span className="text-faint">Add label</span>
-        )}
-      </PropertyButton>
-      <PropertyLabel>Estimate</PropertyLabel>
-      <PropertyButton onClick={open(estimateMenu([issue]))} hint="E">
-        {issue.estimate != null ? (
-          `${issue.estimate} points`
-        ) : (
-          <span className="text-faint">Set estimate</span>
-        )}
-      </PropertyButton>
-      <PropertyLabel>Due date</PropertyLabel>
-      <DatePicker
-        aria-label="Due date"
-        value={issue.dueDate}
-        onChange={(dueDate) => void updateIssues([issue.id], { dueDate })}
-        placeholder="Set due date"
-        className={`w-full rounded-md px-2 py-1 outline-none hover:bg-raised ${due?.overdue ? "text-red-400" : ""}`}
-      />
-      <PropertyLabel>Project</PropertyLabel>
-      <PropertyButton onClick={() => void projectMenu([issue]).then(openMenu)} hint="Shift+P">
-        {issue.project ? (
-          <>
-            <span
-              className="size-2.5 shrink-0 rounded-full"
-              style={{ background: issue.project.color }}
-              aria-hidden
-            />
-            <span className="truncate">
-              {issue.project.name}
-              {issue.projectMilestone && (
-                <span className="text-faint"> › {issue.projectMilestone.name}</span>
-              )}
+    <PropertyList>
+      <Property label="Status" control>
+        <PropertyButton onClick={open(statusMenu([issue]))} hint="S">
+          <StatusIcon type={issue.state.type} color={issue.state.color} />
+          {issue.state.name}
+        </PropertyButton>
+      </Property>
+      <Property label="Priority" control>
+        <PropertyButton onClick={open(priorityMenu([issue]))} hint="P">
+          <PriorityIcon priority={issue.priority} />
+          {priority}
+        </PropertyButton>
+      </Property>
+      <Property label="Assignee" control>
+        <PropertyButton onClick={open(assigneeMenu([issue]))} hint="A">
+          {issue.assignee ? (
+            <>
+              <Avatar name={issue.assignee.name} kind={issue.assignee.kind} />
+              {issue.assignee.name}
+            </>
+          ) : (
+            <>
+              <UnassignedIcon />
+              <span className="text-faint">Unassigned</span>
+            </>
+          )}
+        </PropertyButton>
+      </Property>
+      <Property label="Labels" control>
+        <PropertyButton onClick={open(labelsMenu([issue]))} hint="L">
+          {issue.labels.nodes.length ? (
+            <span className="flex flex-wrap gap-1">
+              {issue.labels.nodes.map((label) => (
+                <LabelChip key={label.id} label={label} />
+              ))}
             </span>
-          </>
-        ) : (
-          <span className="text-faint">Add to project</span>
-        )}
-      </PropertyButton>
+          ) : (
+            <span className="text-faint">Add label</span>
+          )}
+        </PropertyButton>
+      </Property>
+      <Property label="Estimate" control>
+        <PropertyButton onClick={open(estimateMenu([issue]))} hint="E">
+          {issue.estimate != null ? (
+            `${issue.estimate} points`
+          ) : (
+            <span className="text-faint">Set estimate</span>
+          )}
+        </PropertyButton>
+      </Property>
+      <Property label="Due date" control>
+        <DatePicker
+          aria-label="Due date"
+          value={issue.dueDate}
+          onChange={(dueDate) => void updateIssues([issue.id], { dueDate })}
+          placeholder="Set due date"
+          className={`${propertyButton} w-full outline-none ${due?.overdue ? "text-red-400!" : ""}`}
+        />
+      </Property>
+      <Property label="Project" control>
+        <PropertyButton onClick={() => void projectMenu([issue]).then(openMenu)} hint="Shift+P">
+          {issue.project ? (
+            <>
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ background: issue.project.color }}
+                aria-hidden
+              />
+              <span className="truncate">
+                {issue.project.name}
+                {issue.projectMilestone && (
+                  <span className="text-faint"> › {issue.projectMilestone.name}</span>
+                )}
+              </span>
+            </>
+          ) : (
+            <span className="text-faint">Add to project</span>
+          )}
+        </PropertyButton>
+      </Property>
       {issue.slaBreachesAt && (
-        <>
-          <PropertyLabel>SLA</PropertyLabel>
-          <span className="flex items-center gap-2 px-2 py-1 text-muted">
-            <SlaBadge
-              breachesAt={issue.slaBreachesAt}
-              open={issue.state.type !== "completed" && issue.state.type !== "canceled"}
-            />
-            {shortDate(issue.slaBreachesAt)}
-          </span>
-        </>
+        <Property label="SLA">
+          <SlaBadge
+            breachesAt={issue.slaBreachesAt}
+            open={issue.state.type !== "completed" && issue.state.type !== "canceled"}
+          />
+          {shortDate(issue.slaBreachesAt)}
+        </Property>
       )}
-      <PropertyLabel>Cycle</PropertyLabel>
-      <PropertyButton
-        onClick={() => void cycleMenu([issue]).then((spec) => spec && openMenu(spec))}
-        hint="Shift+C"
-      >
-        {issue.cycle ? (
-          <span className="truncate">{cycleName(issue.cycle)}</span>
-        ) : (
-          <span className="text-faint">Add to cycle</span>
-        )}
-      </PropertyButton>
-      <PropertyLabel>Parent</PropertyLabel>
-      <PropertyButton onClick={open(parentMenu(issue))}>
-        {issue.parent ? issue.parent.identifier : <span className="text-faint">Set parent</span>}
-      </PropertyButton>
-      <PropertyLabel>Created by</PropertyLabel>
-      <span className="px-2 py-1 text-muted">
+      <Property label="Cycle" control>
+        <PropertyButton
+          onClick={() => void cycleMenu([issue]).then((spec) => spec && openMenu(spec))}
+          hint="Shift+C"
+        >
+          {issue.cycle ? (
+            <span className="truncate">{cycleName(issue.cycle)}</span>
+          ) : (
+            <span className="text-faint">Add to cycle</span>
+          )}
+        </PropertyButton>
+      </Property>
+      <Property label="Parent" control>
+        <PropertyButton onClick={open(parentMenu(issue))}>
+          {issue.parent ? issue.parent.identifier : <span className="text-faint">Set parent</span>}
+        </PropertyButton>
+      </Property>
+      <Property label="Created by">
         {issue.creator?.name ?? "Unknown"} · {timeAgo(issue.createdAt)}
-      </span>
-      <PropertyLabel>Team</PropertyLabel>
-      <span className="px-2 py-1 text-muted">
+      </Property>
+      <Property label="Team">
         {workspace.teams.nodes.find((t) => t.id === issue.team.id)?.name ?? issue.team.key}
-      </span>
-    </div>
+      </Property>
+    </PropertyList>
   );
-}
-
-function PropertyLabel({ children }: { children: ReactNode }) {
-  return <span className="text-faint">{children}</span>;
 }
 
 function PropertyButton({
@@ -463,7 +457,7 @@ function PropertyButton({
       type="button"
       onClick={onClick}
       title={hint ? `Shortcut: ${hint}` : undefined}
-      className="flex min-h-7 min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-raised"
+      className={propertyButton}
     >
       {children}
     </button>
@@ -476,22 +470,19 @@ function SubIssues({ issue }: { issue: IssueDetail }) {
     (c) => c.state.type === "completed" || c.state.type === "canceled",
   ).length;
   return (
-    <section className="mt-8">
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="font-medium">Sub-issues</h2>
-        {children.length > 0 && (
-          <span className="text-faint">
-            {done}/{children.length}
-          </span>
-        )}
+    <Section
+      title="Sub-issues"
+      count={children.length > 0 ? `${done}/${children.length}` : undefined}
+      actions={
         <button
           type="button"
           onClick={() => createIssueStore.set({ teamId: issue.team.id, parentId: issue.id })}
-          className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+          className={button("ghost", "sm")}
         >
           + Add sub-issue
         </button>
-      </div>
+      }
+    >
       {children.length > 0 && (
         <div className="rounded-lg border border-line">
           {children.map((child) => (
@@ -515,7 +506,7 @@ function SubIssues({ issue }: { issue: IssueDetail }) {
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -539,17 +530,18 @@ function Relations({ issue }: { issue: IssueDetail }) {
     })),
   ];
   return (
-    <section className="mt-6">
-      <div className="mb-2 flex items-center">
-        <h2 className="font-medium">Relations</h2>
+    <Section
+      title="Relations"
+      actions={
         <button
           type="button"
           onClick={() => openMenu(relationMenu(issue))}
-          className="ml-auto rounded-md px-2 py-0.5 text-muted hover:bg-raised hover:text-ink"
+          className={button("ghost", "sm")}
         >
           + Add relation
         </button>
-      </div>
+      }
+    >
       {rows.map((row) => (
         // biome-ignore lint/a11y/noStaticElementInteractions: the right-click menu repeats its buttons
         <div
@@ -603,7 +595,7 @@ function Relations({ issue }: { issue: IssueDetail }) {
           </button>
         </div>
       ))}
-    </section>
+    </Section>
   );
 }
 
@@ -636,9 +628,8 @@ function Activity({
   ].sort((a, b) => a.at.localeCompare(b.at));
 
   return (
-    <section className="mt-10 border-t border-line pt-6">
-      <h2 className="mb-4 font-medium">Activity</h2>
-      <ol className="space-y-3">
+    <Section title="Activity" className="border-t border-line pt-6">
+      <ol className="mt-2 space-y-3">
         {items.map((item) =>
           item.kind === "event" ? (
             <li key={item.entry.id} className="flex animate-fade-in items-start gap-2 text-muted">
@@ -676,7 +667,7 @@ function Activity({
       {issue.assignee && canCoach(workspace, issue.assignee.id) && (
         <AssigneeFeedback issue={issue} agent={issue.assignee} />
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -961,18 +952,10 @@ function CommentBody({
             />
           </div>
           <div className="mt-2 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              className="px-2 py-1 text-muted"
-            >
+            <button type="button" onClick={() => setEditing(false)} className={button("ghost")}>
               Cancel
             </button>
-            <button
-              type="button"
-              onClick={() => void saveEdit()}
-              className="rounded-md bg-accent px-3 py-1 text-white"
-            >
+            <button type="button" onClick={() => void saveEdit()} className={button("primary")}>
               Save
             </button>
           </div>
@@ -1058,7 +1041,7 @@ function CommentComposer({
           type="button"
           disabled={!body.trim() || busy}
           onClick={() => void submit()}
-          className="rounded-md bg-accent px-3 py-1 text-white disabled:opacity-40"
+          className={button("primary")}
         >
           {parentId ? "Reply" : "Comment"}
         </button>

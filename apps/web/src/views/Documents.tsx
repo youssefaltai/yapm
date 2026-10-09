@@ -4,6 +4,16 @@ import { contextMenu } from "../contextMenu.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
 import { RichEditor } from "../editor/index.js";
+import {
+  Breadcrumbs,
+  button,
+  listRow,
+  PageBody,
+  PageHeader,
+  PageTitle,
+  pageHeading,
+  smallField,
+} from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { timeAgo } from "../ui.js";
@@ -25,23 +35,26 @@ export function DocumentsView() {
   );
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <span className="font-medium">Documents</span>
+      <PageHeader
+        actions={
+          <button
+            type="button"
+            onClick={() => void createDocument()}
+            className={button("primary", "sm")}
+          >
+            New document
+          </button>
+        }
+      >
+        <PageTitle>Documents</PageTitle>
         <input
           aria-label="Search documents"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search titles"
-          className="ml-3 w-40 rounded-md border border-line bg-panel px-2 py-0.5 outline-none placeholder:text-faint focus:border-faint"
+          className={`w-40 ${smallField}`}
         />
-        <button
-          type="button"
-          onClick={() => void createDocument()}
-          className="ml-auto rounded-md bg-accent px-2.5 py-1 font-medium text-white"
-        >
-          New document
-        </button>
-      </header>
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
         {!data && !error && <ListSkeleton rows={6} />}
@@ -69,7 +82,7 @@ export function DocumentsView() {
                 type="button"
                 onClick={() => navigate(paths.document(d.id))}
                 onContextMenu={contextMenu(() => documentContextMenu(d))}
-                className="flex w-full animate-fade-in items-center gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-raised md:px-6"
+                className={listRow}
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{d.title}</span>
                 {d.project && (
@@ -144,51 +157,53 @@ export function DocumentPage({ id }: { id: string }) {
   const fresh = doc.content === "" && doc.title === "Untitled";
   return (
     <div className="flex h-full animate-fade-in flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        {doc.project ? (
+      <PageHeader
+        actions={
           <button
             type="button"
-            onClick={() => doc.project && navigate(paths.project(doc.project.id))}
-            className="flex items-center gap-1.5 text-muted hover:text-ink"
+            onClick={async () => {
+              if (
+                !(await confirmDialog({
+                  title: `Delete “${doc.title || "Untitled"}”?`,
+                  body: "The document is deleted for everyone.",
+                  confirmLabel: "Delete",
+                  destructive: true,
+                }))
+              )
+                return;
+              if (
+                await mutate("mutation($id: String!) { documentDelete(id: $id) { success } }", {
+                  id,
+                })
+              )
+                navigate(doc.project ? paths.project(doc.project.id) : paths.documents());
+            }}
+            className={button("ghost", "sm")}
           >
-            <ProjectDot color={doc.project.color} size={8} />
-            {doc.project.name}
+            Delete
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => navigate(paths.documents())}
-            className="text-muted hover:text-ink"
-          >
-            Documents
-          </button>
-        )}
-        <span className="text-faint">›</span>
-        <span className="min-w-0 truncate font-medium">{title || "Untitled"}</span>
-        <button
-          type="button"
-          onClick={async () => {
-            if (
-              !(await confirmDialog({
-                title: `Delete “${doc.title || "Untitled"}”?`,
-                body: "The document is deleted for everyone.",
-                confirmLabel: "Delete",
-                destructive: true,
-              }))
-            )
-              return;
-            if (
-              await mutate("mutation($id: String!) { documentDelete(id: $id) { success } }", { id })
-            )
-              navigate(doc.project ? paths.project(doc.project.id) : paths.documents());
-          }}
-          className="ml-auto rounded-md px-2 py-0.5 text-faint hover:text-red-400"
+        }
+      >
+        <Breadcrumbs
+          trail={[
+            doc.project
+              ? {
+                  label: (
+                    <>
+                      <ProjectDot color={doc.project.color} size={8} />
+                      {doc.project.name}
+                    </>
+                  ),
+                  to: paths.project(doc.project.id),
+                }
+              : { label: "Documents", to: paths.documents() },
+          ]}
         >
-          Delete
-        </button>
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <article className="mx-auto max-w-3xl px-4 py-8 md:px-6">
+          <span className="truncate">{title || "Untitled"}</span>
+        </Breadcrumbs>
+      </PageHeader>
+      <PageBody>
+        <article>
           <input
             aria-label="Document title"
             // biome-ignore lint/a11y/noAutofocus: a new document opens to be named
@@ -196,7 +211,7 @@ export function DocumentPage({ id }: { id: string }) {
             onFocus={(e) => fresh && e.currentTarget.select()}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-transparent text-2xl font-semibold outline-none"
+            className={`w-full bg-transparent outline-none ${pageHeading}`}
           />
           <p className="mt-1 mb-6 text-[12px] text-faint">
             {doc.updatedBy?.name ?? doc.creator?.name ?? "Someone"} edited {timeAgo(doc.updatedAt)}
@@ -209,7 +224,7 @@ export function DocumentPage({ id }: { id: string }) {
             className="min-h-[50vh] text-[15px]"
           />
         </article>
-      </div>
+      </PageBody>
     </div>
   );
 }

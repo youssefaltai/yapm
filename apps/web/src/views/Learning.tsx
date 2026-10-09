@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { mutate, useQuery, type Workspace } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
+import { button, field, Section } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { timeAgo } from "../ui.js";
 
@@ -40,9 +41,12 @@ export function Prose(props: {
   );
 }
 
-/** Earlier versions, newest first: who changed it, when and why. */
-export function RevisionList({ subject, entityId }: { subject: string; entityId?: string }) {
-  const { data } = useQuery<{ revisions: Revision[] }>(
+/**
+ * Earlier versions of a text, for a RevisionList. Pages load them alongside their own data and
+ * render once both are in, so the history line doesn't pop in under the text.
+ */
+export function useRevisions(subject: string, entityId?: string): Revision[] | null {
+  const { data, error } = useQuery<{ revisions: Revision[] }>(
     `query($subject: String!, $entityId: String) {
       revisions(subject: $subject, entityId: $entityId, first: 20) {
         id content reason createdAt author { name }
@@ -50,8 +54,12 @@ export function RevisionList({ subject, entityId }: { subject: string; entityId?
     }`,
     { subject, entityId: entityId ?? null },
   );
+  return data?.revisions ?? (error ? [] : null);
+}
+
+/** Earlier versions, newest first: who changed it, when and why. */
+export function RevisionList({ rows }: { rows: Revision[] }) {
   const [open, setOpen] = useState<string | null>(null);
-  const rows = data?.revisions ?? [];
   if (rows.length === 0) return null;
   return (
     <details className="mt-2 text-[13px]">
@@ -146,48 +154,51 @@ export function FeedbackForm({
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && onDone?.()}
         placeholder={`Tell ${agent.name} what to do differently…`}
-        className="min-w-0 flex-1 rounded-md border border-line bg-panel px-3 py-1.5 outline-none placeholder:text-faint focus:border-faint"
+        className={`flex-1 ${field}`}
       />
-      <button
-        type="submit"
-        disabled={!body.trim()}
-        className="rounded-md bg-accent px-3 py-1.5 font-medium text-white disabled:opacity-40"
-      >
+      <button type="submit" disabled={!body.trim()} className={button("primary")}>
         Send
       </button>
     </form>
   );
 }
 
-/** What an agent should learn from, and what it changed because of it. */
-export function FeedbackSection({
-  agent,
-  canGive,
-}: {
-  agent: { id: string; name: string };
-  canGive: boolean;
-}) {
-  const { data } = useQuery<{ feedbacks: FeedbackRow[] }>(
+/** The feedback an agent has had, for a FeedbackSection; loaded with the page, like revisions. */
+export function useAgentFeedback(agentId: string): FeedbackRow[] | null {
+  const { data, error } = useQuery<{ feedbacks: FeedbackRow[] }>(
     `query($id: String) {
       feedbacks(agentId: $id, first: 50) {
         id kind body createdAt runId requestId author { name } issue { identifier }
         addressedAt addressedNote
       }
     }`,
-    { id: agent.id },
+    { id: agentId },
   );
-  const rows = data?.feedbacks ?? [];
+  return data?.feedbacks ?? (error ? [] : null);
+}
+
+/** What an agent should learn from, and what it changed because of it. */
+export function FeedbackSection({
+  agent,
+  canGive,
+  rows,
+}: {
+  agent: { id: string; name: string };
+  canGive: boolean;
+  rows: FeedbackRow[];
+}) {
   const open = rows.filter((f) => !f.addressedAt).length;
   return (
-    <section className="mt-8">
-      <h2 className="mb-2 font-medium">
-        Feedback{" "}
-        {open > 0 && <span className="text-[12px] font-normal text-faint">{open} open</span>}
-      </h2>
-      <p className="mb-2 text-faint">
-        Why you stopped its runs or rejected its requests, and your notes, here or on its issues.{" "}
-        {agent.name} reads the open ones and turns them into lessons.
-      </p>
+    <Section
+      title="Feedback"
+      count={open > 0 ? `${open} open` : undefined}
+      description={
+        <>
+          Why you stopped its runs or rejected its requests, and your notes, here or on its issues.{" "}
+          {agent.name} reads the open ones and turns them into lessons.
+        </>
+      }
+    >
       {canGive && (
         <div className="mb-3">
           <FeedbackForm agent={agent} />
@@ -231,6 +242,6 @@ export function FeedbackSection({
           ))}
         </div>
       )}
-    </section>
+    </Section>
   );
 }

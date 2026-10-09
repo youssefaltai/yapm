@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "../data.js";
+import { Page, PageBody, PageHeader, PageTitle, Section, Tabs } from "../layout.js";
 import { navigate, paths } from "../router.js";
+import { Bone } from "../states.js";
 import { timeAgo } from "../ui.js";
 
 interface PlanLimit {
@@ -124,52 +126,81 @@ export function UsageView() {
   );
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   return (
-    <div className="h-full overflow-y-auto">
-      <header className="flex h-11 items-center gap-3 border-b border-line px-4 md:px-6">
-        <span className="font-medium">Usage</span>
-        <Tabs
-          label="Period"
-          options={PERIODS.map((p) => ({ id: p, label: `${p} days` }))}
-          value={days}
-          onChange={setDays}
-          className="ml-auto"
-        />
-      </header>
-      {data && (
-        <div className="mx-auto max-w-5xl px-4 py-6 md:px-6">
-          <h2 className="mb-2 text-[12px] font-medium text-faint uppercase">Plan limits</h2>
-          {data.claudeSubscriptions.length === 0 ? (
-            <p className="text-muted">
-              No machines yet.{" "}
-              <button
-                type="button"
-                className="text-accent hover:underline"
-                onClick={() => navigate(paths.machines())}
-              >
-                Add one
-              </button>{" "}
-              and it reports its Claude plan here.
-            </p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {data.claudeSubscriptions.map((s) => (
-                <SubscriptionCard key={s.id} subscription={s} />
-              ))}
+    <Page>
+      <PageHeader
+        actions={
+          <Tabs
+            label="Period"
+            group="usage-period"
+            options={PERIODS.map((p) => ({ id: p, label: `${p} days` }))}
+            value={days}
+            onChange={setDays}
+          />
+        }
+      >
+        <PageTitle>Usage</PageTitle>
+      </PageHeader>
+      {!data && (
+        <div
+          aria-hidden
+          className="mx-auto grid w-full max-w-5xl animate-skeleton-in gap-3 px-4 pt-6 md:grid-cols-2 md:px-6"
+        >
+          {["a", "b"].map((k) => (
+            <div key={k} className="space-y-3 rounded-lg border border-line px-4 py-3">
+              <Bone className="h-2.5 w-32" />
+              <Bone className="h-1.5 w-full" />
+              <Bone className="h-1.5 w-full" />
             </div>
-          )}
+          ))}
+        </div>
+      )}
+      {data && (
+        <PageBody width="wide">
+          <Section title="Plan limits">
+            {data.claudeSubscriptions.length === 0 ? (
+              <p className="text-muted">
+                No machines yet.{" "}
+                <button
+                  type="button"
+                  className="text-accent hover:underline"
+                  onClick={() => navigate(paths.machines())}
+                >
+                  Add one
+                </button>{" "}
+                and it reports its Claude plan here.
+              </p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {data.claudeSubscriptions.map((s) => (
+                  <SubscriptionCard key={s.id} subscription={s} />
+                ))}
+              </div>
+            )}
+          </Section>
 
-          <div className="mt-8 mb-2 flex flex-wrap items-center gap-3">
-            <h2 className="text-[12px] font-medium text-faint uppercase">Usage over time</h2>
-            <Tabs
-              label="Group by"
-              options={GROUPS}
-              value={groupBy}
-              onChange={setGroupBy}
-              className="ml-auto"
-            />
-            <Tabs label="Measure" options={MEASURES} value={measure} onChange={setMeasure} />
-          </div>
-          <History points={data.usageHistory} days={days} measure={measure} groupBy={groupBy} />
+          <Section
+            title="Usage over time"
+            actions={
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <Tabs
+                  label="Group by"
+                  group="usage-group"
+                  options={GROUPS}
+                  value={groupBy}
+                  onChange={setGroupBy}
+                />
+                <Tabs
+                  label="Measure"
+                  group="usage-measure"
+                  options={MEASURES}
+                  value={measure}
+                  onChange={setMeasure}
+                />
+              </div>
+            }
+          >
+            <History points={data.usageHistory} days={days} measure={measure} groupBy={groupBy} />
+          </Section>
 
           <p className="mt-6 max-w-3xl text-[12px] text-faint">
             Claude plans don't publish their limits in tokens or dollars, only how full each window
@@ -177,40 +208,9 @@ export function UsageView() {
             prices; the subscription doesn't charge it. Your own use of Claude Code and claude.ai
             counts toward the limits above but isn't among the runs below.
           </p>
-        </div>
+        </PageBody>
       )}
-    </div>
-  );
-}
-
-function Tabs<T extends string | number>({
-  label,
-  options,
-  value,
-  onChange,
-  className = "",
-}: {
-  label: string;
-  options: { id: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-  className?: string;
-}) {
-  return (
-    <div className={`flex gap-1 ${className}`} role="tablist" aria-label={label}>
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          role="tab"
-          aria-selected={value === o.id}
-          onClick={() => onChange(o.id)}
-          className={`rounded-md px-2 py-0.5 ${value === o.id ? "bg-raised text-ink" : "text-muted hover:text-ink"}`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+    </Page>
   );
 }
 

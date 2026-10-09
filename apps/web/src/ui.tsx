@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Label, StateType } from "./data.js";
+import { eyebrow } from "./layout.js";
 
 /** A minimal external store, for app-wide UI like the command menu and modals. */
 export function createStore<T>(initial: T) {
@@ -571,29 +572,6 @@ export function SlaBadge({ breachesAt, open }: { breachesAt: string | null; open
  * Linear's detail page: the content on the left, a properties sidebar on the right. On a phone
  * the sidebar sits between the heading and the content, so the facts come before the long read.
  */
-/**
- * One step of a page header's breadcrumb: a link back and the › after it, so every header spaces
- * and colours its trail the same way. A className (e.g. max-sm:hidden) applies to both.
- */
-export function Crumb({
-  onClick,
-  className = "",
-  children,
-}: {
-  onClick: () => void;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <>
-      <button type="button" onClick={onClick} className={`text-muted hover:text-ink ${className}`}>
-        {children}
-      </button>
-      <span className={`text-faint ${className}`}>›</span>
-    </>
-  );
-}
-
 export function DetailLayout({
   head,
   side,
@@ -606,10 +584,10 @@ export function DetailLayout({
   return (
     <div className="mx-auto grid max-w-6xl grid-cols-1 lg:min-h-full lg:grid-cols-[minmax(0,1fr)_18rem] lg:grid-rows-[auto_1fr]">
       <div className="min-w-0 px-4 pt-6 md:px-10">{head}</div>
-      <aside className="mx-4 mt-5 border-y border-line py-3 md:mx-10 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:m-0 lg:border-y-0 lg:border-l lg:px-5 lg:py-6">
+      <aside className="mx-4 mt-6 border-y border-line py-3 md:mx-10 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:m-0 lg:border-y-0 lg:border-l lg:px-5 lg:py-6">
         {side}
       </aside>
-      <div className="min-w-0 px-4 pb-10 md:px-10">{children}</div>
+      <div className="min-w-0 px-4 pt-8 pb-16 md:px-10">{children}</div>
     </div>
   );
 }
@@ -618,7 +596,7 @@ export function DetailLayout({
 export function PropertyList({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <section className="not-first:mt-4 not-first:border-t not-first:border-line not-first:pt-4">
-      {title && <h2 className="mb-2 text-[12px] font-medium text-faint uppercase">{title}</h2>}
+      {title && <h2 className={`mb-2 ${eyebrow}`}>{title}</h2>}
       <dl className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
         {children}
       </dl>

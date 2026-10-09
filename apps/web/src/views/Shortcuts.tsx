@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { shortcutsStore } from "../actions.js";
+import { eyebrow } from "../layout.js";
 import { Kbd, Modal, useStore } from "../ui.js";
 
 const GROUPS: { title: string; keys: [string, string][] }[] = [
@@ -49,7 +50,7 @@ export function ShortcutsHost() {
       <div className="grid gap-5 px-4 py-4 sm:grid-cols-2">
         {GROUPS.map((group) => (
           <section key={group.title}>
-            <h3 className="mb-2 text-[12px] font-medium text-faint uppercase">{group.title}</h3>
+            <h3 className={`mb-2 ${eyebrow}`}>{group.title}</h3>
             <dl className="space-y-1.5">
               {group.keys.map(([keys, what]) => (
                 <div key={what} className="flex items-center justify-between gap-3">

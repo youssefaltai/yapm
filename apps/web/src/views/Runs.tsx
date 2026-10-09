@@ -3,11 +3,21 @@ import { workspaceStore } from "../actions.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { Emoji } from "../emoji/Emoji.js";
+import {
+  Breadcrumbs,
+  button,
+  listRow,
+  PageHeader,
+  PageTitle,
+  pageHeading,
+  Section,
+  TabLink,
+  TabRow,
+} from "../layout.js";
 import { navigate, paths, type RunsTab } from "../router.js";
-import { EmptyState, ListSkeleton, PageSkeleton, TabLink } from "../states.js";
+import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import {
   Avatar,
-  Crumb,
   DetailLayout,
   Property,
   PropertyList,
@@ -92,19 +102,26 @@ export function RunRows({
   runs,
   showAgent = true,
   showIssue = true,
+  embedded = false,
 }: {
   runs: RunSummary[];
   showAgent?: boolean;
   showIssue?: boolean;
+  /** Inside a bordered box on another page, rather than filling the runs page. */
+  embedded?: boolean;
 }) {
   return (
-    <ul className="divide-y divide-line">
+    <ul className={embedded ? "divide-y divide-line" : ""}>
       {runs.map((run) => (
         <li key={run.id}>
           <button
             type="button"
             onClick={() => navigate(paths.run(run.id))}
-            className="flex w-full animate-fade-in items-center gap-3 px-4 py-2.5 text-left hover:bg-raised md:px-6"
+            className={
+              embedded
+                ? "flex w-full animate-fade-in items-center gap-3 px-4 py-2.5 text-left hover:bg-raised"
+                : listRow
+            }
           >
             {showAgent && <Avatar name={run.agent.name} kind={run.agent.kind} size={20} />}
             <div className="min-w-0 flex-1">
@@ -138,21 +155,43 @@ export function RunRows({
   );
 }
 
+/** The runs for an agent's page, with the page's own query, so the page renders once with them. */
+export const AGENT_RUNS = `query($filter: RunFilter) { runs(first: 20, filter: $filter) { nodes { ${RUN_SUMMARY} } } }`;
+
 /** Runs on an issue or by an agent, as a section of that page. Hidden when there are none. */
-export function RunsSection({ issueId, agentId }: { issueId?: string; agentId?: string }) {
-  const { data } = useQuery<{ runs: { nodes: RunSummary[] } }>(
-    `query($filter: RunFilter) { runs(first: 20, filter: $filter) { nodes { ${RUN_SUMMARY} } } }`,
-    { filter: issueId ? { issueId } : { agentId } },
-  );
-  const runs = data?.runs.nodes ?? [];
+export function RunsSection({
+  runs,
+  showAgent = true,
+  showIssue = true,
+}: {
+  runs: RunSummary[];
+  showAgent?: boolean;
+  showIssue?: boolean;
+}) {
   if (runs.length === 0) return null;
   return (
-    <section className="mt-8">
-      <h2 className="mb-2 font-medium">Runs</h2>
-      <div className="overflow-hidden rounded-lg border border-line [&_button]:md:px-4">
-        <RunRows runs={runs} showAgent={!agentId} showIssue={!issueId} />
+    <Section title="Runs">
+      <div className="overflow-hidden rounded-lg border border-line">
+        <RunRows runs={runs} showAgent={showAgent} showIssue={showIssue} embedded />
       </div>
-    </section>
+    </Section>
+  );
+}
+
+/** The runs page's tabs; Machines is one of them, so the header holds still between them. */
+export function RunsTabs({ active }: { active: RunsTab | "machines" }) {
+  return (
+    <TabRow>
+      <TabLink group="runs-tabs" active={active === "active"} to={paths.runs("active")}>
+        Active
+      </TabLink>
+      <TabLink group="runs-tabs" active={active === "all"} to={paths.runs("all")}>
+        All
+      </TabLink>
+      <TabLink group="runs-tabs" active={active === "machines"} to={paths.machines()}>
+        Machines
+      </TabLink>
+    </TabRow>
   );
 }
 
@@ -165,25 +204,9 @@ export function RunsView({ tab }: { tab: RunsTab }) {
   );
   return (
     <div className="flex h-full flex-col">
-      <header className="isolate flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <span className="mr-2 font-medium">Runs</span>
-        <TabLink group="runs-tabs" active={tab === "active"} to={paths.runs("active")}>
-          Active
-        </TabLink>
-        <TabLink group="runs-tabs" active={tab === "all"} to={paths.runs("all")}>
-          All
-        </TabLink>
-        <a
-          href={paths.machines()}
-          onClick={(e) => {
-            e.preventDefault();
-            navigate(paths.machines());
-          }}
-          className="ml-auto text-muted hover:text-ink"
-        >
-          Machines
-        </a>
-      </header>
+      <PageHeader tabs={<RunsTabs active={tab} />}>
+        <PageTitle>Runs</PageTitle>
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-red-400">{error}</p>}
         {!data && !error && <ListSkeleton rows={6} />}
@@ -268,28 +291,33 @@ export function RunPage({ id }: { id: string }) {
 
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
-        <Crumb onClick={() => navigate(paths.runs())}>Runs</Crumb>
-        <span className="truncate font-medium">
-          {run.agent.name} · {run.kind === "decision" ? "Decision" : "Work"}
-        </span>
-        {canStop && !stopping && (
-          <button
-            type="button"
-            onClick={() => setStopping(true)}
-            className="ml-auto rounded-md border border-line px-2.5 py-1 text-red-400 hover:bg-raised"
-          >
-            Stop
-          </button>
-        )}
-      </header>
+      <PageHeader
+        actions={
+          canStop &&
+          !stopping && (
+            <button
+              type="button"
+              onClick={() => setStopping(true)}
+              className={button("danger", "sm")}
+            >
+              Stop
+            </button>
+          )
+        }
+      >
+        <Breadcrumbs trail={[{ label: "Runs", to: paths.runs() }]}>
+          <span className="truncate">
+            {run.agent.name} · {run.kind === "decision" ? "Decision" : "Work"}
+          </span>
+        </Breadcrumbs>
+      </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <DetailLayout
           head={
             <>
               <div className="flex items-center gap-3">
                 <Avatar name={run.agent.name} kind={run.agent.kind} size={32} />
-                <h1 className="min-w-0 flex-1 text-xl font-semibold">{describeRun(run)}</h1>
+                <h1 className={`min-w-0 flex-1 ${pageHeading}`}>{describeRun(run)}</h1>
               </div>
 
               {stopping && (
@@ -314,7 +342,7 @@ export function RunPage({ id }: { id: string }) {
                     <button
                       type="button"
                       onClick={() => setStopping(false)}
-                      className="rounded-md px-3 py-1.5 text-muted hover:text-ink"
+                      className={button("ghost")}
                     >
                       Back
                     </button>
@@ -322,7 +350,7 @@ export function RunPage({ id }: { id: string }) {
                       type="button"
                       disabled={!reason.trim()}
                       onClick={stop}
-                      className="rounded-md bg-red-500 px-3 py-1.5 font-medium text-white disabled:opacity-40"
+                      className={button("destructive")}
                     >
                       Stop run
                     </button>
@@ -407,8 +435,7 @@ export function RunPage({ id }: { id: string }) {
             </>
           }
         >
-          <section className="mt-8">
-            <h2 className="mb-2 font-medium">Transcript</h2>
+          <Section title="Transcript">
             {events.length === 0 ? (
               <p className="text-muted">
                 {isActive(run.status)
@@ -418,7 +445,7 @@ export function RunPage({ id }: { id: string }) {
             ) : (
               <Transcript events={events} active={isActive(run.status)} />
             )}
-          </section>
+          </Section>
         </DetailLayout>
       </div>
     </div>

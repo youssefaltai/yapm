@@ -80,6 +80,7 @@ export function statusMenu(issues: Issue[]): MenuSpec | undefined {
         void updateIssues(
           issues.map((i) => i.id),
           { stateId: state.id },
+          { state },
         );
       },
     })),
@@ -116,7 +117,8 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
         id: "none",
         label: "No project",
         checked: issues.every((i) => !i.project),
-        onSelect: () => void updateIssues(ids, { projectId: null }),
+        onSelect: () =>
+          void updateIssues(ids, { projectId: null }, { project: null, projectMilestone: null }),
       },
       ...data.projects.nodes.flatMap((p): MenuItem[] => [
         {
@@ -124,7 +126,12 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
           label: p.name,
           icon: dot,
           checked: issues.every((i) => i.project?.id === p.id && !i.projectMilestone),
-          onSelect: () => void updateIssues(ids, { projectId: p.id }),
+          onSelect: () =>
+            void updateIssues(
+              ids,
+              { projectId: p.id },
+              { project: { id: p.id, name: p.name, color: p.color }, projectMilestone: null },
+            ),
         },
         ...p.projectMilestones.nodes.map((m) => ({
           id: m.id,
@@ -132,7 +139,12 @@ export async function projectMenu(issues: Issue[]): Promise<MenuSpec> {
           keywords: p.name,
           icon: dot,
           checked: issues.every((i) => i.projectMilestone?.id === m.id),
-          onSelect: () => void updateIssues(ids, { projectMilestoneId: m.id }),
+          onSelect: () =>
+            void updateIssues(
+              ids,
+              { projectMilestoneId: m.id },
+              { project: { id: p.id, name: p.name, color: p.color }, projectMilestone: m },
+            ),
         })),
       ]),
     ],
@@ -182,14 +194,19 @@ export async function cycleMenu(issues: Issue[]): Promise<MenuSpec | undefined> 
         id: "none",
         label: "No cycle",
         checked: issues.every((i) => !i.cycle),
-        onSelect: () => void updateIssues(ids, { cycleId: null }),
+        onSelect: () => void updateIssues(ids, { cycleId: null }, { cycle: null }),
       },
       ...open.map((c) => ({
         id: c.id,
         label: `${cycleName(c)}${c.isActive ? " · current" : ""}`,
         hint: `${shortDate(c.startsAt)} – ${shortDate(c.endsAt)}`,
         checked: issues.every((i) => i.cycle?.id === c.id),
-        onSelect: () => void updateIssues(ids, { cycleId: c.id }),
+        onSelect: () =>
+          void updateIssues(
+            ids,
+            { cycleId: c.id },
+            { cycle: { id: c.id, number: c.number, name: c.name } },
+          ),
       })),
     ],
   };
@@ -226,7 +243,7 @@ export function assigneeMenu(issues: Issue[]): MenuSpec {
         icon: <UnassignedIcon size={16} />,
         checked: issues.every((i) => !i.assignee),
         onSelect: () => {
-          void updateIssues(ids, { assigneeId: null });
+          void updateIssues(ids, { assigneeId: null }, { assignee: null });
         },
       },
       ...members.map((m) => ({
@@ -237,7 +254,11 @@ export function assigneeMenu(issues: Issue[]): MenuSpec {
         hint: m.title ?? undefined,
         checked: issues.every((i) => i.assignee?.id === m.id),
         onSelect: () => {
-          void updateIssues(ids, { assigneeId: m.id });
+          void updateIssues(
+            ids,
+            { assigneeId: m.id },
+            { assignee: { id: m.id, name: m.name, kind: m.kind } },
+          );
         },
       })),
     ],
@@ -269,6 +290,10 @@ export function labelsMenu(issues: Issue[]): MenuSpec | undefined {
         void updateIssues(
           ids,
           on ? { addedLabelIds: [label.id] } : { removedLabelIds: [label.id] },
+          (issue) => {
+            const rest = (issue.labels?.nodes ?? []).filter((l) => l.id !== label.id);
+            return { labels: { nodes: on ? [...rest, label] : rest } };
+          },
         );
       },
     })),
@@ -375,14 +400,21 @@ export function parentMenu(issue: Issue): MenuSpec {
           {
             id: "none",
             label: "Remove parent",
-            onSelect: () => void updateIssues([issue.id], { parentId: null }),
+            onSelect: () => void updateIssues([issue.id], { parentId: null }, { parent: null }),
           },
         ]
       : [],
     search: (query) =>
-      searchIssueItems(query, (parent) => void updateIssues([issue.id], { parentId: parent.id }), [
-        issue.id,
-      ]),
+      searchIssueItems(
+        query,
+        (parent) =>
+          void updateIssues(
+            [issue.id],
+            { parentId: parent.id },
+            { parent: { id: parent.id, identifier: parent.identifier, title: parent.title } },
+          ),
+        [issue.id],
+      ),
   };
 }
 

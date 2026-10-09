@@ -189,7 +189,7 @@ Each phase ends with something usable; one PR per feature-sized slice.
 
 **Phase 5: Self-improvement.** Metrics engine and snapshots, feedback records, retros, versioned charters, handbook and lessons, grant review ritual, CEO "explain what changed" tools, insights views.
 
-**Phase 6: Polish.** Native iOS app if notification buttons matter, themes, import from Linear, export.
+**Phase 6: Polish.** Native iOS app if notification buttons matter, themes.
 
 ## 11. Defaults I'm assuming
 

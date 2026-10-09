@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { authRoutes, relyingParty, resolveViewer } from "./auth.js";
 import type { HubDeps, HubEnv } from "./context.js";
-import { ServiceError } from "./errors.js";
 import { type GraphQLContext, schema } from "./graphql/schema.js";
 import { installScript } from "./install.js";
 import { createLoaders } from "./loaders.js";
@@ -11,7 +10,6 @@ import { mcpHandler } from "./mcp/index.js";
 import { waitUntilOf } from "./push.js";
 import { announce, CLIENT_ID_HEADER } from "./realtime.js";
 import { runnerRoutes } from "./runs/routes.js";
-import { exportCompany, exportIssuesCsv } from "./services/export.js";
 import { clientMetadata, finishOAuth } from "./services/mcpServers.js";
 
 /** Error messages along an error's cause chain (Drizzle wraps the driver's error). */
@@ -96,30 +94,6 @@ export function createHub(deps: HubDeps) {
   });
 
   app.route("/api", authRoutes);
-
-  /** The whole company as JSON, or its issues as CSV in Linear's columns. Owner only. */
-  app.get("/api/export", async (c) => {
-    const viewer = c.var.viewer;
-    if (!viewer) throw new HTTPException(401, { message: "Not signed in" });
-    const at = deps.now?.() ?? Date.now();
-    const day = new Date(at).toISOString().slice(0, 10);
-    try {
-      if (c.req.query("format") === "csv") {
-        return c.body(await exportIssuesCsv(deps.db, viewer.user.id), 200, {
-          "content-type": "text/csv; charset=utf-8",
-          "content-disposition": `attachment; filename="life-os-issues-${day}.csv"`,
-        });
-      }
-      const data = await exportCompany(deps.db, viewer.user.id, at);
-      return c.body(JSON.stringify(data), 200, {
-        "content-type": "application/json",
-        "content-disposition": `attachment; filename="life-os-${day}.json"`,
-      });
-    } catch (error) {
-      if (error instanceof ServiceError) throw new HTTPException(403, { message: error.message });
-      throw error;
-    }
-  });
 
   /** Live updates: a WebSocket that says "something changed" after every mutation. */
   app.get("/api/live", (c) => {

@@ -96,12 +96,43 @@ body,
   height: 100%;
 }
 
+/* The page itself never bounces; only the panes inside it scroll. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/*
+ * On touch screens, feel like an app: a long press opens the context menu rather than
+ * selecting text or previewing links. Text you write and read in full stays selectable.
+ */
+@media (hover: none) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  :where(input, textarea, [contenteditable="true"], .ProseMirror) {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  /* Under 16px, Safari zooms into a field when it's focused. */
+  :where(input, textarea, select, [contenteditable="true"]) {
+    font-size: max(16px, 1em);
+  }
 }
 
 /* An emoji on its own, as in reactions and the picker: always in colour, never as text. */

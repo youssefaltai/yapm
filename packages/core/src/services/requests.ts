@@ -14,7 +14,7 @@ import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
-import { type Ctx, cleanText, event } from "./common.js";
+import { type Ctx, changes, cleanText, event } from "./common.js";
 import { feedbackOp } from "./feedback.js";
 import { notify, ownerId } from "./notifications.js";
 import { isAbove } from "./users.js";
@@ -46,12 +46,21 @@ function covers(grantAction: string, action: string) {
     : grantAction === action;
 }
 
-/** The first standing grant that lets `userId` do `action` on `resource`. */
-async function findGrant(db: HubDb, userId: string, action: string, resource: string | null) {
+/** Grants for `userId`: its own, its teams' and everyone's. */
+export function grantsFor(db: HubDb, userId: string) {
   const teamIds = db
     .select({ id: teamMemberships.teamId })
     .from(teamMemberships)
     .where(eq(teamMemberships.userId, userId));
+  return or(
+    eq(grants.scope, "everyone"),
+    and(eq(grants.scope, "user"), eq(grants.subjectId, userId)),
+    and(eq(grants.scope, "team"), inArray(grants.subjectId, teamIds)),
+  );
+}
+
+/** The first standing grant that lets `userId` do `action` on `resource`. */
+async function findGrant(db: HubDb, userId: string, action: string, resource: string | null) {
   return db
     .select({ id: grants.id })
     .from(grants)
@@ -65,11 +74,7 @@ async function findGrant(db: HubDb, userId: string, action: string, resource: st
         resource
           ? or(isNull(grants.resource), eq(grants.resource, resource))
           : isNull(grants.resource),
-        or(
-          eq(grants.scope, "everyone"),
-          and(eq(grants.scope, "user"), eq(grants.subjectId, userId)),
-          and(eq(grants.scope, "team"), inArray(grants.subjectId, teamIds)),
-        ),
+        grantsFor(db, userId),
       ),
     )
     .get();
@@ -511,6 +516,37 @@ export async function createGrant(ctx: Ctx, input: GrantCreateInput): Promise<st
     ),
   ]);
   return row.id;
+}
+
+export interface GrantUpdateInput {
+  action?: string | null;
+  resource?: string | null;
+  note?: string | null;
+}
+
+export async function updateGrant(ctx: Ctx, id: string, input: GrantUpdateInput): Promise<string> {
+  const { db, now } = ctx;
+  await requireOwner(ctx, "edit grants");
+  const grant = await db.select().from(grants).where(eq(grants.id, id)).get();
+  if (!grant) throw notFound("Grant");
+  const next: Partial<typeof grant> = {};
+  if (input.action != null) {
+    next.action = input.action.trim();
+    if (!ACTION.test(next.action))
+      throw badRequest("Action must look like team.create or tool:Bash");
+  }
+  if (input.resource !== undefined) next.resource = input.resource?.trim() || null;
+  if (input.note !== undefined) next.note = input.note?.trim() || null;
+  const diff = changes(grant, next);
+  if (!diff) return id;
+  await commit(db, [
+    db
+      .update(grants)
+      .set({ ...next, updatedAt: now })
+      .where(eq(grants.id, id)),
+    ...audit(db, [event(ctx, "grant.update", "grant", id, diff)], now),
+  ]);
+  return id;
 }
 
 export async function revokeGrant(ctx: Ctx, id: string): Promise<string> {

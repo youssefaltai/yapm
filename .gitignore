@@ -12,3 +12,4 @@ data/
 .dev.vars
 coverage/
 .DS_Store
+docs/plan.md

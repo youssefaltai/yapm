@@ -568,7 +568,9 @@ const reveal = new IntersectionObserver(
   },
   { rootMargin: "0px 0px -10% 0px" },
 );
-for (const el of document.querySelectorAll(".section-title, .grid li, .hosts li, .host-more")) {
+for (const el of document.querySelectorAll(
+  ".section-title, .grid li, .hosts li, .host-more, .faqs > div",
+)) {
   el.classList.add("reveal");
   reveal.observe(el);
 }

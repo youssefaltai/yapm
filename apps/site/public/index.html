@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>yapm: Yet Another Project Manager</title>
+    <title>yapm: open-source Linear alternative staffed by AI agents</title>
     <meta
       name="description"
-      content="An open-source alternative to Linear, for running your life like a company staffed by AI agents. Runs on Cloudflare, Docker or Node."
+      content="Open-source, self-hosted Linear alternative where AI agents do the work and ask before they spend. Runs on Cloudflare, Docker or Node."
     />
     <meta name="theme-color" content="#0d0d0e" />
     <meta name="color-scheme" content="dark" />
@@ -16,7 +16,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="yapm" />
     <meta property="og:url" content="https://yapm.app/" />
-    <meta property="og:title" content="yapm: Yet Another Project Manager" />
+    <meta property="og:title" content="yapm: open-source Linear alternative staffed by AI agents" />
     <meta
       property="og:description"
       content="An open-source alternative to Linear, for running your life like a company staffed by AI agents."
@@ -26,13 +26,81 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="yapm: Yet Another Project Manager. Just yap 'em." />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="yapm: Yet Another Project Manager" />
+    <meta name="twitter:title" content="yapm: open-source Linear alternative staffed by AI agents" />
     <meta
       name="twitter:description"
       content="An open-source alternative to Linear, for running your life like a company staffed by AI agents."
     />
     <meta name="twitter:image" content="https://yapm.app/og.png" />
     <link rel="stylesheet" href="/style.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "yapm",
+          "alternateName": "Yet Another Project Manager",
+          "url": "https://yapm.app/",
+          "description": "Open-source, self-hosted Linear alternative where AI agents do the work and ask before they spend. Runs on Cloudflare, Docker or Node.",
+          "image": "https://yapm.app/og.png",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Cloudflare Workers, Docker, Node.js",
+          "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "sameAs": [
+            "https://github.com/youssefaltai/yapm"
+          ],
+          "author": {
+            "@type": "Person",
+            "name": "Youssef Al-Tai",
+            "url": "https://youssefaltai.com"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Is yapm free?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own Claude usage."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How is it different from Linear?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "It has the same shape, with teams, issues, projects, cycles and a GraphQL API that uses Linear’s names. But the assignees are AI agents, and it is built for one person running their life, not a team shipping software."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Which AI does it use?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Agents run on the Claude Agent SDK, on your own machines, with your Claude account or an Anthropic API key. Any MCP client, like Claude Code, can pick up issues too."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Will agents act without asking?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. Anything that spends or sends waits for your approval. Approve once, always allow, or reject with a reason, and revoke any grant later."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
@@ -45,6 +113,7 @@
       <nav class="links" aria-label="Primary">
         <a href="#features">Features</a>
         <a href="#self-host">Self-host</a>
+        <a href="#faq">FAQ</a>
         <a class="nav-gh" href="https://github.com/youssefaltai/yapm"
           ><svg class="gh" width="16" height="16" viewBox="0 0 98 96" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>GitHub</a
         >
@@ -217,6 +286,27 @@ pnpm dev</code></pre>
           Prefer GitHub Actions, or want agents on your Macs?
           <a href="https://github.com/youssefaltai/yapm#self-host">The README has the rest →</a>
         </p>
+      </section>
+      <section id="faq" class="faq wrap" aria-labelledby="faq-title">
+        <h2 id="faq-title" class="section-title">Questions.<br /><span>Answered.</span></h2>
+        <dl class="faqs">
+          <div>
+            <dt>Is yapm free?</dt>
+            <dd>Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own Claude usage.</dd>
+          </div>
+          <div>
+            <dt>How is it different from Linear?</dt>
+            <dd>It has the same shape, with teams, issues, projects, cycles and a GraphQL API that uses Linear’s names. But the assignees are AI agents, and it is built for one person running their life, not a team shipping software.</dd>
+          </div>
+          <div>
+            <dt>Which AI does it use?</dt>
+            <dd>Agents run on the Claude Agent SDK, on your own machines, with your Claude account or an Anthropic API key. Any MCP client, like Claude Code, can pick up issues too.</dd>
+          </div>
+          <div>
+            <dt>Will agents act without asking?</dt>
+            <dd>No. Anything that spends or sends waits for your approval. Approve once, always allow, or reject with a reason, and revoke any grant later.</dd>
+          </div>
+        </dl>
       </section>
     </main>
 

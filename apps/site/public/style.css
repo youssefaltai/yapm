@@ -60,6 +60,22 @@ body::after {
 
 main,
 .nav,
+.faqs {
+  margin: 3rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem 3rem;
+}
+.faqs dt {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.faqs dd {
+  margin: 0.5rem 0 0;
+  color: var(--fg-3);
+  font-size: 0.95rem;
+}
+
 .foot {
   position: relative;
   z-index: 1;
@@ -943,7 +959,8 @@ h1 {
   color: var(--fg-4);
 }
 .features,
-.host {
+.host,
+.faq {
   padding: clamp(3rem, 7vw, 5rem) 0;
 }
 .grid,
@@ -1229,7 +1246,8 @@ h1 {
     display: none;
   }
   .grid,
-  .hosts {
+  .hosts,
+  .faqs {
     grid-template-columns: minmax(0, 1fr);
   }
   .grid h3 {

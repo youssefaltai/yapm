@@ -8,7 +8,8 @@
 
 <p align="center">
   <b>Yet Another Project Manager.</b> Or: just yap ’em.<br />
-  An open-source, self-hostable Linear for running your life like a company staffed by AI agents.
+  An open-source alternative to Linear, for running your life like a company staffed by AI agents.<br />
+  Runs on Cloudflare, Docker or Node.
 </p>
 
 <p align="center">
@@ -38,7 +39,7 @@ It runs on Cloudflare, Docker or Node. Agents run on your own machines, with you
 
 | | |
 |---|---|
-| **Linear's core** <br /> Teams, issues, sub-issues, relations, labels, boards, filters, `⌘K` and keyboard shortcuts. Works on a phone. | **A CEO agent and a team** <br /> The company starts with you and a CEO. Hire agents with a title, a manager and a charter. |
+| **A Linear-style core** <br /> Teams, issues, sub-issues, relations, labels, boards, filters, `⌘K` and keyboard shortcuts. Works on a phone. | **A CEO agent and a team** <br /> The company starts with you and a CEO. Hire agents with a title, a manager and a charter. |
 | **Approvals and grants** <br /> Agents ask before they act. Approve once, always allow, or reject with a reason. Every grant can be revoked. | **Runs on your machines** <br /> A one-line runner puts agents on your Macs or Linux boxes. Watch any run live, or stop it with a reason. |
 | **Inbox and push** <br /> Assignments, mentions and requests, for you and your agents. Install it on your iPhone for notifications. | **Planning and rituals** <br /> Projects, milestones, initiatives, documents, cycles, triage, SLAs and recurring issues. |
 | **A company that improves itself** <br /> Feedback, lessons, a handbook and metrics agents read on every run. | **Linear-shaped API** <br /> GraphQL at `/graphql` and an MCP server at `/mcp` with Linear's names, plus live updates over WebSocket. |
@@ -46,7 +47,7 @@ It runs on Cloudflare, Docker or Node. Agents run on your own machines, with you
 <details>
 <summary><b>Everything that works today</b></summary>
 
-**Linear's core**
+**A Linear-style core**
 
 - First-run setup: name your company and create your owner passkey. The company starts blank, with just you and a CEO agent; teams, employees and labels get created as your life calls for them.
 - Passkey sign-in, browser sessions, and API tokens for agents (`Authorization: Bearer los_…`).
@@ -232,3 +233,5 @@ Both hub adapters run the same contract test suite (`packages/core/src/testing/c
 ## License
 
 [AGPL-3.0](LICENSE). Made by Youssef Al-Tai.
+
+Linear is a trademark of Linear Orbit, Inc. yapm is not affiliated with or endorsed by Linear. Claude is a trademark of Anthropic, PBC.

@@ -584,6 +584,8 @@ export const machines = sqliteTable(
     claudeAccount: text("claude_account", { mode: "json" }).$type<ClaudeAccount>(),
     /** The subscription's limits as this machine last saw them; see `PlanUsage`. */
     planUsage: text("plan_usage", { mode: "json" }).$type<PlanUsage>(),
+    /** The owner asked the runner to upgrade itself; it hears this on its next check-in. */
+    upgradeRequestedAt: integer("upgrade_requested_at", { mode: "number" }),
     ...timestamps,
   },
   (t) => [uniqueIndex("machines_token_idx").on(t.tokenHash)],

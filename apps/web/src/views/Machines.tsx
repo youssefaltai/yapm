@@ -17,14 +17,7 @@ import {
 } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
-import {
-  DetailLayout,
-  Property,
-  PropertyList,
-  propertyButton,
-  timeAgo,
-  useStore,
-} from "../ui.js";
+import { DetailLayout, Property, PropertyList, propertyButton, timeAgo, useStore } from "../ui.js";
 import { RUN_SUMMARY, RunRows, type RunSummary, RunsTabs } from "./Runs.js";
 import { Meter, type PlanLimit, planName } from "./Usage.js";
 
@@ -398,14 +391,29 @@ export function MachinePage({ id }: { id: string }) {
     if (result) navigate(paths.machines());
   }
 
+  async function upgrade() {
+    if (!m) return;
+    const result = await mutate("mutation($id: String!) { machineUpgrade(id: $id) { success } }", {
+      id: m.id,
+    });
+    if (result) toast(`${m.name} updates once its runs finish`);
+  }
+
   return (
     <div className="flex h-full min-h-0 animate-fade-in flex-col">
       <PageHeader
         actions={
           canEdit && (
-            <button type="button" onClick={remove} className={button("danger", "sm")}>
-              Remove
-            </button>
+            <>
+              {m.status === "active" && (
+                <button type="button" onClick={upgrade} className={button("ghost", "sm")}>
+                  Update runner
+                </button>
+              )}
+              <button type="button" onClick={remove} className={button("danger", "sm")}>
+                Remove
+              </button>
+            </>
           )
         }
       >

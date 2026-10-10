@@ -26,6 +26,7 @@ import {
   machineName,
   revokeMachine,
   updateMachine,
+  upgradeMachine,
 } from "../services/machines.js";
 import {
   act,
@@ -456,6 +457,15 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_root, args, ctx) => ({
       id: await act(ctx, (s) => updateMachine(s, args.id, args.input)),
+    }),
+  }),
+  machineUpgrade: t.field({
+    type: MachinePayload,
+    description:
+      "Owner only: the machine's runner updates itself from this hub once its runs finish.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => ({
+      id: await act(ctx, (s) => upgradeMachine(s, args.id)),
     }),
   }),
   machineRevoke: t.field({

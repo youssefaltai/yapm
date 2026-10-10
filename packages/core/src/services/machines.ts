@@ -238,6 +238,22 @@ export async function updateMachine(
   return id;
 }
 
+/** Asks a machine's runner to install the latest from this hub once its runs finish. */
+export async function upgradeMachine(ctx: Ctx, id: string) {
+  const { db, now } = ctx;
+  await requireOwner(ctx);
+  const machine = await loadMachine(ctx, id);
+  await commit(db, [
+    db.update(machines).set({ upgradeRequestedAt: now }).where(eq(machines.id, id)),
+    ...audit(
+      db,
+      [event(ctx, "machine.upgrade", "machine", id, { name: machineName(machine) })],
+      now,
+    ),
+  ]);
+  return id;
+}
+
 /** Removes a machine: its secret stops working. A pending one is simply forgotten. */
 export async function revokeMachine(ctx: Ctx, id: string) {
   const { db, now } = ctx;

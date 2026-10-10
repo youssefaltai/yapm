@@ -2658,6 +2658,40 @@ export function hubContract(
       await gql("mutation($id: String!) { machineRevoke(id: $id) { success } }", { id });
     });
 
+    it("upgrades a machine's runner from the app on its next check-in", async () => {
+      const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+        "mutation { machineSetupTokenCreate { token } }",
+      );
+      const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+        method: "POST",
+        json: { name: "Mac", setupToken: made.data?.machineSetupTokenCreate.token },
+      });
+      const { id, token } = joined.body;
+      const upgrade = (as?: string) =>
+        client.graphql(
+          "mutation($id: String!) { machineUpgrade(id: $id) { success } }",
+          { id },
+          as,
+        );
+      const beat = async () =>
+        (
+          await client.json<{ upgrade?: boolean }>("/api/runner/heartbeat", {
+            method: "POST",
+            json: { version: "0.3.0" },
+            token,
+          })
+        ).body.upgrade;
+
+      expect(await beat()).toBeFalsy();
+      expect((await upgrade(ceoToken)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect((await upgrade()).data).toEqual({ machineUpgrade: { success: true } });
+      // The machine hears it once.
+      expect(await beat()).toBe(true);
+      expect(await beat()).toBeFalsy();
+
+      await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", { id });
+    });
+
     it("shows each Claude login's plan limits and what runs used, per day", async () => {
       const gql = <T = Record<string, unknown>>(
         query: string,

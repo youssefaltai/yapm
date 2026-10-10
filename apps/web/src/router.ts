@@ -29,6 +29,7 @@ export type RunsTab = "active" | "all";
 export type TeamView = "all" | "active" | "backlog" | "triage";
 
 export type Route =
+  | { name: "chat" }
   | { name: "inbox" }
   | { name: "myIssues"; tab: "assigned" | "created" }
   | { name: "team"; key: string; view: TeamView }
@@ -60,6 +61,7 @@ export function parseRoute(path: string): Route {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const [first, second, third] = parts;
   if (!first || first === "inbox") return { name: "inbox" };
+  if (first === "chat") return { name: "chat" };
   if (first === "my-issues")
     return { name: "myIssues", tab: second === "created" ? "created" : "assigned" };
   if (first === "company") return { name: "company" };
@@ -99,6 +101,7 @@ export function parseRoute(path: string): Route {
 }
 
 export const paths = {
+  chat: () => "/chat",
   inbox: () => "/inbox",
   myIssues: (tab: "assigned" | "created" = "assigned") =>
     tab === "assigned" ? "/my-issues" : "/my-issues/created",

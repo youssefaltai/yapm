@@ -73,6 +73,16 @@ test.describe
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
     });
 
+    test("chats with the CEO, outside any issue", async () => {
+      await page.getByRole("link", { name: "CEO", exact: true }).click();
+      await expect(page.getByText("This chat isn't saved")).toBeVisible();
+      await page.getByLabel("Message CEO").fill("Set up a team for the household bills.");
+      await page.keyboard.press("ControlOrMeta+Enter");
+      const thread = page.getByRole("list", { name: "Chat with CEO" });
+      await expect(thread.getByText("Set up a team for the household bills.")).toBeVisible();
+      await expect(page.getByText("CEO is thinking…")).toBeVisible();
+    });
+
     test("creates a team and files issues from the keyboard", async () => {
       await page.getByRole("button", { name: "Create team" }).click();
       await page.getByLabel("Name").fill("Personal Finance");

@@ -1,11 +1,4 @@
-import {
-  comments,
-  issueSubscriptions,
-  NOTIFICATION_TYPES,
-  notifications,
-  requests,
-  users,
-} from "@life-os/schema";
+import { issueSubscriptions, NOTIFICATION_TYPES, notifications, users } from "@life-os/schema";
 import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
 import { findIssue } from "../services/issues.js";
 import {
@@ -60,20 +53,12 @@ Notification.implement({
     comment: t.field({
       type: Comment,
       nullable: true,
-      resolve: async (n, _args, ctx) =>
-        n.commentId
-          ? ((await db(ctx).select().from(comments).where(eq(comments.id, n.commentId)).get()) ??
-            null)
-          : null,
+      resolve: (n, _args, ctx) => (n.commentId ? ctx.loaders.comment.load(n.commentId) : null),
     }),
     request: t.field({
       type: Request,
       nullable: true,
-      resolve: async (n, _args, ctx) =>
-        n.requestId
-          ? ((await db(ctx).select().from(requests).where(eq(requests.id, n.requestId)).get()) ??
-            null)
-          : null,
+      resolve: (n, _args, ctx) => (n.requestId ? ctx.loaders.request.load(n.requestId) : null),
     }),
   }),
 });

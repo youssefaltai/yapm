@@ -412,14 +412,8 @@ builder.objectFields(Notification, (t) => ({
   projectUpdate: t.field({
     type: ProjectUpdate,
     nullable: true,
-    resolve: async (n, _args, ctx) =>
-      n.projectUpdateId
-        ? ((await db(ctx)
-            .select()
-            .from(projectUpdates)
-            .where(eq(projectUpdates.id, n.projectUpdateId))
-            .get()) ?? null)
-        : null,
+    resolve: (n, _args, ctx) =>
+      n.projectUpdateId ? ctx.loaders.projectUpdate.load(n.projectUpdateId) : null,
   }),
 }));
 

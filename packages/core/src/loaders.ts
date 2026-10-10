@@ -7,7 +7,9 @@ import {
   labels,
   projectMilestones,
   projects,
+  projectUpdates,
   reactions,
+  requests,
   teams,
   users,
   workflowStates,
@@ -65,6 +67,11 @@ export function createLoaders(db: HubDb) {
     cycle: byId((ids) => db.select().from(cycles).where(inArray(cycles.id, ids)).all()),
     projectMilestone: byId((ids) =>
       db.select().from(projectMilestones).where(inArray(projectMilestones.id, ids)).all(),
+    ),
+    comment: byId((ids) => db.select().from(comments).where(inArray(comments.id, ids)).all()),
+    request: byId((ids) => db.select().from(requests).where(inArray(requests.id, ids)).all()),
+    projectUpdate: byId((ids) =>
+      db.select().from(projectUpdates).where(inArray(projectUpdates.id, ids)).all(),
     ),
     statesByTeam: groupBy(
       (ids) =>

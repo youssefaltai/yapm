@@ -173,7 +173,9 @@ function describe(server: Omit<McpServerRow, "requestId" | "secret">) {
 async function newServer(deps: HubDeps, input: McpServerCreateInput, name: string, now: number) {
   const url = input.url?.trim() ? cleanUrl(input.url) : null;
   const command = input.command?.trim() || null;
-  if (!url === !command) throw badRequest("Give either a url or a command");
+  if (!url && !command)
+    throw badRequest(`There is no ${name} MCP server yet: give its url or command to connect it`);
+  if (url && command) throw badRequest("Give either a url or a command");
   if (command && command.length > 200) throw badRequest("The command is too long");
   const secretEnv = input.secretEnv?.trim() || null;
   if (secretEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(secretEnv))
@@ -246,6 +248,15 @@ export async function createMcpServer(
           permitted,
         );
   await commit(db, [
+    // Its sign-in stopped working: it waits for the owner to sign in again.
+    ...(existing && permitted
+      ? [
+          db
+            .update(mcpServers)
+            .set({ status: "pending", updatedAt: now })
+            .where(eq(mcpServers.id, existing.id)),
+        ]
+      : []),
     ...(existing
       ? []
       : [

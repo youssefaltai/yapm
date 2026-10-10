@@ -1169,6 +1169,27 @@ test.describe
       await page.unroute("**/graphql");
     });
 
+    test("asks only for approval when an OAuth server is already signed in to", async () => {
+      const asked = await mcp("create_mcp_server", {
+        name: "calendar",
+        url: "https://mcp.example.com/calendar",
+        auth: "token",
+        reason: "I need the team's calendar.",
+      });
+      await page.route("**/graphql", async (route) => {
+        if (!route.request().postDataJSON().query.includes("mcpServer {")) return route.fallback();
+        const response = await route.fetch();
+        const body = await response.json();
+        Object.assign(body.data.request.mcpServer, { auth: "oauth", status: "ready" });
+        return route.fulfill({ response, json: body });
+      });
+      await page.goto(`/request/${asked.id}`);
+      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: /Sign in/ })).toHaveCount(0);
+      // The page's live refetches may still be in flight.
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    });
+
     test("changes show at once on a slow network, and a failed one rolls back", async () => {
       await page.goto("/team/PF");
       await page.getByRole("button", { name: "list" }).click();

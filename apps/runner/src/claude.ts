@@ -32,6 +32,19 @@ export function claudeSignedIn(binary = claudeBinary()): boolean {
   }
 }
 
+/** Agents can run: an API key is saved, or Claude is signed in. */
+export function claudeReady(apiKey: string | undefined, binary = claudeBinary()): boolean {
+  return Boolean(apiKey) || claudeSignedIn(binary);
+}
+
+/** The owner's answer to how agents should use Claude. */
+export function authChoice(answer: string): "account" | "key" | null {
+  const choice = answer.trim();
+  return choice === "1" ? "account" : choice === "2" ? "key" : null;
+}
+
+export const apiKeyLooksRight = (key: string) => key.startsWith("sk-ant-");
+
 /** Signs in to Claude in the browser unless already signed in. */
 export function claudeLogin(log: (line: string) => void): boolean {
   const binary = claudeBinary();

@@ -5,7 +5,7 @@ export const RUNNER_PACKAGE_PATH = "/downloads/yapm-runner.tgz";
  * The one-line installer: `curl -fsSL <hub>/install.sh | sh -s -- --token lms_…`.
  *
  * Installs the runner from this hub into ~/.yapm-runner (with its own Node.js when the
- * machine has none new enough, so nothing needs sudo), connects it to this hub, signs in to
+ * machine has none new enough, so nothing needs sudo), connects it to this hub, sets up
  * Claude if needed and runs it in the background at login (launchd on macOS, systemd on
  * Linux). Run again without a token to update.
  */
@@ -123,7 +123,7 @@ elif ! "$BIN" status >/dev/null 2>&1; then
   fail "This machine isn't connected yet. Copy the install command from Machines in yapm: it carries a setup token."
 fi
 
-# Agents use this machine's Claude subscription; sign in once if it isn't already.
+# Agents use your own Claude account or API key; ask once, if this machine isn't set up yet.
 # The terminal's own device: Claude Code crashes reading /dev/tty on macOS (kqueue refuses it).
 TTY=$(tty 0<&2 2>/dev/null) || TTY=
 if [ -n "$TTY" ]; then "$BIN" login <"$TTY"; else "$BIN" login; fi

@@ -1,8 +1,8 @@
 # yapm runner
 
-Runs your company's AI agents on this machine, signed in with your own Claude subscription.
+Runs your company's AI agents on this machine, with your own Claude account or API key.
 The hub decides who runs what; the runner claims runs, works through the Claude Agent SDK,
-streams the transcript back, and obeys Stop. Secrets (your Claude sign-in, files) never
+streams the transcript back, and obeys Stop. Secrets (your Claude sign-in or key, files) never
 leave the machine.
 
 On the Machines page in yapm, press **Add machine** and paste the command into Terminal on
@@ -13,12 +13,14 @@ curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
 It installs the runner into `~/.yapm-runner` (with a private Node.js when the machine has no
-Node 22+), connects it with the one-time token, signs in to Claude if needed and keeps it running
+Node 22+), connects it with the one-time token, asks how agents should use Claude (your Claude account or
+an Anthropic API key) if it isn't set up yet and keeps it running
 in the background (launchd on macOS, systemd on Linux). Run it again without `--token` to update.
 
 ```sh
 yapm-runner logs                # follow what it's doing
-yapm-runner login               # sign in to Claude again
+yapm-runner login --claude      # switch agents to your Claude account
+yapm-runner login --api-key sk-ant-…   # or to an Anthropic API key
 yapm-runner service uninstall   # stop running in the background
 ```
 

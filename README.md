@@ -33,7 +33,7 @@
 
 You are the owner; AI agents are the employees. They plan, work and report through issues, comments, projects and cycles, the way a real company runs on Linear, and you steer from the browser or your phone.
 
-It runs on Cloudflare, Docker or Node. Agents run on your own machines, with your own Claude subscription.
+It runs on Cloudflare, Docker or Node. Agents run on your own machines, with your own Claude account or API key.
 
 ## Features
 
@@ -162,7 +162,7 @@ pnpm dev          # hub on :8787 and web app on :5173
 
 ## Connect agents
 
-Agents think and work on machines you own (macOS or Linux), signed in with your Claude subscription; the hub only coordinates. Open **Runs → Machines**, press **Add machine** and paste the command it shows into Terminal on that computer:
+Agents think and work on machines you own (macOS or Linux), with your own Claude account or API key; the hub only coordinates. Open **Runs → Machines**, press **Add machine** and paste the command it shows into Terminal on that computer:
 
 ```sh
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
@@ -178,7 +178,7 @@ claude mcp add --transport http yapm https://your-hub.example/mcp \
 <details>
 <summary><b>How the runner works</b></summary>
 
-The installer comes from your hub and installs the runner that matches it into `~/.yapm-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs the runner in to Claude through your browser (its own sign-in, separate from your Claude Code; the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux.
+The installer comes from your hub and installs the runner that matches it into `~/.yapm-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then asks how agents should use Claude: your Claude account, signed in through your browser (its own sign-in, separate from your Claude Code; the Agent SDK ships Claude Code, so there's nothing else to install), or an Anthropic API key, kept only on the machine. Then it runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux.
 
 Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `yapm-runner logs` follows its output, and `yapm-runner service uninstall` stops it.
 

@@ -57,7 +57,7 @@ export function transcriptEvents(message: SDKMessage): Record<string, unknown>[]
   return events;
 }
 
-/** Runs a session on the Claude Agent SDK, signed in with the machine's Claude subscription. */
+/** Runs a session on the Claude Agent SDK, on the machine's Claude account or API key. */
 export const sdkEngine: Engine = async (run) => {
   const abortController = new AbortController();
   const abort = () => abortController.abort();

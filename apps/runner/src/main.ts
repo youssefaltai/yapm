@@ -1,11 +1,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline/promises";
+import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
-import { claudeLogin } from "./claude.js";
+import { apiKeyLooksRight, authChoice, claudeLogin, claudeReady } from "./claude.js";
+import { configPath, home, loadConfig, saveConfig, useApiKey } from "./config.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
 import { probePlan, sdkEngine } from "./sdk.js";
@@ -13,37 +14,29 @@ import { followLogs, installService, uninstallService } from "./service.js";
 
 const VERSION = "0.4.0";
 
-interface Config {
-  hub: string;
-  token: string;
-  machineId: string;
-  name: string;
-  capacity: number;
-  /** The machine's own MCP servers for agents, in Claude Code's `mcpServers` shape. */
-  mcpServers?: Options["mcpServers"];
-}
-
-const home = process.env.YAPM_RUNNER_HOME ?? join(homedir(), ".yapm-runner");
-const configPath = join(home, "config.json");
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
 
-async function loadConfig(): Promise<Config> {
-  try {
-    return JSON.parse(await readFile(configPath, "utf8")) as Config;
-  } catch {
-    throw new Error(
-      "This machine isn't connected yet. Copy the install command from Machines in yapm.",
-    );
-  }
+/** Asks on the terminal; a hidden answer isn't echoed. */
+async function ask(question: string, hidden = false) {
+  const muted = new Writable({ write: (_chunk, _encoding, done) => done() });
+  const rl = createInterface({
+    input: process.stdin,
+    output: hidden ? muted : process.stdout,
+    terminal: true,
+  });
+  rl.on("SIGINT", () => process.exit(130));
+  if (hidden) process.stdout.write(question);
+  const answer = await rl.question(hidden ? "" : question);
+  rl.close();
+  if (hidden) process.stdout.write("\n");
+  return answer.trim();
 }
 
-async function saveConfig(config: Config) {
-  await mkdir(home, { recursive: true });
-  await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  // The file holds the machine's secret.
-  await chmod(configPath, 0o600);
-}
+const CHOICE = `How should agents on this machine use Claude?
+  1) Sign in with your Claude account (opens Claude's own sign-in)
+  2) Use an Anthropic API key (billed to your key)
+> `;
 
 /** The name people know the machine by: "Youssef's MacBook Pro" rather than a host name. */
 function machineName() {
@@ -63,7 +56,9 @@ const USAGE = `yapm-runner: runs your company's agents on this machine.
   enrol --hub <url> [--token <setup token>] [--name <name>] [--tags a,b] [--capacity 2]
         Connects this machine to the hub. With a setup token from Machines it is approved
         at once; without one, approve the code it shows in the app.
-  login Signs in to Claude, if this machine isn't already (agents use this subscription).
+  login [--claude | --api-key <key>]
+        Sets up how agents use Claude, if this machine isn't already: your own Claude
+        account or API key. The flags skip the question.
   start Runs agents until stopped (Ctrl-C finishes cleanly).
   service install | uninstall
         Runs agents in the background and at login (launchd on macOS, systemd on Linux).
@@ -83,6 +78,8 @@ async function main() {
       tags: { type: "string" },
       token: { type: "string" },
       capacity: { type: "string" },
+      "api-key": { type: "string" },
+      claude: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -124,6 +121,27 @@ async function main() {
   }
 
   if (command === "login") {
+    const saved = await loadConfig().catch(() => undefined);
+    let apiKey = values["api-key"];
+    if (apiKey === undefined && !values.claude) {
+      if (claudeReady(saved?.apiKey))
+        return say(saved?.apiKey ? "Claude: agents use your API key." : "Claude: signed in.");
+      // Without a terminal to ask on, sign in as before.
+      if (process.stdin.isTTY) {
+        let choice = null;
+        while (!choice) choice = authChoice(await ask(CHOICE));
+        if (choice === "key") apiKey = await ask("Anthropic API key (hidden): ", true);
+      }
+    }
+    if (apiKey !== undefined) {
+      if (!apiKeyLooksRight(apiKey)) throw new Error("That isn't an API key: they start sk-ant-.");
+      await saveConfig({ ...(await loadConfig()), apiKey });
+      return say("Claude: agents use your API key.");
+    }
+    if (saved?.apiKey) {
+      delete saved.apiKey;
+      await saveConfig(saved);
+    }
     if (!claudeLogin(say)) process.exitCode = 1;
     return;
   }
@@ -163,6 +181,7 @@ async function main() {
   }
 
   if (command === "start") {
+    useApiKey(config);
     const runner = new Runner({
       hub,
       token: config.token,

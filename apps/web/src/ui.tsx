@@ -622,12 +622,15 @@ export function DetailLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto grid max-w-6xl grid-cols-1 lg:min-h-full lg:grid-cols-[minmax(0,1fr)_18rem] lg:grid-rows-[auto_1fr]">
-      <div className="min-w-0 px-4 pt-6 md:px-10">{head}</div>
-      <aside className="mx-4 mt-6 border-y border-line py-3 md:mx-10 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:m-0 lg:border-y-0 lg:border-l lg:px-5 lg:py-6">
-        {side}
-      </aside>
-      <div className="min-w-0 px-4 pt-8 pb-16 md:px-10">{children}</div>
+    // Sized by its pane, not the window, so it fits beside the Inbox list too.
+    <div className="@container h-full">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 @4xl:min-h-full @4xl:grid-cols-[minmax(0,1fr)_18rem] @4xl:grid-rows-[auto_1fr]">
+        <div className="min-w-0 px-4 pt-6 @xl:px-10">{head}</div>
+        <aside className="mx-4 mt-6 border-y border-line py-3 @xl:mx-10 @4xl:col-start-2 @4xl:row-span-2 @4xl:row-start-1 @4xl:m-0 @4xl:border-y-0 @4xl:border-l @4xl:px-5 @4xl:py-6">
+          {side}
+        </aside>
+        <div className="min-w-0 px-4 pt-8 pb-16 @xl:px-10">{children}</div>
+      </div>
     </div>
   );
 }

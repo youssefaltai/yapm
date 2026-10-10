@@ -238,8 +238,17 @@ test.describe
       await expect(mention).toBeVisible();
       await expect(list.getByRole("button", { name: /Ada asks for your approval/ })).toBeVisible();
 
-      await mention.click();
+      // Like Linear, an issue is one row however much happens on it, showing the latest.
+      await mcp("create_comment", { issueId: "PF-1", body: "Filed it under bills too." });
+      const latest = list.getByRole("button", { name: /Ada commented: Filed it under bills/ });
+      await expect(latest).toBeVisible();
+      await expect(list.getByRole("button", { name: /Pay the electricity bill/ })).toHaveCount(1);
+
+      await latest.click();
       await expect(page.getByLabel("Issue title")).toHaveValue("Pay the electricity bill");
+      // The issue gets the pane's width, with its properties below rather than squeezed beside.
+      const title = await page.getByLabel("Issue title").boundingBox();
+      expect(title?.width).toBeGreaterThan(500);
       await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
       // The agent's `@Youssef` shows as a mention chip, as in Linear.
       const agentComment = page.locator(".rich", {

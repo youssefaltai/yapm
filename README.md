@@ -134,7 +134,7 @@ pnpm run deploy                     # builds the web app, applies migrations, de
 Any VPS or Docker host.
 
 ```sh
-ORIGIN=https://life.example.com docker compose up -d
+ORIGIN=https://hub.example.com docker compose up -d
 ```
 
 Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Set `ORIGIN` to the public URL you'll use. Data lives in the `yapm-data` volume as one SQLite file.

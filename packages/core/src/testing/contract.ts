@@ -993,6 +993,13 @@ export function hubContract(
         scope: "user",
         user: { name: "CEO" },
       });
+      const standing = (
+        await client.graphql<{ request: { used: boolean } }>(
+          "query($id: String!) { request(id: $id) { used } }",
+          { id: again.id },
+        )
+      ).data?.request;
+      expect(standing?.used).toBe(false);
       for (const name of ["Coach", "Chef"]) {
         const hired = await call("hire_agent", { name, charter: `${name} things.`, manager: "me" });
         expect(hired.isError).toBe(false);
@@ -1002,6 +1009,12 @@ export function hubContract(
       }>("{ grants { nodes { id action useCount } } }");
       const grant = grantList.data?.grants.nodes[0];
       expect(grant).toMatchObject({ action: "agent.hire", useCount: 2 });
+      // The request that created the grant is marked used from its first use.
+      const usedAfter = await client.graphql<{ request: { used: boolean } }>(
+        "query($id: String!) { request(id: $id) { used } }",
+        { id: again.id },
+      );
+      expect(usedAfter.data?.request.used).toBe(true);
       expect((await call("list_grants", {})).json().grants[0]).toMatchObject({
         for: "CEO",
         useCount: 2,
@@ -1398,6 +1411,8 @@ export function hubContract(
       expect(decision.body.input.systemPrompt).not.toContain("Linear");
       // Every agent writes briefly, without dropping what the next reader needs.
       expect(decision.body.input.systemPrompt).toContain("Lead with the outcome");
+      // Owners never see internal ids; requests go by title.
+      expect(decision.body.input.systemPrompt).toContain("never by internal id");
       expect(decision.body.input.prompt).toContain("Youssef assigned the issue to you");
       expect(decision.body.input.prompt).toContain("Build a 12-week training plan");
       expect(decision.body.input.outputSchema.properties).toHaveProperty("action");

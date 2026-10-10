@@ -113,7 +113,7 @@ pnpm dev   # open http://localhost:5173
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ORIGIN` | the request's origin | Your public URL. Set it behind a proxy. |
+| `ORIGIN` | the request's origin | Your public URL, like `https://hub.example.com`. Links and passkeys use it, so set it on every deployment. The Cloudflare deploy sets it from `HUB_DOMAIN`. |
 | `RP_NAME` | `yapm` | The name your browser shows for the passkey. |
 | `YAPM_SECRET` | none | Encrypts agents' sign-ins to other services; without it, none are stored. Any long random string. |
 | `PORT` (Node) | `8787` | The HTTP port. |

@@ -121,6 +121,21 @@ test.describe
       await expect(page.getByRole("button", { name: /Find a cheaper tariff/ })).toBeHidden();
       await page.getByRole("button", { name: "Remove Status filter" }).click();
       await expect(page.getByRole("button", { name: /Find a cheaper tariff/ })).toBeVisible();
+
+      // Archiving a selection, and undoing it, takes one request each.
+      const sent: string[] = [];
+      const track = (r: { postData: () => string | null }) => {
+        if (/issue(Un)?archive/i.test(r.postData() ?? "")) sent.push(r.postData() ?? "");
+      };
+      page.on("request", track);
+      await page.keyboard.press("Control+a");
+      await page.getByRole("button", { name: /Find a cheaper tariff/ }).click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Archive" }).click();
+      await expect(page.getByRole("status")).toContainText("Archived 2 issues");
+      await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
+      await expect(page.getByRole("button", { name: /Find a cheaper tariff/ })).toBeVisible();
+      page.off("request", track);
+      expect(sent).toHaveLength(2);
     });
 
     test("opens an issue, comments, and sees its history", async () => {

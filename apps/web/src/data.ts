@@ -261,6 +261,36 @@ export async function mutate<T>(
   }
 }
 
+/**
+ * Runs one mutation on each id, ten to a request: `field(id: …<args>) { success }`.
+ * Ten keeps each request well inside the Workers limit on database calls. `args` may use
+ * `vars`, declared by their GraphQL types: `{ at: ["DateTime", value] }`.
+ */
+export async function mutateEach(
+  ids: string[],
+  field: string,
+  args = "",
+  vars: Record<string, [type: string, value: unknown]> = {},
+): Promise<boolean> {
+  if (ids.length > 10)
+    return (
+      await Promise.all([
+        mutateEach(ids.slice(0, 10), field, args, vars),
+        mutateEach(ids.slice(10), field, args, vars),
+      ])
+    ).every(Boolean);
+  if (!ids.length) return true;
+  const params = [
+    ...ids.map((_, i) => `$id${i}: String!`),
+    ...Object.entries(vars).map(([name, [type]]) => `$${name}: ${type}`),
+  ].join(", ");
+  const fields = ids.map((_, i) => `n${i}: ${field}(id: $id${i}${args}) { success }`).join(" ");
+  return !!(await mutate(`mutation(${params}) { ${fields} }`, {
+    ...Object.fromEntries(ids.map((id, i) => [`id${i}`, id])),
+    ...Object.fromEntries(Object.entries(vars).map(([name, [, value]]) => [name, value])),
+  }));
+}
+
 export interface Toast {
   message: string;
   action?: { label: string; run: () => void };

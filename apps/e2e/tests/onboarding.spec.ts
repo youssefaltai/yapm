@@ -56,7 +56,11 @@ test.describe
       await page.getByLabel("Your name").fill("Youssef");
       await page.getByRole("button", { name: "Create passkey and start" }).click();
 
-      await expect(page.getByText("You're all caught up.")).toBeVisible();
+      // The app opens on the chat with the CEO.
+      await expect(page.getByRole("link", { name: "Chat", exact: true })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
       await page.getByRole("link", { name: "Company" }).click();
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
       await expect(page.getByText("1 AI employee, no teams yet.")).toBeVisible();
@@ -71,6 +75,26 @@ test.describe
       // The session and the route survive a reload.
       await page.reload();
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
+    });
+
+    test("chats with the CEO, once a machine can run it", async () => {
+      await page.getByRole("link", { name: "Chat", exact: true }).click();
+      // No machine yet: the chat offers to add the first one.
+      await expect(page.getByText("Add your first machine")).toBeVisible();
+      await page.getByRole("button", { name: "Add machine" }).click();
+      const command = page.getByText(/^curl -fsSL .*\/install\.sh \| sh -s -- --token lms_/);
+      const token = ((await command.textContent()) ?? "").split("--token ")[1]?.trim();
+      await page.request.post("/api/runner/enrol", {
+        data: { name: "Home Mac", tags: [], capacity: 1, setupToken: token },
+      });
+
+      // It connects, and the chat opens.
+      await expect(page.getByText("This chat isn't saved")).toBeVisible();
+      await page.getByLabel("Message CEO").fill("Set up a team for the household bills.");
+      await page.keyboard.press("ControlOrMeta+Enter");
+      const thread = page.getByRole("list", { name: "Chat with CEO" });
+      await expect(thread.getByText("Set up a team for the household bills.")).toBeVisible();
+      await expect(page.getByText("CEO is thinking…")).toBeVisible();
     });
 
     test("creates a team and files issues from the keyboard", async () => {
@@ -241,9 +265,11 @@ test.describe
       await expect(page.getByText("Copy this token now.")).toBeVisible();
       await expect(page.getByText(/claude mcp add --transport http yapm/)).toBeVisible();
       agentToken = (await page.locator("code").first().textContent()) ?? "";
+      // New hires report to the CEO unless you pick someone else.
       expect(await mcp("get_user", { query: "me" })).toMatchObject({
         name: "Ada",
         title: "Head of Finance",
+        manager: "CEO",
       });
     });
 
@@ -803,7 +829,7 @@ test.describe
     test("installs as an app and shows pushed notifications", async () => {
       const manifest = await page.request.get("/manifest.webmanifest");
       expect(manifest.ok()).toBe(true);
-      expect(await manifest.json()).toMatchObject({ display: "standalone", start_url: "/inbox" });
+      expect(await manifest.json()).toMatchObject({ display: "standalone", start_url: "/" });
       const worker = await page.request.get("/sw.js");
       expect(worker.headers()["content-type"]).toContain("javascript");
 
@@ -897,9 +923,10 @@ test.describe
       // Checklist boxes tick in place.
       await description.locator('li[data-type="taskItem"] input').first().check();
 
-      // Selecting text shows the formatting toolbar.
+      // Selecting text shows the formatting toolbar, in a window short enough to scroll.
+      await page.setViewportSize({ width: 1280, height: 400 });
+      // The click lands after the text. Not `End`: on macOS that scrolls to the bottom.
       await description.getByText("Compare tariffs", { exact: true }).click();
-      await page.keyboard.press("End");
       for (let i = 0; i < "tariffs".length; i++) await page.keyboard.press("Shift+ArrowLeft");
       const toolbar = page.getByRole("toolbar", { name: "Formatting" });
       await expect(toolbar).toBeVisible();
@@ -907,6 +934,7 @@ test.describe
         await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-toolbar.png` });
       await toolbar.getByLabel("Bold").click();
       await expect(description.locator("strong")).toHaveText("tariffs");
+      await page.setViewportSize({ width: 1280, height: 720 });
 
       await page.getByLabel("Issue title").click();
       await expect

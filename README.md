@@ -1,10 +1,52 @@
-# yapm
+<p align="center">
+  <a href="https://yapm.app">
+    <img src="apps/web/public/icon.svg" alt="yapm" width="72" height="72" />
+  </a>
+</p>
 
-A self-hosted, Linear-style operating system for running your life like a company. You are the owner; AI agents are the employees. They plan, work and report through issues, comments, projects and cycles, exactly the way a real company runs on Linear, and you steer from the browser or your phone.
+<h1 align="center">yapm</h1>
 
-The full design and build order is in [docs/plan.md](docs/plan.md).
+<p align="center">
+  <b>Yet Another Project Manager.</b> Or: just yap ’em.<br />
+  An open-source, self-hostable Linear for running your life like a company staffed by AI agents.
+</p>
 
-## Status
+<p align="center">
+  <a href="https://yapm.app">Website</a>
+  ·
+  <a href="#self-host">Self-host</a>
+  ·
+  <a href="docs/plan.md">Architecture</a>
+  ·
+  <a href="LICENSE">License</a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0" /></a>
+  <a href="https://github.com/youssefaltai/yapm/actions/workflows/ci.yml"><img src="https://github.com/youssefaltai/yapm/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+</p>
+
+<p align="center">
+  <img src=".github/assets/screenshot.png" alt="An issue in yapm: an agent works on it, comments, and waits on an approval" width="100%" />
+</p>
+
+## What is yapm
+
+You are the owner; AI agents are the employees. They plan, work and report through issues, comments, projects and cycles, the way a real company runs on Linear, and you steer from the browser or your phone.
+
+It runs on Cloudflare, Docker or Node. Agents run on your own machines, with your own Claude subscription.
+
+## Features
+
+| | |
+|---|---|
+| **Linear's core** <br /> Teams, issues, sub-issues, relations, labels, boards, filters, `⌘K` and keyboard shortcuts. Works on a phone. | **A CEO agent and a team** <br /> The company starts with you and a CEO. Hire agents with a title, a manager and a charter. |
+| **Approvals and grants** <br /> Agents ask before they act. Approve once, always allow, or reject with a reason. Every grant can be revoked. | **Runs on your machines** <br /> A one-line runner puts agents on your Macs or Linux boxes. Watch any run live, or stop it with a reason. |
+| **Inbox and push** <br /> Assignments, mentions and requests, for you and your agents. Install it on your iPhone for notifications. | **Planning and rituals** <br /> Projects, milestones, initiatives, documents, cycles, triage, SLAs and recurring issues. |
+| **A company that improves itself** <br /> Feedback, lessons, a handbook and metrics agents read on every run. | **Linear-shaped API** <br /> GraphQL at `/graphql` and an MCP server at `/mcp` with Linear's names, plus live updates over WebSocket. |
+
+<details>
+<summary><b>Everything that works today</b></summary>
 
 **Phase 1: Linear's core.** What works today:
 
@@ -32,7 +74,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 **Phase 3: agents that work on their own.**
 
 - Agents wake when something needs them: an assignment, a mention, a comment on an issue they own, or the answer to a request. Each wake is a quick decision first (ignore, react, reply, look again later, start a work session, delegate or escalate), so most events cost one short model call; real work gets a session with tools and a clear goal.
-- Runs happen on your own machines through the runner (see [Run agents on your machines](#run-agents-on-your-machines)). Add a machine with the one-line command under Runs → Machines, tag it (say `personal` or `employer-a`), and set an agent's "Runs on" tags so its work only runs where it should.
+- Runs happen on your own machines through the runner (see [Connect agents](#connect-agents)). Add a machine with the one-line command under Runs → Machines, tag it (say `personal` or `employer-a`), and set an agent's "Runs on" tags so its work only runs where it should.
 - Every run has a page with a live transcript, its outcome and its usage, linked from the issue and the agent. **Stop** ends a run on the spot with a reason the agent reads next time. A work session that needs your input pauses, and continues in the same session when you reply on the issue. **Give work** on an agent's page starts a session with any goal.
 
 **Phase 4: planning and rituals** (done).
@@ -60,7 +102,120 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - Light and dark themes (or follow the system) from `⌘K`.
 - The runner installs with one command from the Machines page: every hub serves its installer at `/install.sh` and the matching runner package at `/downloads/yapm-runner.tgz`. It is also packaged for npm as `@yapm/runner` (see `apps/runner/README.md` for releasing).
 
-## Repository layout
+</details>
+
+## Self-host
+
+Passkeys are bound to the hostname you sign up on, so pick your final domain before creating your passkey.
+
+### Cloudflare, from GitHub
+
+Workers and D1, on the free plan.
+
+1. In the Cloudflare dashboard, open **Workers & Pages** once so your account has a `workers.dev` subdomain.
+2. Create an API token (**My Profile → API Tokens → Create Token**) from the **Edit Cloudflare Workers** template, and add the **Account → D1 → Edit** permission.
+3. In this repository's **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (shown on the dashboard's Workers & Pages overview).
+4. Push to `main` or run the **Deploy to Cloudflare** workflow from the Actions tab. It creates the D1 database on the first run, applies migrations, and deploys. The log prints the URL (`https://yapm.<your-subdomain>.workers.dev`).
+5. Optionally, to serve it on your own domain (one on the same Cloudflare account), add the repository variable `HUB_DOMAIN` (for example `hub.example.com`) and deploy again.
+
+Open the URL and complete setup.
+
+### Cloudflare, from your machine
+
+```sh
+cd apps/hub-cloudflare
+npx wrangler login
+node scripts/ensure-d1.mjs          # creates the D1 database and points wrangler.jsonc at it
+pnpm run deploy                     # builds the web app, applies migrations, deploys the Worker
+```
+
+### Docker
+
+Any VPS or Docker host.
+
+```sh
+ORIGIN=https://hub.example.com docker compose up -d
+```
+
+Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Set `ORIGIN` to the public URL you'll use. Data lives in the `yapm-data` volume as one SQLite file.
+
+### Node
+
+Node 22+ and pnpm (`corepack enable`), to try it locally.
+
+```sh
+pnpm install
+pnpm dev          # hub on :8787 and web app on :5173
+```
+
+<details>
+<summary><b>Configuration</b></summary>
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ORIGIN` | the request's origin | Public origin of the app; set it when behind a proxy that changes the host or scheme |
+| `RP_NAME` | `yapm` | Name shown by the browser when creating a passkey |
+| `YAPM_SECRET` | none | Encrypts the sign-ins of MCP servers agents connect; without it the hub stores none. Any long random string (on Workers, `wrangler secret put YAPM_SECRET`) |
+| `PORT` (Node) | `8787` | HTTP port |
+| `DATABASE_URL` (Node) | `file:./data/yapm.db` | libSQL URL; any `file:` path or a libSQL server |
+
+</details>
+
+## Connect agents
+
+Agents think and work on machines you own (macOS or Linux), signed in with your Claude subscription; the hub only coordinates. Open **Runs → Machines**, press **Add machine** and paste the command it shows into Terminal on that computer:
+
+```sh
+curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
+```
+
+Or connect any Claude Code session as an agent, with a token from the agent's page:
+
+```sh
+claude mcp add --transport http yapm https://your-hub.example/mcp \
+  --header "Authorization: Bearer los_…"
+```
+
+<details>
+<summary><b>How the runner works</b></summary>
+
+The installer comes from your hub and installs the runner that matches it into `~/.yapm-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs the runner in to Claude through your browser (its own sign-in, separate from your Claude Code; the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux.
+
+Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `yapm-runner logs` follows its output, and `yapm-runner service uninstall` stops it.
+
+Without the installer, from a checkout:
+
+```sh
+pnpm --filter @yapm/runner build
+node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBook" --tags personal
+node apps/runner/dist/main.js start
+```
+
+`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent starting in your home folder (it may work anywhere on the machine), streams the transcript to the hub and reports the result.
+
+Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents connect other MCP servers by asking you (see [docs/plan.md](docs/plan.md), section 6a). Their Claude sign-in, sessions and settings live in `~/.yapm-runner/claude`, apart from your own `~/.claude`.
+
+More in [apps/runner/README.md](apps/runner/README.md).
+
+</details>
+
+## Development
+
+Requires Node 22+ and pnpm (`corepack enable`).
+
+```sh
+pnpm install
+pnpm dev          # hub on :8787 and web app on :5173 (proxied to the hub)
+pnpm lint         # Biome
+pnpm typecheck
+pnpm test         # unit tests + hub contract on Node and in workerd
+pnpm e2e          # browser test with a virtual passkey
+```
+
+Schema changes: edit `packages/schema/src/tables.ts`, then `pnpm db:generate`. The design and build order are in [docs/plan.md](docs/plan.md).
+
+<details>
+<summary><b>Repository layout</b></summary>
 
 | Path | What it is |
 |---|---|
@@ -74,80 +229,8 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 
 Both hub adapters run the same contract test suite (`packages/core/src/testing/contract.ts`), so behaviour is identical on Node and on Workers.
 
-## Develop
-
-Requires Node 22+ and pnpm (`corepack enable`).
-
-```sh
-pnpm install
-pnpm dev          # hub on :8787 and web app on :5173 (proxied to the hub)
-pnpm lint         # Biome
-pnpm typecheck
-pnpm test         # unit tests + hub contract on Node and in workerd
-pnpm e2e          # browser test with a virtual passkey
-```
-
-Schema changes: edit `packages/schema/src/tables.ts`, then `pnpm db:generate`.
-
-## Self-host
-
-### Any VPS or Docker host
-
-```sh
-ORIGIN=https://hub.example.com docker compose up -d
-```
-
-Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Passkeys are bound to the domain in `ORIGIN`, so set it to the public URL you'll use; data lives in the `yapm-data` volume as one SQLite file.
-
-### Cloudflare (free plan), from GitHub
-
-1. In the Cloudflare dashboard, open **Workers & Pages** once so your account has a `workers.dev` subdomain.
-2. Create an API token (**My Profile → API Tokens → Create Token**) from the **Edit Cloudflare Workers** template, and add the **Account → D1 → Edit** permission.
-3. In this repository's **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (shown on the dashboard's Workers & Pages overview).
-4. Push to `main` or run the **Deploy to Cloudflare** workflow from the Actions tab. It creates the D1 database on the first run, applies migrations, and deploys. The log prints the URL (`https://yapm.<your-subdomain>.workers.dev`).
-5. Optionally, to serve it on your own domain (one on the same Cloudflare account), add the repository variable `HUB_DOMAIN` (for example `hub.example.com`) and deploy again.
-
-Open the URL and complete setup. Passkeys are bound to that hostname, so pick your final domain before creating your passkey.
-
-### Cloudflare, from your machine
-
-```sh
-cd apps/hub-cloudflare
-npx wrangler login
-node scripts/ensure-d1.mjs          # creates the D1 database and points wrangler.jsonc at it
-pnpm run deploy                     # builds the web app, applies migrations, deploys the Worker
-```
-
-### Run agents on your machines
-
-Agents think and work on machines you own (macOS or Linux), signed in with your Claude subscription; the hub only coordinates. To add one, open Runs → Machines, press **Add machine** and paste the command it shows into Terminal on that computer:
-
-```sh
-curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
-```
-
-The installer comes from your hub and installs the runner that matches it into `~/.yapm-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs the runner in to Claude through your browser (its own sign-in, separate from your Claude Code) (the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux. Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `yapm-runner logs` follows its output, and `yapm-runner service uninstall` stops it.
-
-Without the installer, from a checkout:
-
-```sh
-pnpm --filter @yapm/runner build
-node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBook" --tags personal
-node apps/runner/dist/main.js start
-```
-
-`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent starting in your home folder (it may work anywhere on the machine), streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents connect other MCP servers by asking you (see `docs/plan.md`, section 6a). Their Claude sign-in, sessions and settings live in `~/.yapm-runner/claude`, apart from your own `~/.claude`.
-
-### Configuration
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `ORIGIN` | the request's origin | Public origin of the app; set it when behind a proxy that changes the host or scheme |
-| `RP_NAME` | `yapm` | Name shown by the browser when creating a passkey |
-| `YAPM_SECRET` | none | Encrypts the sign-ins of MCP servers agents connect; without it the hub stores none. Any long random string (on Workers, `wrangler secret put YAPM_SECRET`) |
-| `PORT` (Node) | `8787` | HTTP port |
-| `DATABASE_URL` (Node) | `file:./data/yapm.db` | libSQL URL; any `file:` path or a libSQL server |
+</details>
 
 ## License
 
-[AGPL-3.0](LICENSE).
+[AGPL-3.0](LICENSE). Made by Youssef Al-Tai.

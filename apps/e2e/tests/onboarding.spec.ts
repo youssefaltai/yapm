@@ -897,9 +897,10 @@ test.describe
       // Checklist boxes tick in place.
       await description.locator('li[data-type="taskItem"] input').first().check();
 
-      // Selecting text shows the formatting toolbar.
+      // Selecting text shows the formatting toolbar, in a window short enough to scroll.
+      await page.setViewportSize({ width: 1280, height: 400 });
+      // The click lands after the text. Not `End`: on macOS that scrolls to the bottom.
       await description.getByText("Compare tariffs", { exact: true }).click();
-      await page.keyboard.press("End");
       for (let i = 0; i < "tariffs".length; i++) await page.keyboard.press("Shift+ArrowLeft");
       const toolbar = page.getByRole("toolbar", { name: "Formatting" });
       await expect(toolbar).toBeVisible();
@@ -907,6 +908,7 @@ test.describe
         await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-toolbar.png` });
       await toolbar.getByLabel("Bold").click();
       await expect(description.locator("strong")).toHaveText("tariffs");
+      await page.setViewportSize({ width: 1280, height: 720 });
 
       await page.getByLabel("Issue title").click();
       await expect

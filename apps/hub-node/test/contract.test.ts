@@ -9,6 +9,9 @@ const liveLog: unknown[] = [];
 // Push services are the outside world: record what the hub would send them. Other calls
 // (MCP providers) go to the global fetch, which the contract fakes.
 const pushOutbox: Request[] = [];
+
+// Statements the hub runs, to check list queries don't grow with the list.
+let queries = 0;
 const recordPush: typeof fetch = async (input, init) => {
   const request = new Request(input, init);
   if (new URL(request.url).hostname !== "push.example.com") return fetch(request);
@@ -19,7 +22,12 @@ const recordPush: typeof fetch = async (input, init) => {
 hubContract(
   "node",
   async () => {
-    const { db } = await openDatabase(":memory:");
+    const { db, client } = await openDatabase(":memory:");
+    const execute = client.execute.bind(client);
+    client.execute = ((...args: Parameters<typeof execute>) => {
+      queries++;
+      return execute(...args);
+    }) as typeof client.execute;
     const realtime = createNodeRealtime();
     const app = createNodeApp({
       db,
@@ -35,5 +43,5 @@ hubContract(
     });
     return async (request) => app.fetch(request);
   },
-  { pushOutbox, liveLog },
+  { pushOutbox, liveLog, queryCount: () => queries },
 );

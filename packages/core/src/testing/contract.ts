@@ -94,6 +94,8 @@ export interface ContractOptions {
   pushOutbox?: Request[];
   /** Every live event the hub published, where the adapter can record them (Node can). */
   liveLog?: unknown[];
+  /** Database statements run so far, where the adapter can count them (Node can). */
+  queryCount?: () => number;
 }
 
 /** A hex colour with no visible hue. */
@@ -2041,6 +2043,74 @@ export function hubContract(
           .nodes,
       ).toEqual([]);
     });
+    it.runIf(options.queryCount)(
+      "lists projects in queries that don't grow with them",
+      async () => {
+        const gql = async <T = Record<string, unknown>>(
+          query: string,
+          variables?: Record<string, unknown>,
+        ) => {
+          const result = await client.graphql<T>(query, variables);
+          if (result.errors) throw new Error(result.errors[0]?.message);
+          return result.data as T;
+        };
+        const { initiativeCreate } = await gql<{
+          initiativeCreate: { initiative: { id: string } };
+        }>('mutation { initiativeCreate(input: { name: "Grow" }) { initiative { id } } }');
+        const addProjects = async (n: number) => {
+          for (let i = 0; i < n; i++) {
+            const { projectCreate } = await gql<{ projectCreate: { project: { id: string } } }>(
+              "mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { project { id } } }",
+              { input: { name: `Project ${i}`, initiativeId: initiativeCreate.initiative.id } },
+            );
+            const p = projectCreate.project.id;
+            await gql(
+              'mutation($p: String!) { projectMilestoneCreate(input: { projectId: $p, name: "M" }) { success } }',
+              { p },
+            );
+            await gql(
+              'mutation($p: String!) { projectUpdateCreate(input: { projectId: $p, body: "Going", health: onTrack }) { success } }',
+              { p },
+            );
+            await gql(
+              "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success } }",
+              { input: { teamId, title: "Step", projectId: p } },
+            );
+          }
+        };
+        // What the Projects and Roadmap pages ask for.
+        const list = async () => {
+          const count = options.queryCount ?? (() => 0);
+          const before = count();
+          const { projects } = await gql<{
+            projects: {
+              nodes: {
+                health: string;
+                progress: { scope: number };
+                initiative: { id: string };
+                projectMilestones: { nodes: { name: string }[] };
+              }[];
+            };
+          }>(`{ projects(first: 200) { nodes {
+          id name state health targetDate lead { id name } progress { progress scope }
+          initiative { id name } projectMilestones { nodes { id name targetDate } }
+        } } }`);
+          for (const p of projects.nodes) {
+            expect(p).toMatchObject({
+              health: "onTrack",
+              progress: { scope: 1 },
+              initiative: { id: initiativeCreate.initiative.id },
+              projectMilestones: { nodes: [{ name: "M" }] },
+            });
+          }
+          return count() - before;
+        };
+        await addProjects(2);
+        const few = await list();
+        await addProjects(5);
+        expect(await list()).toBe(few);
+      },
+    );
     it("runs cycles, triage and saved views", async () => {
       const gql = async <T = Record<string, unknown>>(
         query: string,

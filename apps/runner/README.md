@@ -2,7 +2,7 @@
 
 Runs your company's AI agents on this machine, with your own Claude account or API key.
 The hub decides who runs what; the runner claims runs, works through the Claude Agent SDK,
-streams the transcript back, and obeys Stop. Secrets (your Claude sign-in or key, files) never
+streams the transcript back, and obeys Stop. Your Claude sign-in or key and your files never
 leave the machine.
 
 On the Machines page in yapm, press **Add machine** and paste the command into Terminal on

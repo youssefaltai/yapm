@@ -94,7 +94,7 @@ Schema changes: edit `packages/schema/src/tables.ts`, then `pnpm db:generate`.
 ### Any VPS or Docker host
 
 ```sh
-ORIGIN=https://life.example.com docker compose up -d
+ORIGIN=https://hub.example.com docker compose up -d
 ```
 
 Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Passkeys are bound to the domain in `ORIGIN`, so set it to the public URL you'll use; data lives in the `yapm-data` volume as one SQLite file.

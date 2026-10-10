@@ -1,6 +1,6 @@
 {
   "name": "@life-os/runner",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Runs your company's agents on this machine with the Claude Agent SDK.",
   "repository": {

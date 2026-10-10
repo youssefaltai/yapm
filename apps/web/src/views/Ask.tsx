@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { type Member, mutate, useQuery, type Workspace } from "../data.js";
-import { RichEditor } from "../editor/index.js";
+import { useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { graphql } from "../api.js";
+import { invalidate, type Member, useQuery, type Workspace } from "../data.js";
 import { icon } from "../icons.js";
 import { Page, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
@@ -64,15 +65,12 @@ function titleOf(message: string) {
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line;
 }
 
-/** Issues live in teams; a new company gets its first one, named after it, as in Linear. */
-async function teamFor(workspace: Workspace) {
-  const team = workspace.teams.nodes[0];
-  if (team) return team.id;
-  const created = await mutate<{ teamCreate: { team: { id: string } } }>(
-    "mutation($input: TeamCreateInput!) { teamCreate(input: $input) { team { id } } }",
-    { input: { name: workspace.organization.name } },
-  );
-  return created?.teamCreate.team.id;
+/** Opens the new issue, cross-fading into it where the browser can and motion is welcome. */
+function goTo(path: string) {
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (document.startViewTransition && !calm)
+    document.startViewTransition(() => flushSync(() => navigate(path)));
+  else navigate(path);
 }
 
 /**
@@ -82,6 +80,7 @@ async function teamFor(workspace: Workspace) {
 export function AskView({ workspace }: { workspace: Workspace }) {
   const ceo = ceoOf(workspace);
   const name = ceo?.name ?? "CEO";
+  const team = workspace.teams.nodes[0];
   // The CEO runs on the owner's machines; until there's one, the page offers to add it.
   const [setup, setSetup] = useState<SetupCommand | null>(null);
   const machines = useQuery<{ machines: { id: string; status: string }[] }>(
@@ -92,24 +91,50 @@ export function AskView({ workspace }: { workspace: Workspace }) {
   const atHand = useQuery<AtHand>(AT_HAND);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
-  // A suggestion starts a fresh editor holding it.
-  const [draft, setDraft] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+
+  // The box grows with the text, up to its max height, then scrolls.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: measures again as the text changes
+  useLayoutEffect(() => {
+    const box = input.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${box.scrollHeight}px`;
+  }, [body]);
+
+  function edit(text: string) {
+    setBody(text);
+    setError(null);
+  }
 
   async function ask() {
-    if (!ceo || !body.trim() || busy) return;
+    const message = body.trim();
+    if (!ceo || !team || !message || busy) return;
     setBusy(true);
-    const teamId = await teamFor(workspace);
-    const title = titleOf(body);
-    // A one-liner is all title; a longer message keeps every word in the description.
-    const description = body.trim() === title ? null : body.trim();
-    const result =
-      teamId &&
-      (await mutate<{ issueCreate: { issue: { identifier: string } } }>(
+    setError(null);
+    const title = titleOf(message);
+    try {
+      const { issueCreate } = await graphql<{ issueCreate: { issue: { identifier: string } } }>(
         "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { identifier } } }",
-        { input: { teamId, title, description, assigneeId: ceo.id } },
-      ));
-    setBusy(false);
-    if (result) navigate(paths.issue(result.issueCreate.issue.identifier));
+        {
+          input: {
+            teamId: team.id,
+            title,
+            // A one-liner is all title; a longer message keeps every word in the description.
+            description: message === title ? null : message,
+            assigneeId: ceo.id,
+          },
+        },
+      );
+      void invalidate();
+      goTo(paths.issue(issueCreate.issue.identifier));
+    } catch (failure) {
+      // The message stays, ready to send again.
+      setError(failure instanceof Error ? failure.message : String(failure));
+      setBusy(false);
+      input.current?.focus();
+    }
   }
 
   if (machines.data && !machines.data.machines.some((m) => m.status === "active"))
@@ -142,16 +167,16 @@ export function AskView({ workspace }: { workspace: Workspace }) {
         <PageTitle>Ask {name}</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-4 py-8 md:px-6">
+        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-4 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6">
           <div className="flex animate-rise-in flex-col items-center text-center">
             <span
-              className="rounded-full p-5"
+              className="rounded-full p-4 md:p-5"
               style={{
                 background:
                   "radial-gradient(closest-side, color-mix(in srgb, var(--color-ink) 12%, transparent), transparent)",
               }}
             >
-              <img src="/icon.svg" alt="" className="size-14" />
+              <img src="/icon.svg" alt="" className="size-12 md:size-14" />
             </span>
             <p className="mt-3 text-muted">
               Hi {workspace.viewer.name.split(" ")[0]}, I'm {name}.
@@ -160,68 +185,83 @@ export function AskView({ workspace }: { workspace: Workspace }) {
               What can I take off your plate?
             </h2>
           </div>
-          <div className="mt-6 flex items-end gap-2 rounded-2xl border border-line bg-panel py-2 pr-2 pl-4 transition-colors focus-within:border-faint">
-            <div className="max-h-60 min-w-0 flex-1 overflow-y-auto py-1">
-              <RichEditor
-                key={draft}
-                label={`Ask ${name}`}
+          {/* On send, the composer folds into the CEO at work. */}
+          <div
+            className={`relative mx-auto mt-6 w-full transition-[max-width] duration-300 ease-snappy ${busy ? "max-w-14" : "max-w-full"}`}
+          >
+            <div
+              className={`flex items-end gap-2 overflow-hidden border bg-panel shadow-xs transition-[border-radius,border-color,height] duration-300 ease-snappy ${busy ? "h-14 rounded-[28px]" : "rounded-2xl py-2 pr-2 pl-4"} ${error ? "border-critical" : "border-line focus-within:border-faint"}`}
+            >
+              <textarea
+                ref={input}
+                rows={1}
+                // biome-ignore lint/a11y/noAutofocus: asking is the one thing this page is for
                 autoFocus
+                aria-label={`Ask ${name}`}
+                aria-invalid={!!error}
+                readOnly={busy}
+                enterKeyHint="send"
                 value={body}
                 placeholder="Tell me what you need…"
-                onChange={setBody}
-                onSubmit={() => void ask()}
-                className="min-h-6"
+                onChange={(e) => edit(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+                  e.preventDefault();
+                  void ask();
+                }}
+                className={`block max-h-60 min-w-0 flex-1 resize-none bg-transparent py-1 text-base leading-6 outline-none transition-opacity duration-150 placeholder:text-faint md:text-[15px] ${busy ? "opacity-0" : ""}`}
               />
+              <button
+                type="button"
+                aria-label="Ask"
+                disabled={!body.trim() || busy}
+                onClick={() => void ask()}
+                className={`flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent hover:bg-accent-hover disabled:opacity-30 ${busy ? "invisible" : ""}`}
+              >
+                {icon("send")}
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label="Ask"
-              disabled={!body.trim() || busy}
-              onClick={() => void ask()}
-              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-opacity hover:bg-accent-hover disabled:opacity-30"
-            >
-              {icon("send")}
-            </button>
-          </div>
-          {busy ? (
-            <div
-              role="status"
-              className="mt-3 flex animate-fade-in items-center justify-center gap-2 text-muted"
-            >
-              <img src="/icon.svg" alt="" className="size-5" />
-              {name} is on it
-              <span className="flex gap-1" aria-hidden="true">
-                {[0, 1, 2].map((dot) => (
-                  <span
-                    key={dot}
-                    className="size-1.5 animate-typing rounded-full bg-muted"
-                    style={{ animationDelay: `${dot * 150}ms` }}
-                  />
-                ))}
+            {busy && (
+              <span
+                role="status"
+                aria-label={`${name} is taking it on`}
+                className="absolute inset-0 grid animate-fade-in place-items-center [animation-delay:120ms]"
+              >
+                <img src="/icon.svg" alt="" className="size-7 animate-think" />
               </span>
-            </div>
-          ) : (
-            <>
+            )}
+          </div>
+          <div
+            aria-hidden={busy}
+            className={`transition-opacity duration-200 ${busy ? "pointer-events-none opacity-0" : ""}`}
+          >
+            {error ? (
+              <p role="alert" className="mt-2 text-center text-[12px] text-critical">
+                {error}. Your message is still here; press Enter to try again.
+              </p>
+            ) : (
               <p className="mt-2 text-center text-[12px] text-faint">
                 I'll make it an issue and get to work. Follow along and reply there.
               </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
-                {suggestions(atHand.data).map((text) => (
-                  <button
-                    key={text}
-                    type="button"
-                    onClick={() => {
-                      setBody(text);
-                      setDraft((n) => n + 1);
-                    }}
-                    className="max-w-full truncate rounded-full border border-line px-3 py-1.5 text-muted hover:border-faint hover:text-ink"
-                  >
-                    {text}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+            )}
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {suggestions(atHand.data).map((text, i) => (
+                <button
+                  key={text}
+                  type="button"
+                  onClick={() => {
+                    flushSync(() => edit(text));
+                    input.current?.focus();
+                    input.current?.setSelectionRange(text.length, text.length);
+                  }}
+                  style={{ animationDelay: `${120 + i * 50}ms` }}
+                  className="max-w-full animate-fade-in truncate rounded-full border border-line bg-panel px-3 py-1.5 text-[13px] text-muted shadow-xs hover:border-faint hover:bg-raised hover:text-ink"
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </Page>

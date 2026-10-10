@@ -218,11 +218,11 @@ export function hubContract(
       expect(status).toBe(409);
     });
 
-    it("starts blank: just the owner and the CEO, no teams or labels", async () => {
+    it("starts with the owner, the CEO and one team named after the company", async () => {
       const result = await client.graphql<{
         organization: { name: string; urlKey: string };
         viewer: { kind: string; isMe: boolean; directReports: { nodes: { name: string }[] } };
-        teams: { nodes: unknown[] };
+        teams: { nodes: { key: string; name: string; members: { nodes: { name: string }[] } }[] };
         issueLabels: { nodes: unknown[] };
         users: {
           nodes: {
@@ -235,7 +235,7 @@ export function hubContract(
       }>(`{
         organization { name urlKey }
         viewer { kind isMe directReports { nodes { name } } }
-        teams { nodes { id } }
+        teams { nodes { key name members { nodes { name } } } }
         issueLabels { nodes { id } }
         users { nodes { name kind manager { name } charter } }
       }`);
@@ -248,12 +248,19 @@ export function hubContract(
         isMe: true,
         directReports: { nodes: [{ name: "CEO" }] },
       });
-      expect(data.teams.nodes).toEqual([]);
+      // Every issue needs a team, as in Linear, so the company starts with one.
+      expect(data.teams.nodes).toEqual([
+        {
+          key: "YI",
+          name: "Youssef Inc",
+          members: { nodes: expect.arrayContaining([{ name: "Youssef" }, { name: "CEO" }]) },
+        },
+      ]);
       expect(data.issueLabels.nodes).toEqual([]);
       expect(data.users.nodes.map((u) => u.name).sort()).toEqual(["CEO", "Youssef"]);
       const ceo = data.users.nodes.find((u) => u.name === "CEO");
       expect(ceo).toMatchObject({ kind: "agent", manager: { name: "Youssef" } });
-      expect(ceo?.charter).toContain("starts empty");
+      expect(ceo?.charter).toContain("one team named after it");
     });
 
     it("records every founding change in the audit log", async () => {
@@ -263,6 +270,7 @@ export function hubContract(
       const actions = result.data?.auditEntries.nodes.map((n) => n.action) ?? [];
       expect(actions.filter((a) => a === "user.create")).toHaveLength(2);
       expect(actions).toContain("workspace.create");
+      expect(actions).toContain("team.create");
       expect(result.data?.auditEntries.nodes.every((n) => n.actor.name === "Youssef")).toBe(true);
     });
 

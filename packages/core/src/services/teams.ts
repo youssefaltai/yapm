@@ -4,7 +4,7 @@ import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, notFound, ServiceError } from "../errors.js";
-import { DEFAULT_STATES } from "../seed.js";
+import { DEFAULT_STATES, suggestKey } from "../seed.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
 import { companyTimeZone, syncTeamCycles } from "./cycles.js";
@@ -59,18 +59,6 @@ function normalizeKey(key: string): string {
     throw badRequest("Team key must be 1–7 letters or digits, starting with a letter (e.g. FIN)");
   }
   return normalized;
-}
-
-/** Suggests a key from a name the way Linear does: initials, or the first letters. */
-export function suggestKey(name: string): string {
-  const words = name
-    .toUpperCase()
-    .replace(/[^A-Z0-9 ]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-  const initials = words.map((w) => w[0]).join("");
-  const key = initials.length >= 2 ? initials : (words[0] ?? "TEAM").slice(0, 3);
-  return /^[A-Z]/.test(key) ? key.slice(0, 7) : `T${key}`.slice(0, 7);
 }
 
 async function assertKeyFree(db: HubDb, key: string, exceptId?: string) {

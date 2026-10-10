@@ -21,6 +21,7 @@
   --animate-badge-in: badge-in 220ms var(--ease-spring) backwards;
   --animate-grow-x: grow-x 700ms var(--ease-snappy) backwards;
   --animate-typing: typing 1.2s ease-in-out infinite;
+  --animate-think: think 1.6s ease-in-out infinite;
   /* Placeholders wait a beat, so a fast load goes straight to content without a flash. */
   --animate-skeleton-in: fade-in 240ms var(--ease-snappy) 180ms backwards;
   --animate-tile-in:
@@ -92,6 +93,13 @@
     30% {
       opacity: 1;
       transform: translateY(-3px);
+    }
+  }
+  /* The CEO at work: a slow, small breath. */
+  @keyframes think {
+    50% {
+      opacity: 0.55;
+      transform: scale(0.88);
     }
   }
   @keyframes float {

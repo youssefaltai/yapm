@@ -69,125 +69,90 @@
         </div>
       </section>
 
-      <section class="demo wrap" aria-label="The yapm app: an issue an agent is working on, and its approval request">
-        <div class="window" aria-hidden="true">
-          <div class="chrome">
-            <span class="dots"><i></i><i></i><i></i></span>
-            <span class="url">hub.example.com/issue/PER-42</span>
-          </div>
-          <div class="app">
-            <aside class="side">
-              <div class="org">
-                <img src="/icon.svg" alt="" width="18" height="18" />
-                <span>Acme of One</span>
-                <i class="ib"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><title>Search</title><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3" stroke-linecap="round"/></svg></i>
-                <i class="ib ib-new">+</i>
-              </div>
-              <ul class="navl">
-                <li>Inbox <em>3</em></li>
-                <li>My issues</li>
-                <li>Approvals <em class="pill">1</em></li>
-                <li>Projects</li>
-                <li>Documents</li>
-                <li>Runs <em>1</em></li>
-                <li>Insights</li>
-                <li>Usage</li>
-                <li>Company</li>
-              </ul>
-              <p class="side-h">Teams</p>
-              <ul class="navl">
-                <li class="on"><span class="tk">PER</span>Personal</li>
-                <li><span class="tk">FIN</span>Finance</li>
-                <li><span class="tk">OPS</span>Operations</li>
-              </ul>
-            </aside>
-            <div class="page">
-              <div class="bar">Personal <b>›</b> PER-42</div>
-              <div class="cols">
-                <div class="issue">
-                  <h2>Renew passport before the Lisbon trip</h2>
-                  <p class="desc">
-                    Expires in May. Book the appointment, fill the form, and tell me what to bring.
-                  </p>
-                  <p class="sec">Runs</p>
-                  <div class="runrow">
-                    <i class="pulse"></i>
-                    <span class="rn">Ops agent</span>
-                    <span class="rk">Booking the appointment</span>
-                    <span class="rs">Running · 2m ago</span>
-                  </div>
-                  <p class="sec sec-line">Activity</p>
-                  <ol class="feed">
-                    <li class="ev">
-                      <i class="av av-ceo">C</i>
-                      <span><b>CEO</b> assigned the issue to <b>Ops agent</b> · 9:03</span>
-                    </li>
-                    <li class="cm">
-                      <div class="cm-h"><i class="av av-you">Y</i><b>You</b> · 9:05</div>
-                      <p>Mornings only, please. I'm not a morning person, but I'm less of an afternoon one.</p>
-                    </li>
-                    <li class="cm">
-                      <div class="cm-h"><i class="av av-ops">O</i><b>Ops agent</b> · 9:11</div>
-                      <p>
-                        Form is filled from your profile. Found Tue 10:30. Asked for an OK on the
-                        €95 fee.
-                      </p>
-                    </li>
-                    <li class="cm reply" aria-hidden="true">
-                      <div class="cm-h"><i class="av av-ops">O</i><b>Ops agent</b> · 9:14</div>
-                      <p>Paid the €95 and booked Tue 10:30. Bring your old passport and two photos.</p>
-                    </li>
-                  </ol>
+      <section class="demo wrap" aria-labelledby="demo-title">
+        <h2 id="demo-title" class="demo-h">Try it: ask for something, and watch your company handle it.</h2>
+        <div class="stage">
+          <div class="window">
+            <div class="chrome" aria-hidden="true">
+              <span class="dots"><i></i><i></i><i></i></span>
+              <span class="url">hub.example.com/<span data-url>inbox</span></span>
+            </div>
+            <div class="app">
+              <aside class="side" aria-hidden="true">
+                <div class="org">
+                  <img src="/icon.svg" alt="" width="18" height="18" />
+                  <span>Acme of One</span>
+                  <i class="ib"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><title>Search</title><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3" stroke-linecap="round"/></svg></i>
+                  <i class="ib ib-new">+</i>
                 </div>
-                <aside class="props">
-                  <dl>
-                    <dt>Status</dt>
-                    <dd><i class="st"></i>In Progress</dd>
-                    <dt>Priority</dt>
-                    <dd><i class="pr"></i>High</dd>
-                    <dt>Assignee</dt>
-                    <dd><i class="av av-ops">O</i>Ops agent</dd>
-                    <dt>Labels</dt>
-                    <dd><span class="lb">Travel</span></dd>
-                    <dt>Due date</dt>
-                    <dd>Apr 12</dd>
-                    <dt>Cycle</dt>
-                    <dd>Cycle 14</dd>
-                  </dl>
-                </aside>
+                <ul class="navl">
+                  <li>Inbox</li>
+                  <li>My issues</li>
+                  <li>Approvals <em class="pill" data-pill>1</em></li>
+                  <li>Projects</li>
+                  <li>Documents</li>
+                  <li>Runs <em data-runs></em></li>
+                  <li>Insights</li>
+                  <li>Usage</li>
+                  <li>Company</li>
+                </ul>
+                <p class="side-h">Teams</p>
+                <ul class="navl" data-teams>
+                  <li data-team="PER"><span class="tk">PER</span>Personal</li>
+                  <li data-team="FIN"><span class="tk">FIN</span>Finance</li>
+                </ul>
+              </aside>
+              <div class="page" data-stage="ask">
+                <div class="bar" aria-hidden="true"><span data-crumb>New issue</span></div>
+                <div class="ask">
+                  <p class="ask-h">What do you need done?</p>
+                  <div class="ask-box" aria-hidden="true">
+                    <span data-typed></span><i class="caret"></i>
+                    <span class="ask-go">↑</span>
+                  </div>
+                  <div class="chips" data-chips></div>
+                </div>
+                <div class="cols">
+                  <div class="issue" data-scroll>
+                    <h2 data-title>New issue</h2>
+                    <div class="runs-sec">
+                      <p class="sec">Runs</p>
+                      <div class="runrow">
+                        <i class="pulse"></i>
+                        <span class="rn" data-run-agent></span>
+                        <span class="rk" data-run-goal></span>
+                        <span class="rs" data-run-status></span>
+                      </div>
+                    </div>
+                    <p class="sec sec-line">Activity</p>
+                    <ol class="feed" data-feed aria-live="polite"></ol>
+                  </div>
+                  <aside class="props" aria-hidden="true">
+                    <dl>
+                      <dt>Status</dt>
+                      <dd><i class="st" data-st></i><span data-status></span></dd>
+                      <dt>Priority</dt>
+                      <dd data-priority></dd>
+                      <dt>Assignee</dt>
+                      <dd data-assignee></dd>
+                      <dt>Labels</dt>
+                      <dd data-labels></dd>
+                      <dt>Due date</dt>
+                      <dd data-due></dd>
+                    </dl>
+                  </aside>
+                </div>
               </div>
             </div>
           </div>
+          <div class="sheet" data-sheet aria-live="polite"></div>
         </div>
-        <div class="sheet">
-          <p class="sheet-k">Request from <b>Ops agent</b></p>
-          <p class="sheet-t">Pay the €95 renewal fee and book Tue 10:30</p>
-          <p class="sheet-on"><span>Permission</span><code>spend</code></p>
-          <p class="sheet-on"><span>Issue</span>PER-42 Renew passport</p>
-          <div class="sheet-a">
-            <button
-              type="button"
-              class="b b-ok"
-              data-reply="Paid the €95 and booked Tue 10:30. Bring your old passport and two photos."
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              class="b"
-              data-reply="Paid and booked Tue 10:30. I'll pay fees like this without asking next time."
-            >
-              Always allow
-            </button>
-            <button
-              type="button"
-              class="b b-no"
-              data-reply="Understood, I won't pay. I let the Tue 10:30 slot go. How would you like to do it?"
-            >
-              Reject
-            </button>
-          </div>
-        </div>
+        <ol class="rail" data-rail>
+          <li><b>You yap</b><span>Ask in plain words, from any device.</span></li>
+          <li><b>It runs itself</b><span>The CEO agent files it, builds the team and hires the agent.</span></li>
+          <li><b>You approve</b><span>Anything that spends or sends waits for one tap.</span></li>
+          <li><b>It learns</b><span>Lessons, feedback and grants mean it needs you less next time.</span></li>
+        </ol>
       </section>
 
       <section id="features" class="features wrap" aria-labelledby="features-title">
@@ -266,49 +231,6 @@ pnpm dev</code></pre>
         Linear. Claude is a trademark of Anthropic, PBC.
       </p>
     </footer>
-    <script>
-      // Answering the request plays out what happens next in the app.
-      document.querySelector(".sheet-a").addEventListener("click", (e) => {
-        const button = e.target.closest("button");
-        if (!button) return;
-        const reply = document.querySelector(".reply");
-        reply.querySelector("p").textContent = button.dataset.reply;
-        reply.removeAttribute("aria-hidden");
-        reply.classList.add("on");
-        document.querySelector(".sheet").classList.add("gone");
-        document.querySelector(".pill").classList.add("gone");
-      });
-
-      // Sections rise in once, as they come into view.
-      const io = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (!entry.isIntersecting) continue;
-            entry.target.classList.add("in");
-            io.unobserve(entry.target);
-          }
-        },
-        { rootMargin: "0px 0px -10% 0px" },
-      );
-      for (const el of document.querySelectorAll(".section-title, .grid li, .hosts li, .host-more")) {
-        el.classList.add("reveal");
-        io.observe(el);
-      }
-
-      // The nav's glass shows once the page scrolls.
-      const nav = document.querySelector(".nav");
-      const stick = () => nav.classList.toggle("stuck", scrollY > 8);
-      addEventListener("scroll", stick, { passive: true });
-      stick();
-
-      // A soft light that follows the pointer across the cards.
-      for (const card of document.querySelectorAll(".grid li, .hosts li")) {
-        card.addEventListener("pointermove", (e) => {
-          const r = card.getBoundingClientRect();
-          card.style.setProperty("--x", `${e.clientX - r.left}px`);
-          card.style.setProperty("--y", `${e.clientY - r.top}px`);
-        });
-      }
-    </script>
+    <script src="/site.js" defer></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { createTeamStore } from "../actions.js";
 import { graphql } from "../api.js";
 import { invalidate, type Member, useQuery, type Workspace } from "../data.js";
 import { icon } from "../icons.js";
@@ -158,6 +159,22 @@ export function AskView({ workspace }: { workspace: Workspace }) {
             }}
           />
         )}
+      </Page>
+    );
+
+  // Companies start with a team; if every one has gone, there's nowhere to file the ask.
+  if (!team)
+    return (
+      <Page>
+        <PageHeader>
+          <PageTitle>Ask {name}</PageTitle>
+        </PageHeader>
+        <EmptyState
+          icon="team"
+          title="Add a team first"
+          description={`Every ask becomes an issue, and issues live in teams. Create one and ${name} can take it from there.`}
+          action={{ label: "Create team", onClick: () => createTeamStore.set(true) }}
+        />
       </Page>
     );
 

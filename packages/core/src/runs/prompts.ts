@@ -379,9 +379,11 @@ export async function workInput(
     "- Finish with the result JSON: done, needs_input (ask one clear question), blocked or failed.",
   ].join("\n");
   const prompt = resuming
-    ? ["New since you paused:", await describeTriggers(db, notes), "", "Continue the work."].join(
-        "\n",
-      )
+    ? notes.length
+      ? ["New since you paused:", await describeTriggers(db, notes), "", "Continue the work."].join(
+          "\n",
+        )
+      : `The owner follows up: ${goal}`
     : [
         `Your goal: ${goal}`,
         "",

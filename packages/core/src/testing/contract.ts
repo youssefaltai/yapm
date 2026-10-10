@@ -396,13 +396,14 @@ export function hubContract(
               priorityLabel: string;
               state: { name: string };
               creator: { name: string };
+              assignee: { name: string } | null;
               labels: { nodes: { name: string }[] };
               parent: { identifier: string } | null;
             };
           };
         }>(
           `mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue {
-            id identifier priorityLabel state { name } creator { name } labels { nodes { name } } parent { identifier }
+            id identifier priorityLabel state { name } creator { name } assignee { name } labels { nodes { name } } parent { identifier }
           } } }`,
           { input: { teamId, ...input } },
           token,
@@ -414,11 +415,13 @@ export function hubContract(
         labelIds: [labelId],
       });
       expect(first.errors).toBeUndefined();
+      // What the owner files without an assignee goes to the CEO.
       expect(first.data?.issueCreate.issue).toMatchObject({
         identifier: "PF-1",
         priorityLabel: "High",
         state: { name: "Backlog" },
         creator: { name: "Youssef" },
+        assignee: { name: "CEO" },
         labels: { nodes: [{ name: "Bills" }] },
         parent: null,
       });
@@ -429,6 +432,7 @@ export function hubContract(
       expect(second.data?.issueCreate.issue).toMatchObject({
         identifier: "PF-2",
         creator: { name: "CEO" },
+        assignee: null,
         parent: { identifier: "PF-1" },
       });
       childId = second.data?.issueCreate.issue.id ?? "";
@@ -491,8 +495,9 @@ export function hubContract(
       }>('{ issue(id: "PF-1") { history { nodes { action actor { name } data } } } }');
       const actions = history.data?.issue.history.nodes.map((n) => n.action);
       expect(actions).toEqual(["issue.create", "issue.update", "issue.update"]);
+      // The CEO had it from the start, so the update only moved it.
       expect(history.data?.issue.history.nodes[1]?.data).toMatchObject({
-        assigneeId: { from: null, to: ceoId },
+        stateId: { to: started },
       });
     });
 
@@ -1346,6 +1351,8 @@ export function hubContract(
         "{ users { nodes { id name } } }",
       );
       const coachId = people.data?.users.nodes.find((u) => u.name === "Coach")?.id ?? "";
+      // Issues the owner keeps don't go to the CEO, so only the runs under test queue.
+      const ownerId = people.data?.users.nodes.find((u) => u.name === "Youssef")?.id ?? "";
       const created = await gql<{ issueCreate: { issue: { id: string; identifier: string } } }>(
         "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier } } }",
         { input: { teamId, title: "Build a 12-week training plan", assigneeId: coachId } },
@@ -1654,14 +1661,56 @@ export function hubContract(
       expect(tagged.body.run.kind).toBe("work");
       await runner(`/runs/${tagged.body.run.id}/complete`, machine.token, {
         status: "completed",
+        sessionId: "session-gym",
         result: { outcome: "done", summary: "Gym is open 6-22." },
+      });
+
+      // The owner follows up on a finished run, like a chat: it carries on in the same session,
+      // and chat runs stay out of Runs.
+      const followUp = (input: Record<string, unknown>) =>
+        gql<{ runCreate: { run: { id: string; status: string } } }>(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id status } } }",
+          { input },
+        );
+      const chat = await followUp({
+        agentId: coachId,
+        goal: "And on Sundays?",
+        chat: true,
+        resumeRunId: tagged.body.run.id,
+      });
+      expect(chat.data?.runCreate.run.status).toBe("queued");
+      const visible = await gql<{ runs: { nodes: { id: string }[] } }>("{ runs { nodes { id } } }");
+      expect(visible.data?.runs.nodes.map((r) => r.id)).not.toContain(chat.data?.runCreate.run.id);
+      const continued = await runner<Claim>("/claim", machine.token, {});
+      expect(continued.body.run).toMatchObject({
+        id: chat.data?.runCreate.run.id,
+        sessionId: "session-gym",
+      });
+      expect(continued.body.input.prompt).toContain("And on Sundays?");
+      // Only a finished run of the same agent can be followed up.
+      const ceoId = people.data?.users.nodes.find((u) => u.name === "CEO")?.id ?? "";
+      const otherAgent = await followUp({
+        agentId: ceoId,
+        goal: "Hi",
+        resumeRunId: tagged.body.run.id,
+      });
+      expect(otherAgent.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const unfinished = await followUp({
+        agentId: coachId,
+        goal: "Hi",
+        resumeRunId: continued.body.run.id,
+      });
+      expect(unfinished.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+      await runner(`/runs/${continued.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "done", summary: "Sundays 8-20." },
       });
 
       // A run that pauses on its own request resumes when the owner answers it, on its own issue
       // whichever issue the request is filed on.
       const race = await gql<{ issueCreate: { issue: { id: string; identifier: string } } }>(
         "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier } } }",
-        { input: { teamId, title: "Enter the spring race" } },
+        { input: { teamId, title: "Enter the spring race", assigneeId: ownerId } },
       );
       const raceId = race.data?.issueCreate.issue.id;
       const raceKey = race.data?.issueCreate.issue.identifier;
@@ -1812,7 +1861,14 @@ export function hubContract(
       });
       const billIssue = await gql<{ issueCreate: { issue: { id: string } } }>(
         "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
-        { input: { teamId, title: "Check the gym invoice", labelIds: [labelId] } },
+        {
+          input: {
+            teamId,
+            title: "Check the gym invoice",
+            labelIds: [labelId],
+            assigneeId: ownerId,
+          },
+        },
       );
       const billId = billIssue.data?.issueCreate.issue.id;
       const startOn = (modelTier?: string) =>

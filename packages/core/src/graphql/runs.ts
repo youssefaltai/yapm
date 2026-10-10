@@ -8,11 +8,11 @@ import {
   runs,
   users,
 } from "@yapm/schema";
-import { and, asc, count, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit } from "../db.js";
-import { badRequest, forbidden, notFound } from "../errors.js";
+import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
 import { announce } from "../realtime.js";
 import { MODEL_TIERS, type ModelTier } from "../runs/prompts.js";
 import { routeRun } from "../runs/routing.js";
@@ -231,6 +231,7 @@ async function queryRuns(
         f?.machineId ? eq(runs.machineId, f.machineId) : undefined,
         f?.status?.length ? inArray(runs.status, f.status) : undefined,
         f?.kind ? eq(runs.kind, f.kind) : undefined,
+        sql`json_extract(${runs.trigger}, '$.chat') is null`,
       ),
     )
     .orderBy(desc(runs.createdAt))
@@ -352,6 +353,14 @@ const RunCreateInput = builder.inputType("RunCreateInput", {
       required: false,
       description: "small, standard or top. Leave it out to let the routing rules decide.",
     }),
+    chat: t.boolean({
+      required: false,
+      description: "A chat with the agent: the run stays out of Runs.",
+    }),
+    resumeRunId: t.string({
+      required: false,
+      description: "Follows up on one of the agent's finished runs, carrying on in its session.",
+    }),
   }),
 });
 
@@ -383,6 +392,15 @@ builder.mutationFields((t) => ({
         const tier = args.input.modelTier ?? null;
         if (tier !== null && !(MODEL_TIERS as readonly string[]).includes(tier))
           throw badRequest("modelTier is small, standard or top");
+        const previous = args.input.resumeRunId
+          ? await s.db.select().from(runs).where(eq(runs.id, args.input.resumeRunId)).get()
+          : null;
+        if (args.input.resumeRunId && previous?.agentId !== agent.id)
+          throw badRequest("Follow up on one of this agent's runs");
+        if (previous?.status === "queued" || previous?.status === "running")
+          throw new ServiceError("CONFLICT", "That run hasn't finished yet");
+        // Only a run that got a session has one to carry on; otherwise this starts afresh.
+        const resumes = previous?.sessionId ? previous : null;
         const routed = await routeRun(
           s.db,
           {
@@ -390,6 +408,7 @@ builder.mutationFields((t) => ({
             agentId: agent.id,
             issueId: issue?.id ?? null,
             ownerTier: tier as ModelTier | null,
+            resumes,
           },
           s.now,
         );
@@ -402,10 +421,27 @@ builder.mutationFields((t) => ({
             issueId: issue?.id ?? null,
             goal: goal.slice(0, 2000),
             ...routed,
-            trigger: { notes: [], requestedBy: s.actorId },
+            trigger: {
+              notes: [],
+              requestedBy: s.actorId,
+              ...(args.input.chat ? { chat: true } : {}),
+            },
+            // The session lives on the machine that ran it.
+            ...(resumes
+              ? {
+                  resumeOfRunId: resumes.id,
+                  sessionId: resumes.sessionId,
+                  machineId: resumes.machineId,
+                }
+              : {}),
             createdAt: s.now,
             updatedAt: s.now,
           }),
+          // A paused run is answered by the follow-up.
+          s.db
+            .update(runs)
+            .set({ status: "completed", updatedAt: s.now })
+            .where(and(eq(runs.id, previous?.id ?? ""), eq(runs.status, "needs_input"))),
           ...audit(
             s.db,
             [

@@ -888,6 +888,17 @@ test.describe
       await page.keyboard.press("Escape");
       await expect(page.getByRole("menu")).toHaveCount(0);
 
+      // On a phone, where Safari never sends a right-click, a long press opens it instead.
+      const box = await row.boundingBox();
+      const touch = { identifier: 1, clientX: (box?.x ?? 0) + 20, clientY: (box?.y ?? 0) + 10 };
+      await row.dispatchEvent("touchstart", { touches: [touch], changedTouches: [touch] });
+      await page.waitForTimeout(600);
+      await row.dispatchEvent("touchend", { touches: [], changedTouches: [touch] });
+      await row.dispatchEvent("click");
+      await expect(page.getByRole("menuitem", { name: /Status/ })).toBeVisible();
+      await expect(page).toHaveURL(/\/team\/PF/);
+      await page.keyboard.press("Escape");
+
       // Comments: react from the menu.
       await page.goto("/issue/PF-1");
       const comment = page.getByText("Paid through the bank app.");

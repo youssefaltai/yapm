@@ -85,7 +85,80 @@ export function contextMenu(build: () => ContextEntry[]) {
   return (event: MouseEvent) => openContextMenu(event, build());
 }
 
+/**
+ * iOS Safari never sends `contextmenu`, so a long press sends one, like a native app. Where the
+ * browser sends its own (Android), whichever comes first wins and the other is dropped.
+ */
+function useLongPress() {
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let start: { x: number; y: number } | null = null;
+    let opened = false;
+    const cancel = () => {
+      clearTimeout(timer);
+      start = null;
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      cancel();
+      opened = false;
+      const touch = event.touches[0];
+      if (event.touches.length !== 1 || !touch || !(event.target instanceof Element)) return;
+      const target = event.target;
+      start = { x: touch.clientX, y: touch.clientY };
+      timer = setTimeout(() => {
+        const { x, y } = start ?? { x: 0, y: 0 };
+        start = null;
+        const menu = new window.MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+        });
+        opened = !target.dispatchEvent(menu);
+      }, 500);
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (start && touch && Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 10) {
+        cancel();
+      }
+    };
+    // The press that opened the menu doesn't also click what's under it.
+    const onClick = (event: Event) => {
+      if (!opened) return;
+      opened = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onNative = (event: Event) => {
+      if (!event.isTrusted) return;
+      if (opened) {
+        event.preventDefault();
+        event.stopPropagation();
+      } else cancel();
+    };
+    const listeners = [
+      ["touchstart", onTouchStart],
+      ["touchmove", onTouchMove],
+      ["touchend", cancel],
+      ["touchcancel", cancel],
+      ["click", onClick],
+      ["contextmenu", onNative],
+    ] as const;
+    for (const [type, listener] of listeners) {
+      window.addEventListener(type, listener as EventListener, { capture: true, passive: false });
+    }
+    return () => {
+      cancel();
+      for (const [type, listener] of listeners) {
+        window.removeEventListener(type, listener as EventListener, { capture: true });
+      }
+    };
+  }, []);
+}
+
 export function ContextMenuHost() {
+  useLongPress();
   const menu = useStore(contextStore);
   return menu ? <ContextMenu key={`${menu.x},${menu.y}`} menu={menu} /> : null;
 }

@@ -22,7 +22,8 @@ import { isAbove } from "./users.js";
 /**
  * Permissions are plain strings. Org changes use their audit action names (`team.create`,
  * `agent.hire`, `agent.retire`, `charter.update`, `user.update`); runners use `tool:<Name>`.
- * A grant for `*` allows everything.
+ * A grant's action may end in `*` to cover every action starting with the rest: `tool:slack__*`
+ * covers every Slack tool, and `*` everything.
  */
 const ACTION = /^[A-Za-z][\w.:*-]{0,79}$/;
 
@@ -38,6 +39,13 @@ async function loadActor(db: HubDb, id: string) {
   return user;
 }
 
+/** Whether a grant's action covers `action`. */
+function covers(grantAction: string, action: string) {
+  return grantAction.endsWith("*")
+    ? action.startsWith(grantAction.slice(0, -1))
+    : grantAction === action;
+}
+
 /** The first standing grant that lets `userId` do `action` on `resource`. */
 async function findGrant(db: HubDb, userId: string, action: string, resource: string | null) {
   const teamIds = db
@@ -50,7 +58,10 @@ async function findGrant(db: HubDb, userId: string, action: string, resource: st
     .where(
       and(
         isNull(grants.revokedAt),
-        inArray(grants.action, [action, "*"]),
+        or(
+          eq(grants.action, action),
+          sql`${grants.action} LIKE '%*' AND substr(${action}, 1, length(${grants.action}) - 1) = substr(${grants.action}, 1, length(${grants.action}) - 1)`,
+        ),
         resource
           ? or(isNull(grants.resource), eq(grants.resource, resource))
           : isNull(grants.resource),
@@ -261,6 +272,8 @@ export interface AlwaysAllowInput {
   teamId?: string | null;
   /** Allow the action on anything, not only this request's resource. */
   anyResource?: boolean | null;
+  /** A wider action that covers the request's, e.g. `tool:slack__*`. */
+  action?: string | null;
 }
 
 export interface GrantCreateInput {
@@ -334,6 +347,9 @@ export async function approveRequest(
   let grantId: string | null = null;
   if (input.always) {
     const { scope } = input.always;
+    const action = input.always.action?.trim() || request.action;
+    if (!covers(action, request.action))
+      throw badRequest(`${action} doesn't cover ${request.action}`);
     const subjectId =
       scope === "user"
         ? request.requesterId
@@ -343,7 +359,7 @@ export async function approveRequest(
     const row = await grantRow(
       ctx,
       {
-        action: request.action,
+        action,
         resource: input.always.anyResource ? null : request.resource,
         scope,
         subjectId,

@@ -290,6 +290,11 @@ const AlwaysAllowInput = builder.inputType("AlwaysAllowInput", {
       required: false,
       description: "Allow it on anything, not only this resource.",
     }),
+    action: t.string({
+      required: false,
+      description:
+        "A wider action that covers this one, e.g. `tool:slack__*` for every Slack tool.",
+    }),
   }),
 });
 

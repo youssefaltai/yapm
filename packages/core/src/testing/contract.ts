@@ -3891,5 +3891,50 @@ export function hubContract(
       await mcp("archive_issue_status", { id: errands.id });
       expect(await names()).not.toContain("Chores");
     });
+
+    it("always allows a whole server's tools, or only its read-only ones", async () => {
+      await client.graphql('mutation { agentHire(input: { name: "Scout" }) { success } }');
+      const scout = await agentToken("Scout");
+      const use = async (action: string, resource: string | null = null) =>
+        (
+          await client.graphql<{ permissionUse: { allowed: boolean } }>(
+            "mutation($a: String!, $r: String) { permissionUse(action: $a, resource: $r) { allowed } }",
+            { a: action, r: resource },
+            scout.token,
+          )
+        ).data?.permissionUse.allowed;
+      const ask = async (action: string, resource: string | null = null) =>
+        (
+          await client.graphql<{ requestCreate: { request: { id: string } } }>(
+            'mutation($a: String!, $r: String) { requestCreate(input: { title: $a, action: $a, resource: $r, reason: "Work." }) { request { id } } }',
+            { a: action, r: resource },
+            scout.token,
+          )
+        ).data?.requestCreate.request.id;
+      const approve = (id: string | undefined, always: Record<string, unknown>) =>
+        client.graphql(
+          "mutation($id: String!, $always: AlwaysAllowInput!) { requestApprove(id: $id, alwaysAllow: $always) { success } }",
+          { id, always },
+        );
+
+      // Read-only tools still need a grant.
+      expect(await use("tool:slack__slack_read_channel", "readOnly")).toBe(false);
+      const read = await ask("tool:slack__slack_read_channel", "readOnly");
+      // The wider action must cover the one asked for.
+      const wrong = await approve(read, { scope: "user", action: "tool:github__*" });
+      expect(wrong.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      expect((await approve(read, { scope: "user", action: "tool:slack__*" })).errors).toBe(
+        undefined,
+      );
+      expect(await use("tool:slack__slack_search", "readOnly")).toBe(true);
+      expect(await use("tool:slack__slack_send_message")).toBe(false);
+      expect(await use("tool:slackbot__chat", "readOnly")).toBe(false);
+
+      // All of a server's tools, read-only or not.
+      const send = await ask("tool:slack__slack_send_message");
+      await approve(send, { scope: "user", action: "tool:slack__*", anyResource: true });
+      expect(await use("tool:slack__slack_delete_message")).toBe(true);
+      expect(await use("tool:github__create_issue")).toBe(false);
+    });
   });
 }

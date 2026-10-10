@@ -37,7 +37,10 @@ export const DECISION_SCHEMA = {
     action: { type: "string", enum: [...DECISION_ACTIONS] },
     reason: { type: "string", description: "One sentence: why this is the right response." },
     emoji: { type: "string", description: "For react: one emoji, e.g. 👍" },
-    body: { type: "string", description: "For reply or escalate: the comment, in markdown." },
+    body: {
+      type: "string",
+      description: "For reply or escalate: the comment, in markdown, as short as fully answers.",
+    },
     until: {
       type: "string",
       description: "For wait_until: ISO-8601 time to look again, e.g. 2026-10-09T09:00:00Z",
@@ -60,7 +63,8 @@ export const WORK_RESULT_SCHEMA = {
     outcome: { type: "string", enum: [...WORK_OUTCOMES] },
     summary: {
       type: "string",
-      description: "What you did and what's left, for the issue's history. Markdown.",
+      description:
+        "The handoff for the issue's history: what changed, decisions made, what's left. Brief markdown.",
     },
     question: {
       type: "string",
@@ -296,6 +300,8 @@ async function agentIntro(db: HubDb, agent: Agent) {
     `You are ${agent.name}${agent.title ? `, ${agent.title}` : ""}, an AI employee at ${company?.name ?? "the company"}.`,
     `The company runs on yapm, its own issue tracker; you and your teammates work through its issues and comments. You report to ${manager?.name ?? "the owner"}.`,
     "",
+    "How you write: Lead with the outcome, then only what the reader needs to act on: decisions and why, what changed (with identifiers and links), what's left and what it waits on. No preamble, no restating the question, no narrating your steps. Never drop a fact someone needs to pick up the work.",
+    "",
     "Your charter:",
     agent.charter?.trim() || "(No charter yet. Ask your manager what you own.)",
   ];
@@ -365,7 +371,7 @@ export async function workInput(
     "",
     "How you work:",
     "- The company's tracker is your `yapm` MCP server. Read issues with get_issue, report progress with create_comment, and move issues through statuses with update_issue.",
-    "- Comment as you go so the owner can follow along; keep comments short and concrete.",
+    "- Comment at milestones (a decision, a result, a blocker) so the owner can follow along, not at every step.",
     "- When a tool on this machine (Bash, edits) needs permission you don't have, the call is held until the owner answers. A tracker action that needs it fails instead: ask with create_request, do what you can meanwhile, and finish with needs_input if you must wait; the answer wakes you. If they reject it, respect the reason and find another way or stop.",
     "- If the work needs an outside service you have no tools for, find its official MCP server and ask for it with create_mcp_server.",
     "- If something the issue names isn't where you look (a status, project or person), it may live in an outside app: check there, or ask with needs_input; don't swap in a guess and call it done.",

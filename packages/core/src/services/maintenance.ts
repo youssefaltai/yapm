@@ -1,4 +1,4 @@
-import { issues, teams, users } from "@life-os/schema";
+import { issues, teams, users } from "@yapm/schema";
 import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { type AuditInput, audit } from "../audit.js";
 import { commit, type HubDb } from "../db.js";

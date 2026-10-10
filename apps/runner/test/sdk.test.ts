@@ -33,13 +33,13 @@ describe("sdk engine", () => {
       run({
         mcpServers: {
           github: { type: "http", url: "https://api.githubcopilot.com/mcp/" },
-          "life-os": { type: "http", url: "https://elsewhere.example/mcp" },
+          yapm: { type: "http", url: "https://elsewhere.example/mcp" },
         },
       }),
     );
     const servers = calls[0]?.mcpServers as Record<string, { url: string }>;
     expect(servers.github?.url).toBe("https://api.githubcopilot.com/mcp/");
-    expect(servers["life-os"]?.url).toBe("http://localhost/mcp");
+    expect(servers["yapm"]?.url).toBe("http://localhost/mcp");
   });
 
   it("keeps the owner's claude.ai connectors out of agent sessions", async () => {

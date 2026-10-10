@@ -24,7 +24,7 @@ export interface Realtime {
   publish(event: HubEvent): void | Promise<void>;
 }
 
-export const CLIENT_ID_HEADER = "x-life-os-client";
+export const CLIENT_ID_HEADER = "x-yapm-client";
 
 /** Publishes an event; a failed broadcast never fails the change it reports. */
 export async function announce(realtime: Realtime | undefined, event: HubEvent) {

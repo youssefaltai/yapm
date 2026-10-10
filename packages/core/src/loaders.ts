@@ -14,7 +14,7 @@ import {
   teams,
   users,
   workflowStates,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import DataLoader from "dataloader";
 import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { HubDb } from "./db.js";

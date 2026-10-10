@@ -308,7 +308,7 @@ function PushBanner() {
     return (
       <p className="m-3 rounded-lg border border-line bg-panel px-3 py-2.5 text-[13px] text-muted">
         To get notifications on your iPhone, tap Share, then <b>Add to Home Screen</b>, and open
-        Life OS from there.
+        yapm from there.
       </p>
     );
   if (state !== "off") return null;

@@ -1,5 +1,5 @@
-import { createApiToken } from "@life-os/core";
-import { comments, notifications, projectUpdates, requests, users } from "@life-os/schema";
+import { createApiToken } from "@yapm/core";
+import { comments, notifications, projectUpdates, requests, users } from "@yapm/schema";
 import { describe, expect, it } from "vitest";
 import { createNodeApp } from "../src/app.js";
 import { openDatabase } from "../src/db.js";

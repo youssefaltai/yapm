@@ -1,4 +1,4 @@
-import { issueSubscriptions, type NotificationType, notifications, users } from "@life-os/schema";
+import { issueSubscriptions, type NotificationType, notifications, users } from "@yapm/schema";
 import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

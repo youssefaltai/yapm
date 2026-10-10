@@ -1,7 +1,7 @@
-# Life OS: a Linear clone run by AI employees
+# yapm: a Linear clone run by AI employees
 
 **Status:** v4: self-hostable on any platform, agents on the Claude Agent SDK with the owner's own subscription · 2026-10-08
-**Repo:** github.com/youssefaltai/ai-life-os (empty today)
+**Repo:** github.com/youssefaltai/yapm (empty today)
 
 ## 1. The idea in one paragraph
 
@@ -131,7 +131,7 @@ Agents connect outside tools themselves; you only answer requests.
 3. On the request you sign in (the provider sends you back to `/api/mcp/oauth/callback`) or paste the token, then answer as usual: **Approve once** (this agent's next run), **Always allow** (a grant whose scope says which agents get it) or **Reject**. Approval waits until the server is connected.
 4. The answer resumes the agent. Each claim hands the run the connected servers its agent may use, in Claude Code's `mcpServers` shape with the secret filled in; the hub refreshes OAuth tokens as it hands them out. Every tool call on them still goes through tool grants.
 
-Sign-ins are encrypted on the hub with AES-GCM under `LIFE_OS_SECRET`; without it the hub refuses to store one.
+Sign-ins are encrypted on the hub with AES-GCM under `YAPM_SECRET`; without it the hub refuses to store one.
 
 ## 7. How agents think: event-driven, structured, cheap
 

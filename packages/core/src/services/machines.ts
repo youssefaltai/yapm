@@ -1,4 +1,4 @@
-import { machineSetupTokens, machines, users } from "@life-os/schema";
+import { machineSetupTokens, machines, users } from "@yapm/schema";
 import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId, randomToken, sha256Hex } from "../crypto.js";

@@ -1,4 +1,4 @@
-// Life OS service worker: shows Web Push notifications and opens the right screen on tap.
+// yapm service worker: shows Web Push notifications and opens the right screen on tap.
 // It doesn't cache anything; the app always loads fresh from the hub.
 
 self.addEventListener("install", () => self.skipWaiting());
@@ -9,10 +9,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "Life OS", body: event.data ? event.data.text() : "" };
+    data = { title: "yapm", body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || "Life OS", {
+    self.registration.showNotification(data.title || "yapm", {
       body: data.body || "",
       tag: data.tag,
       renotify: Boolean(data.tag),

@@ -1,9 +1,10 @@
 {
-  "name": "@life-os/hub-node",
+  "name": "@yapm/hub-node",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "Runs the hub on Node.js with a SQLite file, for any VPS or Docker host.",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsup",
@@ -14,8 +15,8 @@
   "dependencies": {
     "@hono/node-server": "2.1.3",
     "@libsql/client": "0.18.0",
-    "@life-os/core": "workspace:*",
-    "@life-os/schema": "workspace:*",
+    "@yapm/core": "workspace:*",
+    "@yapm/schema": "workspace:*",
     "drizzle-orm": "0.45.3",
     "hono": "4.13.13",
     "ws": "8.18.3"

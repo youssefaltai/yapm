@@ -1,6 +1,6 @@
 {
-  "name": "Life OS",
-  "short_name": "Life OS",
+  "name": "yapm",
+  "short_name": "yapm",
   "description": "Run your life like a company, with AI agents as your employees.",
   "start_url": "/inbox",
   "scope": "/",

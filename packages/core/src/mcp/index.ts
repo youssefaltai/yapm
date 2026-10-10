@@ -22,7 +22,7 @@ const tools = [
   ...mcpServerTools,
 ];
 
-const INSTRUCTIONS = `This is Life OS, the company's own issue tracker. You are one of its members.
+const INSTRUCTIONS = `This is yapm, the company's own issue tracker. You are one of its members.
 Work happens in issues: read them with get_issue and list_my_issues, report progress with create_comment,
 and move issues through their team's statuses with update_issue. Address teammates by name.
 Prefer a reaction over a comment when you only need to acknowledge something.`;
@@ -31,7 +31,7 @@ Prefer a reaction over a comment when you only need to acknowledge something.`;
 export async function mcpHandler(c: Context<HubEnv>) {
   const viewer = c.var.viewer;
   if (!viewer) {
-    c.header("WWW-Authenticate", 'Bearer realm="life-os"');
+    c.header("WWW-Authenticate", 'Bearer realm="yapm"');
     throw new HTTPException(401, { message: "Send an API token: Authorization: Bearer los_…" });
   }
   let body: unknown;
@@ -73,7 +73,7 @@ export async function mcpHandler(c: Context<HubEnv>) {
       return result;
     },
   };
-  const info = { name: "life-os", version: deps.config.version, instructions: INSTRUCTIONS };
+  const info = { name: "yapm", version: deps.config.version, instructions: INSTRUCTIONS };
   const messages = Array.isArray(body) ? body : [body];
   const responses = [];
   for (const message of messages) {

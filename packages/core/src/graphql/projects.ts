@@ -10,7 +10,7 @@ import {
   projectTeams,
   projectUpdates,
   teams,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import {
   and,
   asc,

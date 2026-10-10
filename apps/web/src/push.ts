@@ -3,7 +3,7 @@ import { graphql } from "./api.js";
 import { mutate, toast } from "./data.js";
 import { navigate } from "./router.js";
 
-// Web Push for the installed app. iPhones support it only once Life OS is added to the
+// Web Push for the installed app. iPhones support it only once yapm is added to the
 // Home Screen, so the Inbox explains that step when it's missing.
 
 export function registerServiceWorker() {

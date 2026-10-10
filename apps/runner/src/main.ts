@@ -23,7 +23,7 @@ interface Config {
   mcpServers?: Options["mcpServers"];
 }
 
-const home = process.env.LIFE_OS_RUNNER_HOME ?? join(homedir(), ".life-os-runner");
+const home = process.env.YAPM_RUNNER_HOME ?? join(homedir(), ".yapm-runner");
 const configPath = join(home, "config.json");
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
@@ -33,7 +33,7 @@ async function loadConfig(): Promise<Config> {
     return JSON.parse(await readFile(configPath, "utf8")) as Config;
   } catch {
     throw new Error(
-      "This machine isn't connected yet. Copy the install command from Machines in Life OS.",
+      "This machine isn't connected yet. Copy the install command from Machines in yapm.",
     );
   }
 }
@@ -58,7 +58,7 @@ function machineName() {
 const logFile = join(home, "runner.log");
 const say = (line: string) => console.log(line);
 
-const USAGE = `life-os-runner: runs your company's agents on this machine.
+const USAGE = `yapm-runner: runs your company's agents on this machine.
 
   enrol --hub <url> [--token <setup token>] [--name <name>] [--tags a,b] [--capacity 2]
         Connects this machine to the hub. With a setup token from Machines it is approved
@@ -118,7 +118,7 @@ async function main() {
       say(`"${name}" is connected to ${hub.url}.`);
     } else {
       say(`Pairing code: ${enrolment.pairingCode}`);
-      say(`Approve "${name}" at ${enrolment.approveAt}, then run: life-os-runner start`);
+      say(`Approve "${name}" at ${enrolment.approveAt}, then run: yapm-runner start`);
     }
     return;
   }
@@ -135,7 +135,7 @@ async function main() {
       await installService(
         {
           command: [process.execPath, fileURLToPath(import.meta.url), "start"],
-          env: { LIFE_OS_RUNNER_HOME: home, PATH: process.env.PATH ?? "/usr/bin:/bin" },
+          env: { YAPM_RUNNER_HOME: home, PATH: process.env.PATH ?? "/usr/bin:/bin" },
           logFile,
         },
         say,
@@ -146,7 +146,7 @@ async function main() {
       await uninstallService(say);
       return;
     }
-    throw new Error("Say what to do: life-os-runner service install, or service uninstall");
+    throw new Error("Say what to do: yapm-runner service install, or service uninstall");
   }
 
   if (command === "logs") {

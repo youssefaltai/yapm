@@ -45,12 +45,15 @@ jobs:
         run: node scripts/ensure-d1.mjs
       - if: steps.secrets.outputs.ready == 'true'
         name: Build the web app
-        run: pnpm --filter @life-os/web build
+        run: pnpm --filter @yapm/web build
       - if: steps.secrets.outputs.ready == 'true'
         name: Apply database migrations
         working-directory: apps/hub-cloudflare
-        run: npx wrangler d1 migrations apply life-os --remote
+        run: npx wrangler d1 migrations apply yapm --remote
       - if: steps.secrets.outputs.ready == 'true'
         name: Deploy the Worker
         working-directory: apps/hub-cloudflare
-        run: npx wrangler deploy --var LIFE_OS_VERSION:${GITHUB_SHA::7}
+        # Set the repository variable HUB_DOMAIN to serve the hub on your own domain.
+        env:
+          HUB_DOMAIN: ${{ vars.HUB_DOMAIN }}
+        run: npx wrangler deploy --var YAPM_VERSION:${GITHUB_SHA::7} ${HUB_DOMAIN:+--domain "$HUB_DOMAIN"}

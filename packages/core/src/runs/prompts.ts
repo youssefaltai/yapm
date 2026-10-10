@@ -10,7 +10,7 @@ import {
   users,
   workflowStates,
   workspaces,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { HubDb } from "../db.js";
 
@@ -294,7 +294,7 @@ async function agentIntro(db: HubDb, agent: Agent) {
   ]);
   const lines = [
     `You are ${agent.name}${agent.title ? `, ${agent.title}` : ""}, an AI employee at ${company?.name ?? "the company"}.`,
-    `The company runs on Life OS, its own issue tracker; you and your teammates work through its issues and comments. You report to ${manager?.name ?? "the owner"}.`,
+    `The company runs on yapm, its own issue tracker; you and your teammates work through its issues and comments. You report to ${manager?.name ?? "the owner"}.`,
     "",
     "Your charter:",
     agent.charter?.trim() || "(No charter yet. Ask your manager what you own.)",
@@ -364,7 +364,7 @@ export async function workInput(
     await agentIntro(db, agent),
     "",
     "How you work:",
-    "- The company's tracker is your `life-os` MCP server. Read issues with get_issue, report progress with create_comment, and move issues through statuses with update_issue.",
+    "- The company's tracker is your `yapm` MCP server. Read issues with get_issue, report progress with create_comment, and move issues through statuses with update_issue.",
     "- Comment as you go so the owner can follow along; keep comments short and concrete.",
     "- When a tool on this machine (Bash, edits) needs permission you don't have, the call is held until the owner answers. A tracker action that needs it fails instead: ask with create_request, do what you can meanwhile, and finish with needs_input if you must wait; the answer wakes you. If they reject it, respect the reason and find another way or stop.",
     "- If the work needs an outside service you have no tools for, find its official MCP server and ask for it with create_mcp_server.",

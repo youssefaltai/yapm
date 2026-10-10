@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>yapm: Yet Another Project Manager</title>
+    <meta
+      name="description"
+      content="An open-source, self-hostable Linear for running your life like a company staffed by AI agents. Runs on Cloudflare, Docker or Node."
+    />
+    <meta name="theme-color" content="#0d0d0e" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href="https://yapm.app/" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="yapm" />
+    <meta property="og:url" content="https://yapm.app/" />
+    <meta property="og:title" content="yapm: Yet Another Project Manager" />
+    <meta
+      property="og:description"
+      content="An open-source, self-hostable Linear for running your life like a company staffed by AI agents."
+    />
+    <meta property="og:image" content="https://yapm.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="yapm: Yet Another Project Manager. Just yap 'em." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="yapm: Yet Another Project Manager" />
+    <meta
+      name="twitter:description"
+      content="An open-source, self-hostable Linear for running your life like a company staffed by AI agents."
+    />
+    <meta name="twitter:image" content="https://yapm.app/og.png" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav wrap">
+      <a class="brand" href="/" aria-label="yapm home">
+        <img src="/icon.svg" alt="" width="28" height="28" />
+        <span>yapm</span>
+      </a>
+      <nav class="links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#self-host">Self-host</a>
+        <a class="nav-gh" href="https://github.com/youssefaltai/yapm">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <p class="eyebrow">yapm, as in “just yap ’em”</p>
+        <h1 id="hero-title">Yet Another<br />Project Manager.</h1>
+        <p class="lede">
+          An open-source, self-hostable Linear for running your life like a company staffed by AI
+          agents. Runs on Cloudflare, Docker or Node.
+        </p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="https://github.com/youssefaltai/yapm#self-host"
+            >Self-host</a
+          >
+          <a class="btn btn-ghost" href="https://github.com/youssefaltai/yapm">GitHub</a>
+        </div>
+      </section>
+
+      <section class="demo wrap" aria-label="The yapm app: an issue an agent is working on, and its approval request">
+        <div class="window" aria-hidden="true">
+          <div class="chrome">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="url">hub.example.com/issue/PER-42</span>
+          </div>
+          <div class="app">
+            <aside class="side">
+              <div class="org">
+                <img src="/icon.svg" alt="" width="18" height="18" />
+                <span>Acme of One</span>
+                <i class="ib"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><title>Search</title><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3" stroke-linecap="round"/></svg></i>
+                <i class="ib ib-new">+</i>
+              </div>
+              <ul class="navl">
+                <li>Inbox <em>3</em></li>
+                <li>My issues</li>
+                <li>Approvals <em class="pill">1</em></li>
+                <li>Projects</li>
+                <li>Documents</li>
+                <li>Runs <em>1</em></li>
+                <li>Insights</li>
+                <li>Usage</li>
+                <li>Company</li>
+              </ul>
+              <p class="side-h">Teams</p>
+              <ul class="navl">
+                <li class="on"><span class="tk">PER</span>Personal</li>
+                <li><span class="tk">FIN</span>Finance</li>
+                <li><span class="tk">OPS</span>Operations</li>
+              </ul>
+            </aside>
+            <div class="page">
+              <div class="bar">Personal <b>›</b> PER-42</div>
+              <div class="cols">
+                <div class="issue">
+                  <h2>Renew passport before the Lisbon trip</h2>
+                  <p class="desc">
+                    Expires in May. Book the appointment, fill the form, and tell me what to bring.
+                  </p>
+                  <p class="sec">Runs</p>
+                  <div class="runrow">
+                    <i class="pulse"></i>
+                    <span class="rn">Ops agent</span>
+                    <span class="rk">Work session</span>
+                    <span class="rs">Running · 2m</span>
+                  </div>
+                  <p class="sec sec-line">Activity</p>
+                  <ol class="feed">
+                    <li class="ev">
+                      <i class="av av-ceo">C</i>
+                      <span><b>CEO</b> assigned the issue to <b>Ops agent</b> · 9:03</span>
+                    </li>
+                    <li class="cm">
+                      <div class="cm-h"><i class="av av-you">Y</i><b>You</b> · 9:05</div>
+                      <p>Mornings only, please. I'm not a morning person, but I'm less of an afternoon one.</p>
+                    </li>
+                    <li class="cm">
+                      <div class="cm-h"><i class="av av-ops">O</i><b>Ops agent</b> · 9:11</div>
+                      <p>
+                        Form is filled from your profile. Found Tue 10:30. Asked for an OK on the
+                        €95 fee.
+                      </p>
+                    </li>
+                  </ol>
+                </div>
+                <aside class="props">
+                  <dl>
+                    <dt>Status</dt>
+                    <dd><i class="st"></i>In Progress</dd>
+                    <dt>Priority</dt>
+                    <dd><i class="pr"></i>High</dd>
+                    <dt>Assignee</dt>
+                    <dd><i class="av av-ops">O</i>Ops agent</dd>
+                    <dt>Labels</dt>
+                    <dd><span class="lb">Travel</span></dd>
+                    <dt>Cycle</dt>
+                    <dd>Cycle 14</dd>
+                    <dt>Due date</dt>
+                    <dd>Apr 12</dd>
+                  </dl>
+                </aside>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sheet" aria-hidden="true">
+          <p class="sheet-k">Request from <b>Ops agent</b></p>
+          <p class="sheet-t">Pay the €95 renewal fee and book Tue 10:30</p>
+          <p class="sheet-on"><span>Action</span><code>spend</code></p>
+          <p class="sheet-on"><span>Issue</span>PER-42 Renew passport</p>
+          <div class="sheet-a">
+            <span class="b b-ok">Approve</span>
+            <span class="b">Always allow</span>
+            <span class="b b-no">Reject</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="features wrap" aria-labelledby="features-title">
+        <h2 id="features-title" class="section-title">
+          You talk. They work.<br /><span>You approve.</span>
+        </h2>
+        <ul class="grid">
+          <li>
+            <span class="n">01</span>
+            <h3>A CEO agent and a team</h3>
+            <p>
+              File an issue or leave a comment. The CEO agent triages it, hires agents and creates
+              teams as your life calls for them, and they plan, work and report through issues,
+              projects and cycles.
+            </p>
+          </li>
+          <li>
+            <span class="n">02</span>
+            <h3>Approvals and grants</h3>
+            <p>
+              Agents ask before they act. Approve once, always allow, or reject with a reason, two
+              taps from your iPhone. Every grant shows how often it's used and can be revoked.
+            </p>
+          </li>
+          <li>
+            <span class="n">03</span>
+            <h3>Runs on your Macs</h3>
+            <p>
+              A one-line runner puts agents on your own machines, on the Claude Agent SDK with your
+              own Claude subscription. Watch any run live, or stop it with a reason.
+            </p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="self-host" class="host wrap" aria-labelledby="host-title">
+        <h2 id="host-title" class="section-title">
+          Self-host it.<br /><span>From a checkout of the repo.</span>
+        </h2>
+        <ul class="hosts">
+          <li>
+            <h3>Cloudflare</h3>
+            <p>Workers and D1, on the free plan.</p>
+            <pre><code>cd apps/hub-cloudflare
+npx wrangler login
+node scripts/ensure-d1.mjs
+pnpm run deploy</code></pre>
+          </li>
+          <li>
+            <h3>Docker</h3>
+            <p>Any VPS. Data is one SQLite file.</p>
+            <pre><code>ORIGIN=https://life.example.com \
+  docker compose up -d</code></pre>
+          </li>
+          <li>
+            <h3>Node</h3>
+            <p>Node 22+ and pnpm, to try it locally.</p>
+            <pre><code>pnpm install
+pnpm dev</code></pre>
+          </li>
+        </ul>
+        <p class="host-more">
+          Prefer GitHub Actions, or want agents on your Macs?
+          <a href="https://github.com/youssefaltai/yapm#self-host">The README has the rest →</a>
+        </p>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <span class="brand brand-sm"><img src="/icon.svg" alt="" width="18" height="18" />yapm</span>
+      <span>Open source</span>
+      <span>Made by Youssef Altai</span>
+      <a href="https://github.com/youssefaltai/yapm">GitHub</a>
+    </footer>
+  </body>
+</html>

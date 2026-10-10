@@ -437,7 +437,7 @@ export function projectContextMenu(p: ProjectRow): ContextEntry[] {
       onSelect: () => createDocument(p.id),
     },
     "divider",
-    ...linkEntries(paths.project(p.id)),
+    ...linkEntries({ path: paths.project(p.id), name: p.name }),
     "divider",
     { id: "archive", icon: icon("archive"), label: "Archive…", onSelect: () => archiveProject(p) },
   ];

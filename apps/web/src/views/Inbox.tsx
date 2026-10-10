@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { linkEntries } from "../actions.js";
+import { issueCopyable, linkEntries } from "../actions.js";
 import { type ContextEntry, contextMenu } from "../contextMenu.js";
 import { mutate, toast, useQuery } from "../data.js";
 import { plainText } from "../editor/plain.js";
@@ -148,7 +148,8 @@ async function archive(g: Group) {
 }
 
 function notificationMenu(g: Group, open: () => void): ContextEntry[] {
-  const path = pathOf(g.latest);
+  const n = g.latest;
+  const path = pathOf(n);
   return [
     { id: "open", icon: icon("open"), label: "Open", onSelect: open },
     g.read
@@ -165,7 +166,11 @@ function notificationMenu(g: Group, open: () => void): ContextEntry[] {
           onSelect: () => markRead(g, true),
         },
     "divider",
-    ...(path ? linkEntries(path) : []),
+    ...(path
+      ? linkEntries(
+          n.request ? { path } : n.issue ? issueCopyable(n.issue) : { path, name: n.project?.name },
+        )
+      : []),
     "divider",
     { id: "archive", icon: icon("archive"), label: "Archive", onSelect: () => archive(g) },
   ];

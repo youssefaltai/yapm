@@ -7,6 +7,7 @@ import {
   type IssueTemplate,
   type Label,
   mutate,
+  mutateEach,
   PRIORITIES,
   type Team,
   toast,
@@ -466,19 +467,17 @@ export function relationMenu(issue: Issue): MenuSpec {
   };
 }
 
-export async function archiveIssues(issues: Issue[]) {
-  for (const issue of issues) {
-    await mutate("mutation($id: String!) { issueArchive(id: $id) { success } }", { id: issue.id });
-  }
-}
+export const archiveIssues = (issues: Issue[]) =>
+  mutateEach(
+    issues.map((i) => i.id),
+    "issueArchive",
+  );
 
-async function unarchiveIssues(issues: Issue[]) {
-  for (const issue of issues) {
-    await mutate("mutation($id: String!) { issueUnarchive(id: $id) { success } }", {
-      id: issue.id,
-    });
-  }
-}
+const unarchiveIssues = (issues: Issue[]) =>
+  mutateEach(
+    issues.map((i) => i.id),
+    "issueUnarchive",
+  );
 
 // Context menus -------------------------------------------------------------
 

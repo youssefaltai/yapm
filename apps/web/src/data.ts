@@ -261,6 +261,24 @@ export async function mutate<T>(
   }
 }
 
+/**
+ * Runs one mutation on each id, ten to a request: `field(id: …) { success }`.
+ * Ten keeps each request well inside the Workers limit on database calls.
+ */
+export async function mutateEach(ids: string[], field: string): Promise<boolean> {
+  if (ids.length > 10)
+    return (
+      await Promise.all([mutateEach(ids.slice(0, 10), field), mutateEach(ids.slice(10), field)])
+    ).every(Boolean);
+  if (!ids.length) return true;
+  const params = ids.map((_, i) => `$id${i}: String!`).join(", ");
+  const fields = ids.map((_, i) => `n${i}: ${field}(id: $id${i}) { success }`).join(" ");
+  return !!(await mutate(
+    `mutation(${params}) { ${fields} }`,
+    Object.fromEntries(ids.map((id, i) => [`id${i}`, id])),
+  ));
+}
+
 export interface Toast {
   message: string;
   action?: { label: string; run: () => void };

@@ -1004,6 +1004,22 @@ test.describe
       await expect(page).toHaveURL(/\/team\/PF/);
       await page.keyboard.press("Escape");
 
+      // Projects, documents and teams share Linear's Copy submenu.
+      await page.goto("/projects");
+      await page
+        .getByRole("button", { name: /Pay off the car/ })
+        .first()
+        .click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Copy/ }).hover();
+      await page.getByRole("menuitem", { name: "Copy as Markdown link" }).click();
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(
+        /^\[Pay off the car\]\(http.*\/project\/.+\)$/,
+      );
+      await page.getByRole("link", { name: /Personal Finance/ }).click({ button: "right" });
+      await page.getByRole("menuitem", { name: /Copy/ }).hover();
+      await page.getByRole("menuitem", { name: "Copy ID" }).click();
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("PF");
+
       // Comments: react from the menu.
       await page.goto("/issue/PF-1");
       const comment = page.getByText("Paid through the bank app.");

@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
+  type Copyable,
   commandPalette,
-  copyText,
   createIssueStore,
   createTeamStore,
   linkEntries,
@@ -396,6 +396,7 @@ function Sidebar({
                 icon="team"
                 active={active && view === "all"}
                 menu={() => teamMenu(team)}
+                copy={{ id: team.key, name: team.name }}
               >
                 <span className="flex w-full items-center justify-between">
                   <span className="truncate">{team.name}</span>
@@ -541,13 +542,6 @@ function teamMenu(team: Team): ContextEntry[] {
       label: "Team settings",
       onSelect: () => navigate(paths.teamSettings(team.key)),
     },
-    "divider",
-    {
-      id: "copy-key",
-      icon: icon("copy"),
-      label: "Copy identifier",
-      onSelect: () => copyText(team.key, team.key),
-    },
   ];
 }
 
@@ -556,13 +550,16 @@ function NavLink({
   icon,
   active,
   menu,
+  copy,
   children,
 }: {
   to: string;
   icon: IconName;
   active: boolean;
-  /** Entries for its right-click menu, after opening it in a new tab and copying its link. */
+  /** Entries for its right-click menu, before opening it in a new tab and copying it. */
   menu?: () => ContextEntry[];
+  /** What else to copy with its link, like a team's identifier. */
+  copy?: Omit<Copyable, "path">;
   children: ReactNode;
 }) {
   return (
@@ -572,7 +569,11 @@ function NavLink({
         e.preventDefault();
         navigate(to);
       }}
-      onContextMenu={contextMenu(() => [...(menu?.() ?? []), "divider", ...linkEntries(to)])}
+      onContextMenu={contextMenu(() => [
+        ...(menu?.() ?? []),
+        "divider",
+        ...linkEntries({ ...copy, path: to }),
+      ])}
       aria-current={active ? "page" : undefined}
       className={`relative flex items-center gap-2 rounded-md px-2 py-1.5 ${
         active ? "text-ink" : "text-muted hover:bg-raised/60 hover:text-ink"

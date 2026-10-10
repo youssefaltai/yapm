@@ -2,6 +2,7 @@ node_modules/
 dist/
 .turbo/
 .wrangler/
+.cloudflare/
 data/
 *.db
 *.db-journal

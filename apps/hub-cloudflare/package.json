@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Runs the hub on Cloudflare Workers with D1, serving the web app as static assets.",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "pnpm --filter @yapm/web build && wrangler d1 migrations apply yapm --remote && wrangler deploy",

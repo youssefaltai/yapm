@@ -265,9 +265,11 @@ test.describe
       await expect(page.getByText("Copy this token now.")).toBeVisible();
       await expect(page.getByText(/claude mcp add --transport http yapm/)).toBeVisible();
       agentToken = (await page.locator("code").first().textContent()) ?? "";
+      // New hires report to the CEO unless you pick someone else.
       expect(await mcp("get_user", { query: "me" })).toMatchObject({
         name: "Ada",
         title: "Head of Finance",
+        manager: "CEO",
       });
     });
 

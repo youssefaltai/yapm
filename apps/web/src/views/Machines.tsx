@@ -45,7 +45,7 @@ const MACHINES = `{ machines {
   planUsage { available limits { kind label utilization resetsAt status } }
 } }`;
 
-interface SetupCommand {
+export interface SetupCommand {
   command: string;
   expiresAt: string;
   /** Machines that were already here, so the new one can be spotted when it connects. */
@@ -118,16 +118,7 @@ export function MachinesView() {
   const added = setup ? machines.find((m) => !setup.known.has(m.id)) : undefined;
 
   async function addMachine() {
-    const result = await mutate<{
-      machineSetupTokenCreate: { token: string; expiresAt: string };
-    }>("mutation { machineSetupTokenCreate { token expiresAt } }");
-    if (!result) return;
-    const { token, expiresAt } = result.machineSetupTokenCreate;
-    setSetup({
-      command: `curl -fsSL ${location.origin}/install.sh | sh -s -- --token ${token}`,
-      expiresAt,
-      known: new Set((data?.machines ?? []).map((m) => m.id)),
-    });
+    setSetup(await machineSetup(data?.machines ?? []));
   }
 
   return (
@@ -283,7 +274,21 @@ function ApproveForm({ machine: m }: { machine: Machine }) {
 }
 
 /** The one command that installs, connects and starts the runner on a new machine. */
-function SetupPanel({
+/** A one-time command that adds a machine, remembering which were here so the new one stands out. */
+export async function machineSetup(known: { id: string }[]): Promise<SetupCommand | null> {
+  const result = await mutate<{
+    machineSetupTokenCreate: { token: string; expiresAt: string };
+  }>("mutation { machineSetupTokenCreate { token expiresAt } }");
+  if (!result) return null;
+  const { token, expiresAt } = result.machineSetupTokenCreate;
+  return {
+    command: `curl -fsSL ${location.origin}/install.sh | sh -s -- --token ${token}`,
+    expiresAt,
+    known: new Set(known.map((m) => m.id)),
+  };
+}
+
+export function SetupPanel({
   setup,
   added,
   onDone,

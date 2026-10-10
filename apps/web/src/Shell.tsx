@@ -18,6 +18,7 @@ import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
 import { EmptyState, SelectedPill } from "./states.js";
 import { MenuHost, openMenu, useHotkeys, usePresence } from "./ui.js";
+import { ChatView } from "./views/Chat.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
@@ -137,6 +138,8 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
 
 function RouteView({ route, workspace }: { route: Route; workspace: Workspace }) {
   switch (route.name) {
+    case "chat":
+      return <ChatView workspace={workspace} />;
     case "inbox":
       return <InboxView />;
     case "myIssues":
@@ -300,6 +303,9 @@ function Sidebar({
         </button>
       </div>
       <nav className="mt-4 space-y-0.5">
+        <NavLink to={paths.chat()} icon="chat" active={route.name === "chat"}>
+          Chat
+        </NavLink>
         <NavLink to={paths.inbox()} icon="inbox" active={route.name === "inbox"}>
           <span className="flex w-full items-center justify-between">
             Inbox

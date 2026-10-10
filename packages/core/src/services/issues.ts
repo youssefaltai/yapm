@@ -141,6 +141,23 @@ async function isAgent(db: HubDb, userId: string) {
   return user?.kind === "agent";
 }
 
+/** What the owner files without an assignee goes to the CEO: the first agent reporting to them. */
+async function defaultAssignee(db: HubDb, actorId: string) {
+  const actor = await db
+    .select({ kind: users.kind })
+    .from(users)
+    .where(eq(users.id, actorId))
+    .get();
+  if (actor?.kind !== "owner") return null;
+  const ceo = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.kind, "agent"), eq(users.active, true), eq(users.managerId, actorId)))
+    .orderBy(asc(users.createdAt))
+    .get();
+  return ceo?.id ?? null;
+}
+
 async function checkAssignee(db: HubDb, assigneeId: string) {
   const user = await db
     .select({ active: users.active })
@@ -212,6 +229,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
   if (input.estimate != null) checkEstimate(input.estimate);
   if (input.dueDate) checkDueDate(input.dueDate);
   if (input.assigneeId) await checkAssignee(db, input.assigneeId);
+  const assigneeId = input.assigneeId ?? (await defaultAssignee(db, actorId));
   if (input.parentId) await checkParent(db, null, input.parentId);
   const labelIds = [...new Set(input.labelIds ?? [])];
   await checkLabels(db, team.id, labelIds);
@@ -234,7 +252,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
       stateId: state.id,
       priority,
       estimate: input.estimate ?? null,
-      assigneeId: input.assigneeId ?? null,
+      assigneeId,
       creatorId: actorId,
       parentId: input.parentId ?? null,
       dueDate: input.dueDate ?? null,
@@ -262,7 +280,7 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
           title,
           stateId: state.id,
           priority,
-          assigneeId: input.assigneeId ?? null,
+          assigneeId,
           parentId: input.parentId ?? null,
           labelIds,
           ...(project.projectId ? { projectId: project.projectId } : {}),
@@ -277,12 +295,12 @@ export async function createIssue(ctx: Ctx, input: IssueCreateInput): Promise<st
   ops.push(
     ...subscribe(
       db,
-      [actorId, input.assigneeId, ...mentioned].map((userId) => ({ issueId: id, userId })),
+      [actorId, assigneeId, ...mentioned].map((userId) => ({ issueId: id, userId })),
       now,
     ),
     ...notify(ctx, [
-      ...(input.assigneeId
-        ? [{ userId: input.assigneeId, type: "issueAssignedToYou" as const, issueId: id }]
+      ...(assigneeId
+        ? [{ userId: assigneeId, type: "issueAssignedToYou" as const, issueId: id }]
         : []),
       ...mentioned.map((userId) => ({ userId, type: "issueMention" as const, issueId: id })),
     ]),

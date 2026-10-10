@@ -3,7 +3,7 @@
 const SCENARIOS = [
   {
     chip: "Renew my passport",
-    ask: "Renew my passport before the Lisbon trip, mornings only",
+    ask: "renew my pasport before lisbon mornings only pls",
     title: "Renew passport before the Lisbon trip",
     team: { key: "TRV", name: "Travel" },
     id: "TRV-1",
@@ -17,7 +17,7 @@ const SCENARIOS = [
     done: "Booked Tue 10:30 and paid €95. Bring your old passport and two photos; it's in your calendar.",
     lesson: "The owner only takes morning appointments.",
     reject: {
-      reason: "Not that week, I'm away.",
+      reason: "not that week im away",
       reply: "Understood. I let the slot go and will book the first morning after you're back.",
       lesson: "Check the owner's calendar for trips before booking anything.",
     },
@@ -30,7 +30,7 @@ const SCENARIOS = [
   },
   {
     chip: "Find a cheaper gym",
-    ask: "Cancel my gym and find a cheaper one nearby, I train mornings",
+    ask: "cancel my gym and find a cheaper one near me i go mornings allegedly",
     title: "Cancel the gym and find a cheaper one nearby",
     team: { key: "FIN", name: "Finance", exists: true },
     id: "FIN-17",
@@ -39,16 +39,16 @@ const SCENARIOS = [
     label: "Subscriptions",
     due: "Fri",
     goal: "Comparing gyms within 2 km",
-    work: "FitClub needs 30 days' notice, so the cancellation email is drafted. Best match: Urban Fit, €34 a month, opens at 6am, 900 m away.",
+    work: "Gym & Tonic needs 30 days' notice, so the cancellation email is drafted. Best match: Early Bird Gym, €34 a month, opens at 6am, 900 m away.",
     request: {
-      title: "Send the cancellation email to FitClub",
+      title: "Send the cancellation email to Gym & Tonic",
       action: "send_email",
-      on: "FitClub",
+      on: "Gym & Tonic",
     },
-    done: "Sent. Your last FitClub charge is May 1, and Urban Fit saves you €21 a month. The trial pass is in your inbox.",
+    done: "Sent. Your last Gym & Tonic charge is May 1, and Early Bird Gym saves you €21 a month. The trial pass is in your inbox.",
     lesson: "The owner trains mornings; only suggest places open by 7am.",
     reject: {
-      reason: "Keep it until the contract ends in June.",
+      reason: "keep it till the contract ends in june",
       reply: "Held. I'll send it on May 1 so you lose nothing.",
       lesson: "Check contract end dates before cancelling anything.",
     },
@@ -61,7 +61,7 @@ const SCENARIOS = [
   },
   {
     chip: "Plan Mom's birthday",
-    ask: "Plan Mom's 60th birthday dinner for 12, she's vegetarian",
+    ask: "plan moms 60th bday dinner like 12 ppl shes vegetarian dont let her find out",
     title: "Plan Mom's 60th birthday dinner",
     team: { key: "FAM", name: "Family" },
     id: "FAM-1",
@@ -70,16 +70,16 @@ const SCENARIOS = [
     label: "Family",
     due: "Sat 18",
     goal: "Shortlisting restaurants and inviting family",
-    work: "Shortlisted 3 places with a vegetarian menu and a private room. Top pick: Casa Verde, Sat 7:30pm, €45 a head, €120 deposit to hold it.",
+    work: "Shortlisted 3 places with a vegetarian menu and a private room. Top pick: Casa Lentil, Sat 7:30pm, €45 a head, €120 deposit to hold it.",
     request: {
-      title: "Book Casa Verde for 12 and pay the €120 deposit",
+      title: "Book Casa Lentil for 12 and pay the €120 deposit",
       action: "spend",
       on: "€120",
     },
     done: "Booked for Sat 7:30pm. Invites went to the family group with an RSVP link.",
     lesson: "Mom is vegetarian; check menus first for anything with her.",
     reject: {
-      reason: "Somewhere closer to her place.",
+      reason: "somewhere closer to her place",
       reply: "Got it. Two closer options are on the issue; I'll hold neither until you pick.",
       lesson: "For Mom's events, stay near her place.",
     },
@@ -92,7 +92,7 @@ const SCENARIOS = [
   },
   {
     chip: "Move to Lisbon",
-    ask: "Move me to Lisbon by March: visa, a flat near the river, and movers",
+    ask: "move me to lisbon by march visa flat near the river movers all of it",
     title: "Move to Lisbon by March",
     team: { key: "MOV", name: "Relocation" },
     id: "MOV-1",
@@ -135,7 +135,7 @@ const SCENARIOS = [
     done: "The move is set: visa interview Jan 14, movers Feb 18, keys and utilities Feb 20. Your checklist for each date is on the issue.",
     lesson: "The owner wants quiet streets near the river.",
     reject: {
-      reason: "Too pricey, stay under €1,700.",
+      reason: "too pricey stay under 1700",
       reply:
         "Understood. I'm narrowing it to €1,700 and will bring two new flats tomorrow. The visa and movers carry on.",
       lesson: "The owner's rent ceiling in Lisbon is €1,700.",
@@ -150,8 +150,8 @@ const SCENARIOS = [
   },
   {
     chip: "Moonlight for two clients",
-    ask: "Fix Acme's checkout bug and review Globex's API PR today, and keep their code apart",
-    title: "Clear today's client work for Acme and Globex",
+    ask: "fix the checkout bug for parsnip and review okay labs pr today dont mix there code",
+    title: "Clear today's client work for Parsnip and Okay Labs",
     team: { key: "ENG", name: "Engineering" },
     id: "ENG-1",
     agent: { name: "Engineering Lead", charter: "client work, kept apart per client" },
@@ -162,45 +162,45 @@ const SCENARIOS = [
     plan: "Two clients, two laptops. Each gets its own engineer, who only runs on that client's machine.",
     reports: [
       {
-        name: "Acme Engineer",
-        charter: "Acme's code, on the Acme laptop",
+        name: "Parsnip Engineer",
+        charter: "Parsnip's code, on the Parsnip laptop",
         id: "ENG-2",
-        task: "Fix the double charge at Acme checkout",
-        machine: "acme-macbook",
+        task: "Fix the double charge at Parsnip checkout",
+        machine: "parsnip-macbook",
         done: "opened PR #482 with the fix and a test",
       },
       {
-        name: "Globex Engineer",
-        charter: "Globex's code, on the Globex laptop",
+        name: "Okay Labs Engineer",
+        charter: "Okay Labs' code, on the Okay Labs laptop",
         id: "ENG-3",
-        task: "Review Globex's rate-limit PR",
-        machine: "globex-thinkpad",
+        task: "Review Okay Labs' rate-limit PR",
+        machine: "okaylabs-thinkpad",
         done: "posted 6 review comments on PR #91, one blocking",
       },
     ],
     isolation:
-      "Acme Engineer only runs on acme-macbook, Globex Engineer only on globex-thinkpad, each with its own sign-ins. Neither client's code reaches the other's machine.",
+      "Parsnip Engineer only runs on parsnip-macbook, Okay Labs Engineer only on okaylabs-thinkpad, each with its own sign-ins. Neither client's code reaches the other's machine.",
     work: "Found it: the pay button retries without an idempotency key, so slow networks charge twice. The fix is ready; its test needs a migration on staging.",
     request: {
-      from: "Acme Engineer",
-      title: "Run the migration on Acme's staging database",
+      from: "Parsnip Engineer",
+      title: "Run the migration on Parsnip's staging database",
       action: "tool:Bash",
-      on: "acme-macbook",
+      on: "parsnip-macbook",
     },
-    done: "Both done. Acme: PR #482 is green and ready for your review. Globex: review posted, one blocking comment on retries. Nothing crossed between the two.",
-    lesson: "Acme staging migrations are safe to run before tests.",
+    done: "Both done. Parsnip: PR #482 is green and ready for your review. Okay Labs: review posted, one blocking comment on retries. Nothing crossed between the two.",
+    lesson: "Parsnip staging migrations are safe to run before tests.",
     reject: {
-      reason: "Never touch Acme staging, ask their DBA.",
+      reason: "never touch parsnip staging ask their dba",
       reply:
-        "Understood. I drafted the request to Acme's DBA in your voice; it's on the issue for you to send.",
-      lesson: "Acme staging changes go through their DBA.",
+        "Understood. I drafted the request to Parsnip's DBA in your voice; it's on the issue for you to send.",
+      lesson: "Parsnip staging changes go through their DBA.",
     },
     ritualBy: "Engineering Lead",
     ritual: "Weekdays: standup notes for each client",
     later: {
       id: "ENG-14",
-      title: "Acme on-call handover",
-      text: "Engineering Lead wrote Monday's handover from the week's PRs, on the Acme laptop only. Globex never saw a line of it.",
+      title: "Parsnip on-call handover",
+      text: "Engineering Lead wrote Monday's handover from the week's PRs, on the Parsnip laptop only. Okay Labs never saw a line of it.",
     },
   },
 ];
@@ -352,8 +352,9 @@ async function play(s) {
     typed.textContent += ch;
     await next(22);
   }
+  // Let the prompt sit long enough to read before it's sent.
   document.querySelector(".ask-go").classList.add("ready");
-  await next(500);
+  await next(1800);
 
   page.dataset.stage = "issue";
   $("title").textContent = s.title;

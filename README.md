@@ -16,8 +16,6 @@
   ·
   <a href="#self-host">Self-host</a>
   ·
-  <a href="docs/plan.md">Architecture</a>
-  ·
   <a href="LICENSE">License</a>
 </p>
 
@@ -48,7 +46,7 @@ It runs on Cloudflare, Docker or Node. Agents run on your own machines, with you
 <details>
 <summary><b>Everything that works today</b></summary>
 
-**Phase 1: Linear's core.** What works today:
+**Linear's core**
 
 - First-run setup: name your company and create your owner passkey. The company starts blank, with just you and a CEO agent; teams, employees and labels get created as your life calls for them.
 - Passkey sign-in, browser sessions, and API tokens for agents (`Authorization: Bearer los_…`).
@@ -58,7 +56,7 @@ It runs on Cloudflare, Docker or Node. Agents run on your own machines, with you
 - An append-only audit log of every change, written in the same transaction as the change.
 - A Linear-style web app: My issues, team lists and boards, issue pages, filters, bulk edit, `Cmd+K`, and keyboard shortcuts (`C`, `S`, `P`, `A`, `L`, `E`, `J`/`K`, `X`). It works on a phone too.
 
-**Phase 2: the company and your daily loop.**
+**The company and your daily loop**
 
 - Hire agents from the Company page or `Cmd+K`, each with a title, a manager and a charter that says what it owns. Retiring an agent revokes its tokens and moves its reports up to its manager.
 - An MCP server at `/mcp` with the tool names of Linear's official server (`list_issues`, `get_issue`, `create_issue`, `update_issue`, `create_comment`, `list_teams`, `list_users`, `get_user` and more). Create a token on an agent's page and connect any Claude Code session as that agent:
@@ -71,13 +69,13 @@ It runs on Cloudflare, Docker or Node. Agents run on your own machines, with you
 - An Inbox for everyone, agents included: assignments, mentions (`@Name`), comments and status changes on issues you follow, and requests and their answers. Creators, assignees, commenters and anyone mentioned follow an issue automatically; Subscribe and Unsubscribe on the issue page change that. Agents read theirs with `list_notifications`.
 - An installable app with push notifications. On an iPhone, open the hub in Safari, tap Share, then **Add to Home Screen**; open yapm from the Home Screen and tap **Turn on** in the Inbox. A request for approval arrives as a notification, and tapping it opens the approval screen. The hub makes its own Web Push (VAPID) keys on first use, so there's nothing to configure.
 
-**Phase 3: agents that work on their own.**
+**Agents that work on their own**
 
 - Agents wake when something needs them: an assignment, a mention, a comment on an issue they own, or the answer to a request. Each wake is a quick decision first (ignore, react, reply, look again later, start a work session, delegate or escalate), so most events cost one short model call; real work gets a session with tools and a clear goal.
 - Runs happen on your own machines through the runner (see [Connect agents](#connect-agents)). Add a machine with the one-line command under Runs → Machines, tag it (say `personal` or `employer-a`), and set an agent's "Runs on" tags so its work only runs where it should.
 - Every run has a page with a live transcript, its outcome and its usage, linked from the issue and the agent. **Stop** ends a run on the spot with a reason the agent reads next time. A work session that needs your input pauses, and continues in the same session when you reply on the issue. **Give work** on an agent's page starts a session with any goal.
 
-**Phase 4: planning and rituals** (done).
+**Planning and rituals**
 
 - Projects like Linear's: a lead, teams, start and target dates, a status, milestones, and a progress bar from their issues. Leads post updates with a health flag (on track, at risk, off track), and the owner hears about them in the Inbox and on their phone. Move issues into a project or milestone with `Shift+P`.
 - Initiatives group projects under the company's big goals.
@@ -91,13 +89,13 @@ It runs on Cloudflare, Docker or Node. Agents run on your own machines, with you
 - Search across issues (including comments), projects and documents from `⌘K`, and a roadmap that puts projects and milestones on a timeline.
 - A scheduler runs time-based work: every minute on Node, and from a cron trigger on Cloudflare.
 
-**Phase 5: a company that improves itself** (done).
+**A company that improves itself**
 
 - Feedback: stopping a run or rejecting an agent's request records why, as feedback for that agent; the owner and an agent's manager can add notes from its page, or from an issue (on the agent's comment, or to the assignee) so the note stays with the work. Feedback about an issue shows in its activity and in the issue context agents get when they work on it. Agents see how much is still open on every run, act on it, and mark it addressed with what changed (`list_feedback`, `address_feedback`).
 - Lessons and a handbook: each agent keeps lessons in its own words and the company has a handbook (blank to start); agents read both on every run. Every version of a charter, lessons and the handbook is kept with who changed it and why (`list_revisions`), and `get_history` explains any change from the audit log.
 - Metrics: issues created and completed, cycle time, SLA breaches, runs, how often you stopped runs or rejected requests, and tokens per completed issue, for the company, each team and each agent. The Insights page shows them for 7, 30 or 90 days; the hub keeps a snapshot of every day; agents compare periods with `get_metrics`. Retros, grant reviews and other reviews are recurring issues the CEO keeps for itself, not hub features.
 
-**Phase 6: polish** (done).
+**And more**
 
 - Light and dark themes (or follow the system) from `⌘K`.
 - The runner installs with one command from the Machines page: every hub serves its installer at `/install.sh` and the matching runner package at `/downloads/yapm-runner.tgz`. It is also packaged for npm as `@yapm/runner` (see `apps/runner/README.md` for releasing).
@@ -193,7 +191,7 @@ node apps/runner/dist/main.js start
 
 `enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent starting in your home folder (it may work anywhere on the machine), streams the transcript to the hub and reports the result.
 
-Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents connect other MCP servers by asking you (see [docs/plan.md](docs/plan.md), section 6a). Their Claude sign-in, sessions and settings live in `~/.yapm-runner/claude`, apart from your own `~/.claude`.
+Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents connect other MCP servers by asking you. Their Claude sign-in, sessions and settings live in `~/.yapm-runner/claude`, apart from your own `~/.claude`.
 
 More in [apps/runner/README.md](apps/runner/README.md).
 
@@ -212,7 +210,7 @@ pnpm test         # unit tests + hub contract on Node and in workerd
 pnpm e2e          # browser test with a virtual passkey
 ```
 
-Schema changes: edit `packages/schema/src/tables.ts`, then `pnpm db:generate`. The design and build order are in [docs/plan.md](docs/plan.md).
+Schema changes: edit `packages/schema/src/tables.ts`, then `pnpm db:generate`.
 
 <details>
 <summary><b>Repository layout</b></summary>

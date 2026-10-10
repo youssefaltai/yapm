@@ -248,6 +248,7 @@ const paths = {
     </>
   ),
   open: <path d="M3 8h10M9 4l4 4-4 4" />,
+  send: <path d="M8 13V3M4 7l4-4 4 4" />,
   read: (
     <>
       <circle cx="8" cy="8" r="6" />

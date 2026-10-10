@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { type Member, mutate, useQuery, type Workspace } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
-import { button, Page, PageHeader, PageTitle } from "../layout.js";
+import { icon } from "../icons.js";
+import { Page, PageHeader, PageTitle } from "../layout.js";
 import { EmptyState } from "../states.js";
-import { Avatar, createStore, Kbd, timeAgo, useStore } from "../ui.js";
+import { createStore, timeAgo, useStore } from "../ui.js";
 import { machineSetup, type SetupCommand, SetupPanel } from "./Machines.js";
 import type { RunStatus } from "./Runs.js";
 
@@ -23,6 +24,46 @@ interface Said {
 // The chat isn't saved: it lives here until a reload. Each message is a run for the CEO, and
 // `runId` is the last one that answered, which the next message continues.
 const chatStore = createStore<{ said: Said[]; runId?: string; waiting?: string }>({ said: [] });
+
+// What to ask the CEO comes from the work at hand, with one cheap query and no model: requests
+// waiting on the owner, then open issues, overdue and urgent first. A new company gets starters.
+const STARTERS = ["Plan my week", "What needs my attention?", "Set up a team for my bills"];
+
+const AT_HAND = `{
+  requests(first: 1, filter: { status: [pending] }) { nodes { title } }
+  issues(first: 50, filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
+    nodes { title priority dueDate state { type } }
+  }
+}`;
+
+interface AtHand {
+  requests: { nodes: { title: string }[] };
+  issues: {
+    nodes: { title: string; priority: number; dueDate: string | null; state: { type: string } }[];
+  };
+}
+
+function suggestions(data: AtHand | null | undefined) {
+  if (!data) return [];
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = (i: AtHand["issues"]["nodes"][number]) => !!i.dueDate && i.dueDate < today;
+  const issues = [...data.issues.nodes]
+    .sort(
+      (a, b) =>
+        +overdue(b) - +overdue(a) ||
+        (a.priority || 5) - (b.priority || 5) ||
+        +(b.state.type === "started") - +(a.state.type === "started"),
+    )
+    .map((i) =>
+      overdue(i)
+        ? `"${i.title}" is overdue. What now?`
+        : i.state.type === "started"
+          ? `What's left on "${i.title}"?`
+          : `Make a plan for "${i.title}"`,
+    );
+  const requests = data.requests.nodes.map((r) => `Help me decide on "${r.title}"`);
+  return [...requests, ...issues, ...STARTERS].slice(0, 3);
+}
 
 const RUN = "query($id: String!) { run(id: $id) { status result error } }";
 
@@ -50,6 +91,7 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
     undefined,
     setup ? 3_000 : 15_000,
   );
+  const atHand = useQuery<AtHand>(chat.said.length ? null : AT_HAND);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   // Each sent message starts a fresh editor.
@@ -127,65 +169,109 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end px-4 pt-6 md:px-6">
           {chat.said.length === 0 && (
-            <p className="m-auto text-center text-muted">
-              Tell {name} what you need. This chat isn't saved; what matters ends up in issues and
-              docs.
-            </p>
-          )}
-          <ol aria-label={`Chat with ${name}`} className="space-y-3">
-            {chat.said.map((said, i) => (
-              <li
-                // biome-ignore lint/suspicious/noArrayIndexKey: the thread only grows
-                key={i}
-                className="animate-fade-in rounded-lg border border-line bg-panel px-4 py-3"
+            <div className="m-auto flex animate-rise-in flex-col items-center py-8 text-center">
+              <span
+                className="rounded-full p-5"
+                style={{
+                  background:
+                    "radial-gradient(closest-side, color-mix(in srgb, var(--color-ink) 12%, transparent), transparent)",
+                }}
               >
-                <div className="flex items-center gap-2">
-                  <Avatar
-                    name={said.from === "ceo" ? name : workspace.viewer.name}
-                    kind={said.from === "ceo" ? "agent" : workspace.viewer.kind}
-                  />
-                  <span className="font-medium">
-                    {said.from === "ceo" ? name : workspace.viewer.name}
-                  </span>
-                  <span className="text-faint">{timeAgo(said.at)}</span>
-                </div>
-                {said.failed ? (
-                  <p className="mt-1.5 text-faint">Couldn't reply: {said.body}</p>
-                ) : (
-                  <RichText source={said.body} className="mt-1.5" />
-                )}
-              </li>
-            ))}
-          </ol>
-          {chat.waiting && (
-            <p className="mt-3 animate-fade-in px-1 text-faint">{name} is thinking…</p>
-          )}
-          <div ref={end} className="sticky bottom-0 bg-canvas pt-3 pb-4">
-            <div className="rounded-lg border border-line bg-panel px-4 py-3 focus-within:border-faint">
-              <RichEditor
-                key={sent}
-                label={`Message ${name}`}
-                autoFocus
-                value=""
-                placeholder={`Message ${name}…`}
-                onChange={setBody}
-                onSubmit={() => void send()}
-                className="min-h-6"
-              />
-              <div className="mt-2 flex items-center justify-end gap-2">
-                <span className="text-[12px] text-faint max-sm:hidden">
-                  <Kbd>⌘</Kbd> <Kbd>Enter</Kbd>
-                </span>
-                <button
-                  type="button"
-                  disabled={!body.trim() || busy || !!chat.waiting}
-                  onClick={() => void send()}
-                  className={button("primary")}
-                >
-                  Send
-                </button>
+                <img src="/icon.svg" alt="" className="size-14" />
+              </span>
+              <p className="mt-3 text-muted">
+                Hi {workspace.viewer.name.split(" ")[0]}, I'm {name}.
+              </p>
+              <h2 className="mt-1 text-xl font-medium text-balance">
+                What can I take off your plate?
+              </h2>
+              <div className="mt-6 flex flex-wrap justify-center gap-2">
+                {suggestions(atHand.data).map((text) => (
+                  <button
+                    key={text}
+                    type="button"
+                    onClick={() => {
+                      setBody(text);
+                      setSent((n) => n + 1);
+                    }}
+                    className="max-w-full truncate rounded-full border border-line px-3 py-1.5 text-muted hover:border-faint hover:text-ink"
+                  >
+                    {text}
+                  </button>
+                ))}
               </div>
             </div>
+          )}
+          <ol aria-label={`Chat with ${name}`} className="space-y-5">
+            {chat.said.map((said, i) =>
+              said.from === "owner" ? (
+                <li
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the thread only grows
+                  key={i}
+                  className="ml-auto w-fit max-w-[85%] animate-rise-in rounded-2xl rounded-br-md bg-raised px-4 py-2.5"
+                >
+                  <RichText source={said.body} />
+                </li>
+              ) : (
+                <li
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the thread only grows
+                  key={i}
+                  className="flex animate-fade-in gap-3"
+                >
+                  <img src="/icon.svg" alt="" className="size-6 shrink-0" />
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    {said.failed ? (
+                      <p className="text-critical">Couldn't reply: {said.body}</p>
+                    ) : (
+                      <RichText source={said.body} />
+                    )}
+                    <span className="mt-1 block text-[12px] text-faint">{timeAgo(said.at)}</span>
+                  </div>
+                </li>
+              ),
+            )}
+          </ol>
+          {chat.waiting && (
+            <div className="mt-5 flex animate-fade-in items-center gap-3">
+              <img src="/icon.svg" alt="" className="size-6 shrink-0" />
+              <span role="status" aria-label={`${name} is thinking`} className="flex gap-1">
+                {[0, 1, 2].map((dot) => (
+                  <span
+                    key={dot}
+                    className="size-1.5 animate-typing rounded-full bg-muted"
+                    style={{ animationDelay: `${dot * 150}ms` }}
+                  />
+                ))}
+              </span>
+            </div>
+          )}
+          <div ref={end} className="sticky bottom-0 bg-canvas pt-4 pb-3">
+            <div className="flex items-end gap-2 rounded-2xl border border-line bg-panel py-2 pr-2 pl-4 transition-colors focus-within:border-faint">
+              <div className="max-h-60 min-w-0 flex-1 overflow-y-auto py-1">
+                <RichEditor
+                  key={sent}
+                  label={`Message ${name}`}
+                  autoFocus
+                  value={body}
+                  placeholder={`Message ${name}…`}
+                  onChange={setBody}
+                  onSubmit={() => void send()}
+                  className="min-h-6"
+                />
+              </div>
+              <button
+                type="button"
+                aria-label="Send"
+                disabled={!body.trim() || busy || !!chat.waiting}
+                onClick={() => void send()}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-opacity hover:bg-accent-hover disabled:opacity-30"
+              >
+                {icon("send")}
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[12px] text-faint">
+              Not saved. What matters lands in issues and docs.
+            </p>
           </div>
         </div>
       </div>

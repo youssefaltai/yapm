@@ -1654,7 +1654,49 @@ export function hubContract(
       expect(tagged.body.run.kind).toBe("work");
       await runner(`/runs/${tagged.body.run.id}/complete`, machine.token, {
         status: "completed",
+        sessionId: "session-gym",
         result: { outcome: "done", summary: "Gym is open 6-22." },
+      });
+
+      // The owner follows up on a finished run, like a chat: it carries on in the same session,
+      // and chat runs stay out of Runs.
+      const followUp = (input: Record<string, unknown>) =>
+        gql<{ runCreate: { run: { id: string; status: string } } }>(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id status } } }",
+          { input },
+        );
+      const chat = await followUp({
+        agentId: coachId,
+        goal: "And on Sundays?",
+        chat: true,
+        resumeRunId: tagged.body.run.id,
+      });
+      expect(chat.data?.runCreate.run.status).toBe("queued");
+      const visible = await gql<{ runs: { nodes: { id: string }[] } }>("{ runs { nodes { id } } }");
+      expect(visible.data?.runs.nodes.map((r) => r.id)).not.toContain(chat.data?.runCreate.run.id);
+      const continued = await runner<Claim>("/claim", machine.token, {});
+      expect(continued.body.run).toMatchObject({
+        id: chat.data?.runCreate.run.id,
+        sessionId: "session-gym",
+      });
+      expect(continued.body.input.prompt).toContain("And on Sundays?");
+      // Only a finished run of the same agent can be followed up.
+      const ceoId = people.data?.users.nodes.find((u) => u.name === "CEO")?.id ?? "";
+      const otherAgent = await followUp({
+        agentId: ceoId,
+        goal: "Hi",
+        resumeRunId: tagged.body.run.id,
+      });
+      expect(otherAgent.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const unfinished = await followUp({
+        agentId: coachId,
+        goal: "Hi",
+        resumeRunId: continued.body.run.id,
+      });
+      expect(unfinished.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+      await runner(`/runs/${continued.body.run.id}/complete`, machine.token, {
+        status: "completed",
+        result: { outcome: "done", summary: "Sundays 8-20." },
       });
 
       // A run that pauses on its own request resumes when the owner answers it, on its own issue

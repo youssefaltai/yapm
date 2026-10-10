@@ -122,6 +122,11 @@ export async function authorize(
         .update(grants)
         .set({ useCount: sql`${grants.useCount} + 1`, lastUsedAt: now })
         .where(eq(grants.id, permission.grantId)),
+      // The request that created the grant counts as used from the first use.
+      db
+        .update(requests)
+        .set({ consumedAt: now, updatedAt: now })
+        .where(and(eq(requests.grantId, permission.grantId), isNull(requests.consumedAt))),
     ];
   }
   if (permission.via === "approval") {

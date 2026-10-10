@@ -323,7 +323,7 @@ h1 {
 }
 .app {
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   height: 560px;
 }
 .side {
@@ -335,7 +335,7 @@ h1 {
 .org {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 2px 4px 2px 8px;
   color: var(--fg);
   font-weight: 550;

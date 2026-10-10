@@ -190,7 +190,7 @@ export async function approveMachine(ctx: Ctx, id: string, pairingCode: string) 
   await commit(db, [
     db
       .update(machines)
-      .set({ status: "active", approvedAt: now, updatedAt: now })
+      .set({ status: "active", pairingCode: "", approvedAt: now, updatedAt: now })
       .where(eq(machines.id, id)),
     ...audit(
       db,

@@ -168,29 +168,48 @@ export function AskView({ workspace }: { workspace: Workspace }) {
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-4 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6">
+          {/* On send, the composer steps back and the CEO's logo, the one focal point, gets to work. */}
           <div className="flex animate-rise-in flex-col items-center text-center">
             <span
+              role="status"
+              aria-label={busy ? `${name} is taking it on` : undefined}
               className="rounded-full p-4 md:p-5"
               style={{
                 background:
                   "radial-gradient(closest-side, color-mix(in srgb, var(--color-ink) 12%, transparent), transparent)",
               }}
             >
-              <img src="/icon.svg" alt="" className="size-12 md:size-14" />
+              <img
+                src="/icon.svg"
+                alt=""
+                className={`size-12 md:size-14 ${busy ? "animate-think" : ""}`}
+              />
             </span>
             <p className="mt-3 text-muted">
-              Hi {workspace.viewer.name.split(" ")[0]}, I'm {name}.
+              Hi {workspace.viewer.name.split(" ")[0]},{" "}
+              {name === "CEO" ? "I'm your CEO." : `I'm ${name}, your CEO.`}
             </p>
-            <h2 className="mt-1 text-xl font-medium text-balance">
-              What can I take off your plate?
+            <h2 className="mt-1 grid text-xl font-medium text-balance">
+              {/* Both lines share one cell, so the swap cross-fades in place. */}
+              <span
+                aria-hidden={busy}
+                className={`[grid-area:1/1] transition-opacity duration-300 ${busy ? "opacity-0" : ""}`}
+              >
+                What can I take off your plate?
+              </span>
+              <span
+                aria-hidden={!busy}
+                className={`[grid-area:1/1] transition-opacity duration-300 ${busy ? "" : "opacity-0"}`}
+              >
+                On it…
+              </span>
             </h2>
           </div>
-          {/* On send, the composer folds into the CEO at work. */}
           <div
-            className={`relative mx-auto mt-6 w-full transition-[max-width] duration-300 ease-snappy ${busy ? "max-w-14" : "max-w-full"}`}
+            className={`mt-6 transition-[opacity,transform] duration-300 ease-snappy ${busy ? "pointer-events-none translate-y-1 opacity-0" : ""}`}
           >
             <div
-              className={`flex items-end gap-2 overflow-hidden border bg-panel shadow-xs transition-[border-radius,border-color,height] duration-300 ease-snappy ${busy ? "h-14 rounded-[28px]" : "rounded-2xl py-2 pr-2 pl-4"} ${error ? "border-critical" : "border-line focus-within:border-faint"}`}
+              className={`flex items-end gap-2 rounded-2xl border bg-panel py-2 pr-2 pl-4 shadow-xs ${error ? "border-critical" : "border-line focus-within:border-faint"}`}
             >
               <textarea
                 ref={input}
@@ -209,27 +228,18 @@ export function AskView({ workspace }: { workspace: Workspace }) {
                   e.preventDefault();
                   void ask();
                 }}
-                className={`block max-h-60 min-w-0 flex-1 resize-none bg-transparent py-1 text-base leading-6 outline-none transition-opacity duration-150 placeholder:text-faint md:text-[15px] ${busy ? "opacity-0" : ""}`}
+                className="block max-h-60 min-w-0 flex-1 resize-none bg-transparent py-1 text-base leading-6 outline-none placeholder:text-faint md:text-[15px]"
               />
               <button
                 type="button"
                 aria-label="Ask"
                 disabled={!body.trim() || busy}
                 onClick={() => void ask()}
-                className={`flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent hover:bg-accent-hover disabled:opacity-30 ${busy ? "invisible" : ""}`}
+                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent hover:bg-accent-hover disabled:opacity-30"
               >
                 {icon("send")}
               </button>
             </div>
-            {busy && (
-              <span
-                role="status"
-                aria-label={`${name} is taking it on`}
-                className="absolute inset-0 grid animate-fade-in place-items-center [animation-delay:120ms]"
-              >
-                <img src="/icon.svg" alt="" className="size-7 animate-think" />
-              </span>
-            )}
           </div>
           <div
             aria-hidden={busy}

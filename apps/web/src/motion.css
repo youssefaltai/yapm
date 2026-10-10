@@ -98,8 +98,8 @@
   /* The CEO at work: a slow, small breath. */
   @keyframes think {
     50% {
-      opacity: 0.55;
-      transform: scale(0.88);
+      opacity: 0.6;
+      transform: scale(0.92);
     }
   }
   @keyframes float {

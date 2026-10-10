@@ -14,11 +14,15 @@ const clip = (text: string, max = 4000) => (text.length > max ? `${text.slice(0,
 
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
-  if (Array.isArray(content))
-    return content
-      .map((part) => (part && typeof part === "object" && "text" in part ? String(part.text) : ""))
-      .join("");
-  return "";
+  if (!Array.isArray(content)) return "";
+  // ToolSearch answers with references to the tools it found, not text.
+  const names = content.flatMap((part) =>
+    part && typeof part === "object" && "tool_name" in part ? [String(part.tool_name)] : [],
+  );
+  if (names.length) return names.join(", ");
+  return content
+    .map((part) => (part && typeof part === "object" && "text" in part ? String(part.text) : ""))
+    .join("");
 }
 
 /** Turns SDK messages into the small transcript events the hub stores and the app shows. */

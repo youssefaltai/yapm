@@ -10,7 +10,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   },
 }));
 
-const { sdkEngine } = await import("../src/sdk.js");
+const { sdkEngine, transcriptEvents } = await import("../src/sdk.js");
 
 const run = (extra: Partial<EngineRun> = {}) =>
   ({
@@ -55,5 +55,32 @@ describe("sdk engine", () => {
     await sdkEngine(run());
     vi.unstubAllEnvs();
     expect(calls[0]?.env?.ANTHROPIC_API_KEY).toBe("sk-ant-api03-abc");
+  });
+
+  it("logs the tools a ToolSearch found, which come as references rather than text", () => {
+    const message = {
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_1",
+            content: [
+              { type: "tool_reference", tool_name: "mcp__yapm__get_issue" },
+              { type: "tool_reference", tool_name: "mcp__yapm__create_comment" },
+            ],
+          },
+        ],
+      },
+    } as unknown as Parameters<typeof transcriptEvents>[0];
+    expect(transcriptEvents(message)).toEqual([
+      {
+        type: "tool_result",
+        id: "toolu_1",
+        error: false,
+        text: "mcp__yapm__get_issue, mcp__yapm__create_comment",
+      },
+    ]);
   });
 });

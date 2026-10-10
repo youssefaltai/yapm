@@ -2,6 +2,7 @@
   "name": "yapm",
   "private": true,
   "description": "A Linear-style operating system for a life run like a company, with AI agents as employees.",
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=22"

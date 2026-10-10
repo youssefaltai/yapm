@@ -258,10 +258,21 @@ h1 {
   flex-shrink: 0;
 }
 
-/* Product visual: a faithful mock of the app. */
+/* The demo: a faithful mock of the app that plays out what you pick. */
 .demo {
   position: relative;
   padding-bottom: clamp(5rem, 10vw, 8rem);
+}
+.demo-h {
+  margin-bottom: 1.25rem;
+  color: var(--fg-3);
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: center;
+}
+.stage {
+  position: relative;
 }
 .demo::before {
   content: "";
@@ -283,7 +294,6 @@ h1 {
   line-height: 1.5;
   text-align: left;
   color: var(--fg-2);
-  mask-image: linear-gradient(180deg, #000 80%, transparent);
 }
 .chrome {
   display: grid;
@@ -314,7 +324,7 @@ h1 {
 .app {
   display: grid;
   grid-template-columns: 220px 1fr;
-  min-height: 560px;
+  height: 560px;
 }
 .side {
   padding: 12px 10px;
@@ -397,7 +407,90 @@ h1 {
   color: var(--fg-3);
 }
 .page {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+}
+
+/* Asking */
+.ask {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 0 24px 40px;
+}
+.ask-h {
+  color: var(--fg);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.ask-box {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 10px 10px 10px 16px;
+  border-radius: 12px;
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  color: var(--fg);
+  font-size: 14px;
+}
+.caret {
+  width: 1.5px;
+  height: 18px;
+  margin-left: 1px;
+  background: var(--fg-2);
+}
+.ask-go {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  border-radius: 8px;
+  background: rgb(244 241 236 / 0.08);
+  color: var(--fg-4);
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.ask-go.ready {
+  background: var(--fg);
+  color: var(--bg);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 99px;
+  background: rgb(244 241 236 / 0.04);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  color: var(--fg-2);
+  font: 500 12.5px var(--sans);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s,
+    transform 0.2s var(--ease);
+}
+.chip:hover {
+  background: rgb(244 241 236 / 0.09);
+  color: var(--fg);
+}
+.chip:active {
+  transform: scale(0.97);
 }
 .bar {
   height: 44px;
@@ -413,12 +506,26 @@ h1 {
   color: var(--fg-4);
 }
 .cols {
+  flex: 1;
   display: grid;
   grid-template-columns: 1fr 230px;
+  min-height: 0;
 }
 .issue {
   padding: 32px clamp(18px, 4vw, 48px) 40px;
-  max-width: 720px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.issue::-webkit-scrollbar {
+  display: none;
+}
+.runs-sec:not(.on) {
+  display: none;
+}
+/* The page shows the ask, then the issue it became. */
+.page[data-stage="ask"] .cols,
+.page[data-stage="issue"] .ask {
+  display: none;
 }
 .issue h2 {
   font-size: 22px;
@@ -453,6 +560,9 @@ h1 {
   width: 7px;
   height: 7px;
   border-radius: 50%;
+  background: var(--fg-4);
+}
+.live .pulse {
   background: var(--fg);
 }
 .rn {
@@ -494,6 +604,26 @@ h1 {
   background: rgb(244 241 236 / 0.03);
   box-shadow: inset 0 0 0 1px var(--line);
 }
+.ev code {
+  font: 500 11.5px var(--mono);
+  color: var(--fg-2);
+}
+.note {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgb(244 241 236 / 0.05);
+  box-shadow: inset 2px 0 0 var(--fg-3);
+}
+.note-k {
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.note p {
+  margin-top: 2px;
+  color: var(--fg-2);
+}
 .cm-h {
   display: flex;
   align-items: center;
@@ -533,8 +663,17 @@ h1 {
   height: 12px;
   border-radius: 50%;
   border: 1.5px solid var(--fg-2);
-  background: conic-gradient(var(--fg-2) 0 50%, transparent 0) content-box;
+  background: conic-gradient(var(--fg-2) 0 var(--p, 0%), transparent 0) content-box;
   padding: 1.5px;
+}
+.st[data-s="triage"] {
+  border-style: dashed;
+}
+.st[data-s="progress"] {
+  --p: 50%;
+}
+.st[data-s="done"] {
+  --p: 100%;
 }
 .pr {
   width: 12px;
@@ -575,7 +714,8 @@ h1 {
 .sheet {
   position: absolute;
   right: -1.5rem;
-  bottom: clamp(3rem, 7vw, 5.5rem);
+  bottom: -2rem;
+  z-index: 2;
   width: 340px;
   padding: 18px 18px 16px;
   border-radius: 16px;
@@ -603,6 +743,14 @@ h1 {
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.35;
+}
+.sheet:not(.on) {
+  visibility: hidden;
+  opacity: 0;
+}
+.sheet-p {
+  color: var(--fg-3);
+  line-height: 1.5;
 }
 .sheet-on {
   display: flex;
@@ -662,13 +810,54 @@ h1 {
   color: var(--bg);
   opacity: 0.9;
 }
-.reply:not(.on) {
-  visibility: hidden;
-}
-.sheet.gone,
-.navl .pill.gone {
+.navl .pill:not(.on) {
   opacity: 0;
-  pointer-events: none;
+  scale: 0.4;
+}
+
+/* The four beats the demo plays, lit as it reaches each. */
+.rail {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 3.5rem 0 0;
+  padding: 0;
+  counter-reset: beat;
+}
+.rail li {
+  display: grid;
+  gap: 0.3rem;
+  padding-top: 0.9rem;
+  border-top: 2px solid var(--line);
+  color: var(--fg-4);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  transition:
+    border-color 0.4s,
+    color 0.4s;
+}
+.rail b {
+  color: var(--fg-3);
+  font-weight: 600;
+  transition: color 0.4s;
+}
+.rail b::before {
+  counter-increment: beat;
+  content: "0" counter(beat) "  ";
+  font: 500 0.75rem var(--mono);
+  color: var(--fg-4);
+  white-space: pre;
+}
+.rail .done {
+  border-top-color: var(--fg-4);
+}
+.rail .on {
+  border-top-color: var(--fg);
+  color: var(--fg-3);
+}
+.rail .on b {
+  color: var(--fg);
 }
 
 /* Sections */
@@ -818,9 +1007,9 @@ h1 {
 }
 
 /*
- * Motion, only for those who want it. The hero rises in, the app tilts up into place, its
- * activity plays in, then the request arrives; answering it plays out the reply. Below the fold,
- * sections rise in once as they come into view. Opacity and transforms only, never blur.
+ * Motion, only for those who want it. The hero rises in, the app tilts up into place, and the
+ * demo's activity rises in as it happens. Below the fold, sections rise in once as they come into
+ * view. Opacity and transforms only, never blur.
  */
 @media (prefers-reduced-motion: no-preference) {
   html {
@@ -848,40 +1037,40 @@ h1 {
   .window {
     animation: tilt 1.6s var(--ease) 0.25s both;
   }
-  .feed > li {
-    animation: rise 0.7s var(--ease) both;
+  .feed > li,
+  .cols,
+  [data-team].new {
+    animation: rise 0.6s var(--ease) both;
   }
-  .feed > li:nth-child(1) {
-    animation-delay: 1.1s;
+  .caret {
+    animation: blink 1s steps(1) infinite;
   }
-  .feed > li:nth-child(2) {
-    animation-delay: 1.5s;
-  }
-  .feed > li:nth-child(3) {
-    animation-delay: 1.9s;
-  }
-  .feed > .reply {
-    animation: none;
-  }
-  .feed > .reply.on {
-    animation: rise 0.7s var(--ease) 0.35s both;
-  }
-  .pulse {
+  .live .pulse {
     animation: pulse 2s infinite;
   }
 
-  /* The request */
+  /* The request slides up like the phone sheet it arrives as. */
   .sheet {
-    animation: arrive 0.9s var(--spring) 2.4s both;
+    transition:
+      opacity 0.3s,
+      translate 0.3s var(--ease),
+      scale 0.3s var(--ease),
+      visibility 0s 0.3s;
   }
-  .sheet.gone {
-    animation: leave 0.4s var(--ease) both;
+  .sheet:not(.on) {
+    translate: 0 20px;
+    scale: 0.97;
+  }
+  .sheet.on {
+    transition:
+      opacity 0.5s var(--ease),
+      translate 0.8s var(--spring),
+      scale 0.8s var(--spring);
   }
   .navl .pill {
-    animation: pop 0.5s var(--spring) 2.5s both;
-  }
-  .navl .pill.gone {
-    animation: pop-out 0.3s var(--ease) 0.2s both;
+    transition:
+      opacity 0.3s,
+      scale 0.5s var(--spring);
   }
 
   /* Sections: the script adds .reveal, then .in once in view, so nothing hides without it. */
@@ -924,36 +1113,9 @@ h1 {
     transform: rotateX(18deg) translateY(60px) scale(0.94);
   }
 }
-@keyframes arrive {
-  from {
+@keyframes blink {
+  50% {
     opacity: 0;
-    transform: translateY(24px) scale(0.96);
-  }
-}
-@keyframes leave {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-  to {
-    opacity: 0;
-    transform: translateY(16px) scale(0.97);
-  }
-}
-@keyframes pop {
-  from {
-    opacity: 0;
-    scale: 0.4;
-  }
-}
-@keyframes pop-out {
-  from {
-    opacity: 1;
-    scale: 1;
-  }
-  to {
-    opacity: 0;
-    scale: 0.4;
   }
 }
 @keyframes pulse {
@@ -977,11 +1139,15 @@ h1 {
   .sheet {
     right: 1.5rem;
   }
+  .rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 1.75rem;
+  }
 }
 @media (max-width: 820px) {
   .app {
     grid-template-columns: 1fr;
-    min-height: 0;
+    height: 520px;
   }
   .side {
     display: none;
@@ -994,11 +1160,10 @@ h1 {
     margin-top: 1.25rem;
   }
   .sheet {
-    position: relative;
-    right: auto;
-    bottom: auto;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
     width: auto;
-    margin: -4.5rem 0.75rem 0;
   }
 }
 @media (max-width: 680px) {

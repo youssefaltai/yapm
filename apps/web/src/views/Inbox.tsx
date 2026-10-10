@@ -236,7 +236,7 @@ export function InboxView() {
                   aria-label="Archive"
                   title="Archive"
                   onClick={() => void archive(n)}
-                  className="absolute right-4 bottom-2 hidden md:right-6 animate-fade-in rounded px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
+                  className="absolute right-4 bottom-2 hidden md:right-6 animate-fade-in rounded bg-raised px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
                 >
                   Archive
                 </button>

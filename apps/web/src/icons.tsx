@@ -23,7 +23,7 @@ function Icon({ children }: { children: ReactNode }) {
 }
 
 const paths = {
-  chat: (
+  ask: (
     <path d="M4 2.5h8A1.5 1.5 0 0 1 13.5 4v6a1.5 1.5 0 0 1-1.5 1.5H7.5l-3 2.5v-2.5H4A1.5 1.5 0 0 1 2.5 10V4A1.5 1.5 0 0 1 4 2.5z" />
   ),
   inbox: (

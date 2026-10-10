@@ -274,7 +274,10 @@ describe("SLAs and auto-archive", () => {
       .from(schema.notifications)
       .where(eq(schema.notifications.type, "issueSlaBreached"))
       .all();
+    // The CEO has it, since the owner filed it unassigned; both hear about the breach.
+    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
     expect(breaches.map((n) => [n.userId, n.issueId, n.actorId])).toEqual([
+      [ceo?.id, urgent, null],
       ["owner", urgent, null],
     ]);
 

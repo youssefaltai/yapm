@@ -3,11 +3,11 @@
 const SCENARIOS = [
   {
     chip: "Renew my passport",
-    ask: "Renew my passport before the Lisbon trip, mornings only",
+    ask: "renew my pasport before lisbon mornings only pls",
     title: "Renew passport before the Lisbon trip",
     team: { key: "TRV", name: "Travel" },
     id: "TRV-1",
-    agent: { name: "Travel agent", charter: "trips, documents and bookings" },
+    agent: { name: "Travel Manager", charter: "trips, documents and bookings" },
     priority: "High",
     label: "Documents",
     due: "Apr 12",
@@ -17,7 +17,7 @@ const SCENARIOS = [
     done: "Booked Tue 10:30 and paid €95. Bring your old passport and two photos; it's in your calendar.",
     lesson: "The owner only takes morning appointments.",
     reject: {
-      reason: "Not that week, I'm away.",
+      reason: "not that week im away",
       reply: "Understood. I let the slot go and will book the first morning after you're back.",
       lesson: "Check the owner's calendar for trips before booking anything.",
     },
@@ -25,30 +25,30 @@ const SCENARIOS = [
     later: {
       id: "TRV-4",
       title: "Renew the EU health card",
-      text: "Travel agent's monthly check found it expiring in June. Renewing is free, so it just did it and told you after.",
+      text: "Travel Manager's monthly check found it expiring in June. Renewing is free, so it just did it and told you after.",
     },
   },
   {
     chip: "Find a cheaper gym",
-    ask: "Cancel my gym and find a cheaper one nearby, I train mornings",
+    ask: "cancel my gym and find a cheaper one near me i go mornings allegedly",
     title: "Cancel the gym and find a cheaper one nearby",
     team: { key: "FIN", name: "Finance", exists: true },
     id: "FIN-17",
-    agent: { name: "Money agent", charter: "bills, subscriptions and savings" },
+    agent: { name: "Finance Manager", charter: "bills, subscriptions and savings" },
     priority: "Medium",
     label: "Subscriptions",
     due: "Fri",
     goal: "Comparing gyms within 2 km",
-    work: "FitClub needs 30 days' notice, so the cancellation email is drafted. Best match: Urban Fit, €34 a month, opens at 6am, 900 m away.",
+    work: "Gym & Tonic needs 30 days' notice, so the cancellation email is drafted. Best match: Early Bird Gym, €34 a month, opens at 6am, 900 m away.",
     request: {
-      title: "Send the cancellation email to FitClub",
+      title: "Send the cancellation email to Gym & Tonic",
       action: "send_email",
-      on: "FitClub",
+      on: "Gym & Tonic",
     },
-    done: "Sent. Your last FitClub charge is May 1, and Urban Fit saves you €21 a month. The trial pass is in your inbox.",
+    done: "Sent. Your last Gym & Tonic charge is May 1, and Early Bird Gym saves you €21 a month. The trial pass is in your inbox.",
     lesson: "The owner trains mornings; only suggest places open by 7am.",
     reject: {
-      reason: "Keep it until the contract ends in June.",
+      reason: "keep it till the contract ends in june",
       reply: "Held. I'll send it on May 1 so you lose nothing.",
       lesson: "Check contract end dates before cancelling anything.",
     },
@@ -56,30 +56,30 @@ const SCENARIOS = [
     later: {
       id: "FIN-23",
       title: "Cancel two unused subscriptions",
-      text: "Money agent's weekly review found two you hadn't used in three months and lined up both cancellations in one request. One tap saves €18 a month.",
+      text: "Finance Manager's weekly review found two you hadn't used in three months and lined up both cancellations in one request. One tap saves €18 a month.",
     },
   },
   {
     chip: "Plan Mom's birthday",
-    ask: "Plan Mom's 60th birthday dinner for 12, she's vegetarian",
+    ask: "plan moms 60th bday dinner like 12 ppl shes vegetarian dont let her find out",
     title: "Plan Mom's 60th birthday dinner",
     team: { key: "FAM", name: "Family" },
     id: "FAM-1",
-    agent: { name: "Events agent", charter: "family events, gifts and invites" },
+    agent: { name: "Event Planner", charter: "family events, gifts and invites" },
     priority: "Medium",
     label: "Family",
     due: "Sat 18",
     goal: "Shortlisting restaurants and inviting family",
-    work: "Shortlisted 3 places with a vegetarian menu and a private room. Top pick: Casa Verde, Sat 7:30pm, €45 a head, €120 deposit to hold it.",
+    work: "Shortlisted 3 places with a vegetarian menu and a private room. Top pick: Casa Lentil, Sat 7:30pm, €45 a head, €120 deposit to hold it.",
     request: {
-      title: "Book Casa Verde for 12 and pay the €120 deposit",
+      title: "Book Casa Lentil for 12 and pay the €120 deposit",
       action: "spend",
       on: "€120",
     },
     done: "Booked for Sat 7:30pm. Invites went to the family group with an RSVP link.",
     lesson: "Mom is vegetarian; check menus first for anything with her.",
     reject: {
-      reason: "Somewhere closer to her place.",
+      reason: "somewhere closer to her place",
       reply: "Got it. Two closer options are on the issue; I'll hold neither until you pick.",
       lesson: "For Mom's events, stay near her place.",
     },
@@ -87,7 +87,120 @@ const SCENARIOS = [
     later: {
       id: "FAM-4",
       title: "Dad's birthday gift",
-      text: "Events agent filed it three weeks ahead and shortlisted three gifts from what Dad liked last year. You just pick one.",
+      text: "Event Planner filed it three weeks ahead and shortlisted three gifts from what Dad liked last year. You just pick one.",
+    },
+  },
+  {
+    chip: "Move to Lisbon",
+    ask: "move me to lisbon by march visa flat near the river movers all of it",
+    title: "Move to Lisbon by March",
+    team: { key: "MOV", name: "Relocation" },
+    id: "MOV-1",
+    agent: { name: "Head of Relocation", charter: "the whole move, end to end" },
+    priority: "High",
+    label: "Move",
+    due: "Mar 1",
+    goal: "Planning the move and staffing it",
+    plan: "Three parts that can run at once. I'm hiring someone for each and splitting the work.",
+    reports: [
+      {
+        name: "Visa Specialist",
+        charter: "visas and residency",
+        id: "MOV-2",
+        task: "Apply for the digital nomad visa",
+        done: "filed the visa application; the consulate interview is Jan 14",
+      },
+      {
+        name: "Property Scout",
+        charter: "finding and securing homes",
+        id: "MOV-3",
+        task: "Find a 2-bed flat near the river under €1,900",
+        done: "signed the lease from Feb 20",
+      },
+      {
+        name: "Moving Coordinator",
+        charter: "movers, shipping and utilities",
+        id: "MOV-4",
+        task: "Book movers and set up utilities",
+        done: "booked movers for Feb 18, with power and fibre on from Feb 20",
+      },
+    ],
+    work: "Viewed 14 listings. Best: a quiet 2-bed in Santos, 5 minutes from the river, €1,850 a month. The landlord wants a two-month deposit.",
+    request: {
+      from: "Property Scout",
+      title: "Pay the €3,700 deposit for the Santos flat",
+      action: "spend",
+      on: "€3,700",
+    },
+    done: "The move is set: visa interview Jan 14, movers Feb 18, keys and utilities Feb 20. Your checklist for each date is on the issue.",
+    lesson: "The owner wants quiet streets near the river.",
+    reject: {
+      reason: "too pricey stay under 1700",
+      reply:
+        "Understood. I'm narrowing it to €1,700 and will bring two new flats tomorrow. The visa and movers carry on.",
+      lesson: "The owner's rent ceiling in Lisbon is €1,700.",
+    },
+    ritualBy: "Head of Relocation",
+    ritual: "Weekly: move check-in with the whole Relocation team",
+    later: {
+      id: "MOV-12",
+      title: "Register with the local health centre",
+      text: "Head of Relocation filed it the week you landed, and the Visa Specialist got it done. Nothing needed from you.",
+    },
+  },
+  {
+    chip: "Moonlight for two clients",
+    ask: "fix the checkout bug for parsnip and review okay labs pr today dont mix there code",
+    title: "Clear today's client work for Parsnip and Okay Labs",
+    team: { key: "ENG", name: "Engineering" },
+    id: "ENG-1",
+    agent: { name: "Engineering Lead", charter: "client work, kept apart per client" },
+    priority: "High",
+    label: "Clients",
+    due: "Today",
+    goal: "Splitting today's work by client",
+    plan: "Two clients, two laptops. Each gets its own engineer, who only runs on that client's machine.",
+    reports: [
+      {
+        name: "Parsnip Engineer",
+        charter: "Parsnip's code, on the Parsnip laptop",
+        id: "ENG-2",
+        task: "Fix the double charge at Parsnip checkout",
+        machine: "parsnip-macbook",
+        done: "opened PR #482 with the fix and a test",
+      },
+      {
+        name: "Okay Labs Engineer",
+        charter: "Okay Labs' code, on the Okay Labs laptop",
+        id: "ENG-3",
+        task: "Review Okay Labs' rate-limit PR",
+        machine: "okaylabs-thinkpad",
+        done: "posted 6 review comments on PR #91, one blocking",
+      },
+    ],
+    isolation:
+      "Parsnip Engineer only runs on parsnip-macbook, Okay Labs Engineer only on okaylabs-thinkpad, each with its own sign-ins. Neither client's code reaches the other's machine.",
+    work: "Found it: the pay button retries without an idempotency key, so slow networks charge twice. The fix is ready; its test needs a migration on staging.",
+    request: {
+      from: "Parsnip Engineer",
+      title: "Run the migration on Parsnip's staging database",
+      action: "tool:Bash",
+      on: "parsnip-macbook",
+    },
+    done: "Both done. Parsnip: PR #482 is green and ready for your review. Okay Labs: review posted, one blocking comment on retries. Nothing crossed between the two.",
+    lesson: "Parsnip staging migrations are safe to run before tests.",
+    reject: {
+      reason: "never touch parsnip staging ask their dba",
+      reply:
+        "Understood. I drafted the request to Parsnip's DBA in your voice; it's on the issue for you to send.",
+      lesson: "Parsnip staging changes go through their DBA.",
+    },
+    ritualBy: "Engineering Lead",
+    ritual: "Weekdays: standup notes for each client",
+    later: {
+      id: "ENG-14",
+      title: "Parsnip on-call handover",
+      text: "Engineering Lead wrote Monday's handover from the week's PRs, on the Parsnip laptop only. Okay Labs never saw a line of it.",
     },
   },
 ];
@@ -154,10 +267,31 @@ function status(name, state) {
   $("st").dataset.s = state;
 }
 
-function run(text, live) {
-  $("run-status").textContent = text;
-  document.querySelector(".runrow").classList.toggle("live", live);
-  $("runs").textContent = live ? "1" : "";
+function addRun(who, goal) {
+  const row = document.createElement("div");
+  row.className = "runrow";
+  row.innerHTML = `<i class="pulse"></i><span class="rn">${esc(who)}</span><span class="rk">${esc(goal)}</span><span class="rs"></span>`;
+  $("runlist").append(row);
+  document.querySelector(".runs-sec").classList.add("on");
+  return row;
+}
+
+function run(row, text, live) {
+  row.querySelector(".rs").textContent = text;
+  row.classList.toggle("live", live);
+  $("runs").textContent = document.querySelectorAll(".runrow.live").length || "";
+}
+
+function addSub(r) {
+  const li = document.createElement("li");
+  li.innerHTML = `<i class="st" data-s="todo"></i><span class="sid">${r.id}</span><span class="stt">${esc(r.task)}</span>${avatar(r.name)}`;
+  $("subs").append(li);
+  document.querySelector(".subs-sec").classList.add("on");
+  return li.querySelector(".st");
+}
+
+function orgNode(who, charter) {
+  return `<span class="node">${avatar(who)}<b>${esc(who)}</b>${charter ? `<small>${esc(charter)}</small>` : ""}</span>`;
 }
 
 async function showSheet(html) {
@@ -191,8 +325,11 @@ function reset() {
   document.querySelector(".ask-go").classList.remove("ready");
   for (const li of document.querySelectorAll("[data-team].new")) li.remove();
   for (const li of document.querySelectorAll("[data-team]")) li.classList.remove("on");
+  $("runlist").innerHTML = "";
+  $("subs").innerHTML = "";
+  $("runs").textContent = "";
   document.querySelector(".runs-sec").classList.remove("on");
-  run("", false);
+  document.querySelector(".subs-sec").classList.remove("on");
   page.dataset.stage = "ask";
   $("crumb").textContent = "New issue";
   $("url").textContent = "inbox";
@@ -215,8 +352,9 @@ async function play(s) {
     typed.textContent += ch;
     await next(22);
   }
+  // Let the prompt sit long enough to read before it's sent.
   document.querySelector(".ask-go").classList.add("ready");
-  await next(500);
+  await next(1800);
 
   page.dataset.stage = "issue";
   $("title").textContent = s.title;
@@ -243,7 +381,7 @@ async function play(s) {
     await next(900);
   }
   event("CEO", `hired <b>${esc(s.agent.name)}</b> to own ${esc(s.agent.charter)}`);
-  note("Standing grant", "You let the CEO create teams and hire agents without asking.");
+  note("Standing grant", "You let managers create teams and hire without asking.");
   await next(1000);
 
   document.querySelector(`[data-team="${s.team.key}"]`).classList.add("on");
@@ -257,25 +395,70 @@ async function play(s) {
   event("CEO", `assigned it to <b>${esc(s.agent.name)}</b>, ${s.priority.toLowerCase()} priority`);
   await next(1100);
 
-  $("run-agent").textContent = s.agent.name;
-  $("run-goal").textContent = s.goal;
-  run("Running", true);
-  document.querySelector(".runs-sec").classList.add("on");
+  const lead = addRun(s.agent.name, s.goal);
+  run(lead, "Running", true);
   status("In Progress", "progress");
   event(s.agent.name, "started working on your Mac");
-  await next(1700);
-  comment(s.agent.name, s.work);
+  await next(1500);
+
+  // A manager hires a report for each part, and they work at once.
+  const reports = [];
+  async function finishReports(list) {
+    for (const r of list) {
+      event(r.name, `closed ${r.id}: ${esc(r.done)}`);
+      run(r.run, "Done", false);
+      r.st.dataset.s = "done";
+      await next(900);
+    }
+  }
+
+  if (s.reports) {
+    comment(s.agent.name, s.plan);
+    await next(1200);
+    add(
+      "orgcard",
+      `<span class="note-k">Org chart</span><ul class="tree"><li>${orgNode("CEO")}<ul><li>${orgNode(s.agent.name, s.agent.charter)}<ul data-org></ul></li></ul></li></ul>`,
+    );
+    const org = feed.querySelector("[data-org]");
+    org.removeAttribute("data-org");
+    await next(700);
+    for (const r of s.reports) {
+      const li = document.createElement("li");
+      li.innerHTML = orgNode(r.name, r.charter);
+      org.append(li);
+      reports.push({ ...r, st: addSub(r) });
+      event(s.agent.name, `hired <b>${esc(r.name)}</b> and gave them ${r.id}`);
+      await next(800);
+    }
+    if (s.isolation) {
+      note("Runs on", s.isolation);
+      await next(1100);
+    }
+    run(lead, "Done", false);
+    for (const r of reports) {
+      r.run = addRun(r.name, r.machine ? `${r.task} · ${r.machine}` : r.task);
+      run(r.run, "Running", true);
+      r.st.dataset.s = "progress";
+      await next(350);
+    }
+    await next(1000);
+  }
+
+  const asker = s.request.from ?? s.agent.name;
+  const askerRun = reports.find((r) => r.name === asker)?.run ?? lead;
+  comment(asker, s.work);
   await next(1300);
 
   // You approve.
   step(2);
-  run("Needs input", false);
-  event(s.agent.name, "asked for your OK");
+  run(askerRun, "Needs input", false);
+  event(asker, "asked for your OK");
   $("pill").classList.add("on");
   await showSheet(`
-    <p class="sheet-k">Request from <b>${esc(s.agent.name)}</b></p>
+    <p class="sheet-k">Request from <b>${esc(asker)}</b></p>
     <p class="sheet-t">${esc(s.request.title)}</p>
     <p class="sheet-on"><span>Permission</span><code>${s.request.action}</code></p>
+    <p class="sheet-on"><span>On</span>${esc(s.request.on)}</p>
     <p class="sheet-on"><span>Issue</span>${s.id} ${esc(s.title)}</p>
     <div class="sheet-a">
       <button type="button" class="b b-ok" data-answer="approve">Approve</button>
@@ -295,22 +478,28 @@ async function play(s) {
 
   if (answer === "reject") {
     event("You", `rejected: “${esc(s.reject.reason)}”`);
-    run("Running", true);
+    run(askerRun, "Running", true);
     await next(1100);
-    comment(s.agent.name, s.reject.reply);
-    run("Done", false);
-    status("Todo", "todo");
+    comment(asker, s.reject.reply);
+    run(askerRun, "Done", false);
+    await finishReports(reports.filter((r) => r.name !== asker));
+    if (!reports.length) status("Todo", "todo");
   } else {
     event(
       "You",
       answer === "always"
-        ? `approved, and always allowed ${esc(s.agent.name)} to <code>${s.request.action}</code>`
+        ? `approved, and always allowed ${esc(asker)} to <code>${s.request.action}</code>`
         : "approved",
     );
-    run("Running", true);
+    run(askerRun, "Running", true);
     await next(1300);
-    comment(s.agent.name, s.done);
-    run("Done", false);
+    if (reports.length) {
+      await finishReports(reports);
+      comment(s.agent.name, s.done);
+    } else {
+      comment(s.agent.name, s.done);
+      run(askerRun, "Done", false);
+    }
     status("Done", "done");
   }
   await next(1100);
@@ -318,19 +507,16 @@ async function play(s) {
   // It learns.
   step(3);
   if (answer === "reject") {
-    note("Feedback", `Your reason is saved as feedback ${s.agent.name} reads on every run.`);
+    note("Feedback", `Your reason is saved as feedback ${asker} reads on every run.`);
     await next(1000);
   }
   if (answer === "always") {
-    note("Grant", `${s.agent.name} can ${s.request.action} without asking now. Revoke it anytime.`);
+    note("Grant", `${asker} can ${s.request.action} without asking now. Revoke it anytime.`);
     await next(1000);
   }
-  note(
-    "Lesson",
-    `${s.agent.name} wrote down: “${answer === "reject" ? s.reject.lesson : s.lesson}”`,
-  );
+  note("Lesson", `${asker} wrote down: “${answer === "reject" ? s.reject.lesson : s.lesson}”`);
   await next(1100);
-  event("CEO", `set up a recurring issue: <b>${esc(s.ritual)}</b>`);
+  event(s.ritualBy ?? "CEO", `set up a recurring issue: <b>${esc(s.ritual)}</b>`);
   await next(1600);
 
   await showSheet(`

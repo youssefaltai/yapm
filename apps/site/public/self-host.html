@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Self-host yapm on Cloudflare, Docker or Node</title>
+    <meta
+      name="description"
+      content="Run yapm, the open-source Linear alternative, on your own hub: free on Cloudflare Workers and D1, on any server with Docker, or locally with Node."
+    />
+    <meta name="theme-color" content="#0d0d0e" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="canonical" href="https://yapm.app/self-host" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="yapm" />
+    <meta property="og:url" content="https://yapm.app/self-host" />
+    <meta property="og:title" content="Self-host yapm on Cloudflare, Docker or Node" />
+    <meta property="og:description" content="Run yapm, the open-source Linear alternative, on your own hub: free on Cloudflare Workers and D1, on any server with Docker, or locally with Node." />
+    <meta property="og:image" content="https://yapm.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="yapm: Yet Another Project Manager. Just yap 'em." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav wrap">
+      <a class="brand" href="/" aria-label="yapm home">
+        <img src="/icon.svg" alt="" width="28" height="28" />
+        <span>yapm</span>
+      </a>
+      <nav class="links" aria-label="Primary">
+        <a href="/how-it-works">How it works</a>
+        <a href="/vs-linear">vs Linear</a>
+        <a href="/self-host">Self-host</a>
+        <a class="nav-gh" href="https://github.com/youssefaltai/yapm"
+          ><svg class="gh" width="16" height="16" viewBox="0 0 98 96" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>GitHub</a
+        >
+      </nav>
+    </header>
+
+    <main id="main" class="doc wrap">
+      <h1>Self-host yapm</h1>
+      <p class="lede">Pick one. Choose your final domain first: passkeys are tied to it.</p>
+
+      <h2>Cloudflare</h2>
+      <p>Workers and D1, on the free plan. Deploys from GitHub.</p>
+      <ol>
+        <li>Fork <a href="https://github.com/youssefaltai/yapm">the repo</a>.</li>
+        <li>In Cloudflare, open <b>Workers &amp; Pages</b> once, so you get a workers.dev address.</li>
+        <li>Create an API token from the <b>Edit Cloudflare Workers</b> template. Add <b>D1 → Edit</b>.</li>
+        <li>In your fork, add two Actions secrets: <code>CLOUDFLARE_API_TOKEN</code> and <code>CLOUDFLARE_ACCOUNT_ID</code>.</li>
+        <li>Run the <b>Deploy to Cloudflare</b> workflow. The log shows your URL.</li>
+      </ol>
+      <p>Want your own domain? Add a <code>HUB_DOMAIN</code> variable, like <code>hub.example.com</code>, and deploy again. Or deploy from your machine:</p>
+      <pre><code>pnpm install
+cd apps/hub-cloudflare
+npx wrangler login
+node scripts/ensure-d1.mjs
+pnpm run deploy</code></pre>
+
+      <h2>Docker</h2>
+      <p>Any server with Docker. Put it behind HTTPS, with Caddy or a Cloudflare Tunnel. Your data is one SQLite file.</p>
+      <pre><code>ORIGIN=https://hub.example.com \
+  docker compose up -d</code></pre>
+
+      <h2>Node</h2>
+      <p>To try it on your computer. Needs Node 22+ and pnpm.</p>
+      <pre><code>pnpm install
+pnpm dev</code></pre>
+
+      <h2>Connect your agents</h2>
+      <p>
+        In the app, open <b>Runs → Machines</b> and click <b>Add machine</b>, then paste the command
+        it shows into Terminal on your Mac or Linux machine. It asks whether agents should use your
+        Claude account or an Anthropic API key, then runs in the background.
+      </p>
+      <p class="more"><a href="https://github.com/youssefaltai/yapm#self-host">Settings and more in the README →</a></p>
+    </main>
+
+    <footer class="foot wrap">
+      <span class="brand brand-sm"><img src="/icon.svg" alt="" width="18" height="18" />yapm</span>
+      <a href="https://github.com/youssefaltai/yapm/blob/main/LICENSE">Open source, AGPL-3.0</a>
+      <a href="https://youssefaltai.com">Made by Youssef Al-Tai</a>
+      <a href="https://github.com/youssefaltai/yapm"><svg class="gh" width="14" height="14" viewBox="0 0 98 96" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>GitHub</a>
+      <p class="fine">
+        Linear is a trademark of Linear Orbit, Inc. yapm is not affiliated with or endorsed by
+        Linear. Claude is a trademark of Anthropic, PBC.
+      </p>
+    </footer>
+  </body>
+</html>

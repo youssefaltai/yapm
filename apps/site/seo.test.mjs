@@ -29,3 +29,34 @@ test("structured data describes the app and answers the FAQ on the page", () => 
   const faq = graph.find((node) => node["@type"] === "FAQPage");
   for (const { name } of faq.mainEntity) assert.ok(html.includes(`>${name}</`), name);
 });
+
+test("the h1 says what people search for", () => {
+  assert.match(html.match(/<h1[\s\S]*?<\/h1>/)[0], /Linear alternative/i);
+});
+
+test("the demo's sample issue is not a heading", () => {
+  assert.doesNotMatch(html, /<h2 data-title/);
+});
+
+const pages = [...read("sitemap.xml").matchAll(/<loc>https:\/\/yapm\.app\/([^<]*)<\/loc>/g)].map(
+  ([, path]) => path,
+);
+
+test("the sitemap lists a page for each search people make", () => {
+  assert.deepEqual(pages, ["", "vs-linear", "self-host", "how-it-works"]);
+});
+
+for (const path of pages.filter(Boolean)) {
+  test(`/${path} stands on its own and is linked from the home page`, () => {
+    const page = read(`${path}.html`);
+    assert.match(page, new RegExp(`<link rel="canonical" href="https://yapm\\.app/${path}" />`));
+    assert.match(page, /<title>[^<]+<\/title>/);
+    assert.match(page, /<meta\s+name="description"\s+content="[^"]{50,160}"/);
+    assert.match(
+      page,
+      new RegExp(`<meta property="og:url" content="https://yapm\\.app/${path}" />`),
+    );
+    assert.equal(page.match(/<h1/g).length, 1);
+    assert.ok(html.includes(`href="/${path}"`), `home links to /${path}`);
+  });
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@yapm/site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The yapm.app landing page: static files served by a Cloudflare Worker.",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.148.0"
+  }
+}

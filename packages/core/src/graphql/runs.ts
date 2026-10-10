@@ -26,6 +26,7 @@ import {
   machineName,
   revokeMachine,
   updateMachine,
+  upgradeMachine,
 } from "../services/machines.js";
 import {
   act,
@@ -194,6 +195,7 @@ const RunFilter = builder.inputType("RunFilter", {
   fields: (t) => ({
     agentId: t.string({ required: false }),
     issueId: t.string({ required: false, description: "An issue id or identifier." }),
+    machineId: t.string({ required: false, description: "The machine that picked the run up." }),
     status: t.field({ type: [RunStatus], required: false }),
     kind: t.field({ type: RunKind, required: false }),
   }),
@@ -205,6 +207,7 @@ async function queryRuns(
     filter?: {
       agentId?: string | null;
       issueId?: string | null;
+      machineId?: string | null;
       status?: RunRow["status"][] | null;
       kind?: RunRow["kind"] | null;
     } | null;
@@ -225,6 +228,7 @@ async function queryRuns(
           ? eq(runs.agentId, (scope?.agentId ?? f?.agentId) as string)
           : undefined,
         issueId ? eq(runs.issueId, issueId) : undefined,
+        f?.machineId ? eq(runs.machineId, f.machineId) : undefined,
         f?.status?.length ? inArray(runs.status, f.status) : undefined,
         f?.kind ? eq(runs.kind, f.kind) : undefined,
       ),
@@ -453,6 +457,15 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_root, args, ctx) => ({
       id: await act(ctx, (s) => updateMachine(s, args.id, args.input)),
+    }),
+  }),
+  machineUpgrade: t.field({
+    type: MachinePayload,
+    description:
+      "Owner only: the machine's runner updates itself from this hub once its runs finish.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_root, args, ctx) => ({
+      id: await act(ctx, (s) => upgradeMachine(s, args.id)),
     }),
   }),
   machineRevoke: t.field({

@@ -1,0 +1,1 @@
+ALTER TABLE `machines` ADD `upgrade_requested_at` integer;

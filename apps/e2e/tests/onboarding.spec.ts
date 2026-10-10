@@ -302,7 +302,7 @@ test.describe
       await page.goto(new URL(asked.url).pathname);
       await expect(page.getByRole("heading", { name: asked.title })).toBeVisible();
       await expect(page.getByText("rclone copy budget.xlsx drive:")).toBeVisible();
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await page.getByRole("button", { name: "Approve once" }).click();
       await expect(page.getByText("Approved once by Youssef")).toBeVisible();
       await page.setViewportSize({ width: 1280, height: 720 });
 
@@ -365,6 +365,59 @@ test.describe
       expect(sent).toHaveLength(2);
       await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
       await expect(latest).toBeVisible();
+    });
+
+    test("always allows a server's read-only tools, and manages access per agent and team", async () => {
+      const asked = await mcp("create_request", {
+        title: "Ada wants to use Slack: read_channel",
+        action: "tool:slack__slack_read_channel",
+        resource: "readOnly",
+        reason: "To read the budget channel.",
+      });
+      await page.goto(`/request/${asked.id}`);
+      await page.getByRole("button", { name: "Always allow" }).click();
+      await expect(page.getByLabel("This tool")).toBeVisible();
+      await expect(page.getByLabel("All Slack tools")).toBeVisible();
+      await page.getByLabel("Read-only Slack tools").check();
+      await page.getByRole("button", { name: "Always allow" }).click();
+      await expect(page.getByText("Always allowed").first()).toBeVisible();
+      expect(
+        await mcp("check_permission", { action: "tool:slack__slack_search", resource: "readOnly" }),
+      ).toMatchObject({ allowed: true, via: "grant" });
+
+      // The agent's page shows what it may do, grouped by server, and the owner edits it there.
+      await page.getByRole("button", { name: "Ada", exact: true }).click();
+      const access = page.getByRole("region", { name: "Access" });
+      await expect(access.getByText("Slack", { exact: true })).toBeVisible();
+      await expect(access.getByText("Read-only tools")).toBeVisible();
+      await access.getByRole("button", { name: "Add access" }).click();
+      await access.getByLabel("Action").fill("budget.spend");
+      await access.getByLabel("Note").fill("Up to the monthly budget");
+      await access.getByRole("button", { name: "Add", exact: true }).click();
+      const spend = access.getByRole("listitem").filter({ hasText: "Up to the monthly budget" });
+      await spend.getByRole("button", { name: "Edit" }).click();
+      await access.getByLabel("Note").fill("Up to £500");
+      await access.getByRole("button", { name: "Save" }).click();
+      const edited = access.getByRole("listitem").filter({ hasText: "Up to £500" });
+      await edited.getByRole("button", { name: "Revoke" }).click();
+      await expect(edited).toBeHidden();
+      await access.getByLabel("Show revoked").check();
+      await expect(edited.getByText(/Revoked/)).toBeVisible();
+
+      // A team's settings add and remove its agents, and show the team's access.
+      await page.goto("/team/PF/settings");
+      const members = page.getByRole("region", { name: "Members" });
+      await members.getByRole("button", { name: "Add member" }).click();
+      await page.getByRole("option", { name: /Ada/ }).click();
+      const ada = members.getByRole("listitem").filter({ hasText: "Ada" });
+      await expect(ada).toBeVisible();
+      const teamAccess = page.getByRole("region", { name: "Access" });
+      await teamAccess.getByRole("button", { name: "Add access" }).click();
+      await teamAccess.getByLabel("Action").fill("doc.write");
+      await teamAccess.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(teamAccess.getByText("doc.write")).toBeVisible();
+      await ada.getByRole("button", { name: "Remove" }).click();
+      await expect(ada).toBeHidden();
     });
 
     test("runs an agent on a machine, follows the transcript and stops it", async () => {
@@ -1087,13 +1140,13 @@ test.describe
       });
       await page.goto(`/request/${asked.id}`);
       await expect(page.getByText("Create an integration token in Notion settings.")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Approve once" })).toBeDisabled();
       await expect(page.getByRole("button", { name: "Always allow" })).toBeDisabled();
 
       await page.getByLabel("Token").fill("secret-token");
       await page.getByRole("button", { name: "Connect", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
-      await page.getByRole("button", { name: "Approve", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Approve once" })).toBeEnabled();
+      await page.getByRole("button", { name: "Approve once" }).click();
       await expect(page.getByText("Approved once by Youssef")).toBeVisible();
       expect(await mcp("get_request", { id: asked.id })).toMatchObject({
         status: "approved",
@@ -1121,7 +1174,7 @@ test.describe
         return route.fulfill({ response, json: body });
       });
       await page.goto(`/request/${asked.id}`);
-      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Approve once" })).toBeDisabled();
       await page.getByRole("button", { name: "Sign in to linear" }).click();
       await page.waitForURL("**/signed-in-elsewhere");
       await page.unroute("**/graphql");

@@ -24,7 +24,7 @@ export function usePath(): string {
   return useSyncExternalStore(subscribe, () => window.location.pathname);
 }
 
-export type RequestsTab = "pending" | "answered" | "grants";
+export type RequestsTab = "pending" | "answered";
 export type RunsTab = "active" | "all";
 export type TeamView = "all" | "active" | "backlog" | "triage";
 
@@ -69,7 +69,7 @@ export function parseRoute(path: string): Route {
   if (first === "approvals")
     return {
       name: "requests",
-      tab: second === "answered" || second === "grants" ? second : "pending",
+      tab: second === "answered" ? second : "pending",
     };
   if (first === "request" && second) return { name: "request", id: second };
   if (first === "runs") return { name: "runs", tab: second === "all" ? "all" : "active" };

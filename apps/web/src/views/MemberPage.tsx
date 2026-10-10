@@ -24,6 +24,7 @@ import {
   timeAgo,
   useStore,
 } from "../ui.js";
+import { AccessPanel } from "./Access.js";
 import {
   FeedbackSection,
   Prose,
@@ -334,6 +335,16 @@ export function MemberPage({ id }: { id: string }) {
           )}
 
           {member.kind === "agent" && <RunsSection runs={runRows} showAgent={false} />}
+
+          {member.kind === "agent" && (
+            <Section
+              id="access"
+              title="Access"
+              description={`What ${member.name} may do without asking: its own grants, its teams' and every agent's.`}
+            >
+              <AccessPanel userId={member.id} />
+            </Section>
+          )}
 
           {(canEdit || member.isMe) && (
             <Section

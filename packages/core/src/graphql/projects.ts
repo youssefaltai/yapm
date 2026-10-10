@@ -84,16 +84,23 @@ const DocumentConnection = connection<DocumentRow>("Document", Document);
 
 /** Issue counts for progress: Linear counts scope without canceled issues. */
 async function issueCounts(ctx: Parameters<typeof db>[0], where: SQL) {
-  const rows = await db(ctx)
-    .select({
-      total: count(),
-      completed: count(issues.completedAt),
-      canceled: count(issues.canceledAt),
-      started: count(issues.startedAt),
-    })
-    .from(issues)
-    .where(and(where, isNull(issues.archivedAt)))
-    .get();
+  return progressOf(
+    await db(ctx)
+      .select({
+        total: count(),
+        completed: count(issues.completedAt),
+        canceled: count(issues.canceledAt),
+        started: count(issues.startedAt),
+      })
+      .from(issues)
+      .where(and(where, isNull(issues.archivedAt)))
+      .get(),
+  );
+}
+
+function progressOf(
+  rows: { total: number; completed: number; canceled: number; started: number } | undefined,
+) {
   const total = (rows?.total ?? 0) - (rows?.canceled ?? 0);
   return {
     scope: total,
@@ -148,14 +155,8 @@ Project.implement({
     initiative: t.field({
       type: Initiative,
       nullable: true,
-      resolve: async (p, _args, ctx) =>
-        p.initiativeId
-          ? ((await db(ctx)
-              .select()
-              .from(initiatives)
-              .where(eq(initiatives.id, p.initiativeId))
-              .get()) ?? null)
-          : null,
+      resolve: (p, _args, ctx) =>
+        p.initiativeId ? ctx.loaders.initiative.load(p.initiativeId) : null,
     }),
     teams: t.field({
       type: TeamConnection,
@@ -183,15 +184,7 @@ Project.implement({
       type: ProjectMilestoneConnection,
       args: pageArgs,
       resolve: async (p, args, ctx) =>
-        paginate(
-          await db(ctx)
-            .select()
-            .from(projectMilestones)
-            .where(eq(projectMilestones.projectId, p.id))
-            .orderBy(asc(projectMilestones.sortOrder), asc(projectMilestones.createdAt))
-            .all(),
-          args,
-        ),
+        paginate(await ctx.loaders.milestonesByProject.load(p.id), args),
     }),
     projectUpdates: t.field({
       type: ProjectUpdateConnection,
@@ -225,15 +218,7 @@ Project.implement({
       nullable: true,
       description: "From the latest update; null until the first one.",
       resolve: async (p, _args, ctx) =>
-        (
-          await db(ctx)
-            .select({ health: projectUpdates.health })
-            .from(projectUpdates)
-            .where(eq(projectUpdates.projectId, p.id))
-            .orderBy(desc(projectUpdates.createdAt))
-            .limit(1)
-            .get()
-        )?.health ?? null,
+        (await ctx.loaders.healthsByProject.load(p.id))[0]?.health ?? null,
     }),
     documents: t.field({
       type: DocumentConnection,
@@ -251,7 +236,8 @@ Project.implement({
     }),
     progress: t.field({
       type: ProjectProgress,
-      resolve: (p, _args, ctx) => issueCounts(ctx, eq(issues.projectId, p.id)),
+      resolve: async (p, _args, ctx) =>
+        progressOf((await ctx.loaders.issueCountsByProject.load(p.id))[0]),
     }),
   }),
 });

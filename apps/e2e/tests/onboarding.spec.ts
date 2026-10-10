@@ -170,6 +170,41 @@ test.describe
       await other.close();
     });
 
+    test("a hidden tab skips live refreshes and catches up when shown", async () => {
+      const other = await page.context().newPage();
+      await other.goto("/team/PF");
+      await other.getByRole("button", { name: "list" }).click();
+      await expect(other.getByRole("button", { name: /Switch to a cheaper tariff/ })).toBeVisible();
+      const setHidden = (hidden: boolean) =>
+        other.evaluate((hidden) => {
+          Object.defineProperty(document, "hidden", { value: hidden, configurable: true });
+          Object.defineProperty(document, "visibilityState", {
+            value: hidden ? "hidden" : "visible",
+            configurable: true,
+          });
+          if (!hidden) document.dispatchEvent(new Event("visibilitychange"));
+        }, hidden);
+      await setHidden(true);
+      await other.waitForTimeout(500); // let refreshes already queued land
+      let requests = 0;
+      other.on("request", (request) => {
+        if (request.url().endsWith("/graphql")) requests++;
+      });
+
+      await page.goto("/issue/PF-2");
+      const title = page.getByLabel("Issue title");
+      await title.fill("Switch to a cheaper tariff today");
+      await title.press("Enter");
+      await page.waitForTimeout(1000);
+      expect(requests).toBe(0);
+
+      await setHidden(false);
+      await expect(
+        other.getByRole("button", { name: /Switch to a cheaper tariff today/ }),
+      ).toBeVisible();
+      await other.close();
+    });
+
     test("hires an agent and connects it to Claude Code with a token", async () => {
       await page.getByRole("link", { name: "Company" }).click();
       await page.getByRole("button", { name: "+ Hire agent" }).click();

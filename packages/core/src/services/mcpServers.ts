@@ -248,15 +248,6 @@ export async function createMcpServer(
           permitted,
         );
   await commit(db, [
-    // Its sign-in stopped working: it waits for the owner to sign in again.
-    ...(existing && permitted
-      ? [
-          db
-            .update(mcpServers)
-            .set({ status: "pending", updatedAt: now })
-            .where(eq(mcpServers.id, existing.id)),
-        ]
-      : []),
     ...(existing
       ? []
       : [

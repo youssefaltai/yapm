@@ -3414,13 +3414,10 @@ export function hubContract(
           reason: "Drive rejects my token.",
         });
         expect(asked.json()).toMatchObject({ title: "Sign in to drive again", status: "pending" });
-        const filed = await client.graphql<{
-          request: { mcpServer: { id: string; status: string } };
-        }>("query($id: String!) { request(id: $id) { mcpServer { id status } } }", {
-          id: asked.json().id,
-        });
-        // Its sign-in stopped working, so it waits for the owner to sign in again.
-        expect(filed.data?.request.mcpServer.status).toBe("pending");
+        const filed = await client.graphql<{ request: { mcpServer: { id: string } } }>(
+          "query($id: String!) { request(id: $id) { mcpServer { id } } }",
+          { id: asked.json().id },
+        );
         const connected = await client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
           "mutation($id: String!) { mcpServerConnect(id: $id) { authorizationUrl } }",
           { id: filed.data?.request.mcpServer.id },

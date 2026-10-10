@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { type Member, mutate, useQuery, type Workspace } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { button, Page, PageHeader, PageTitle } from "../layout.js";
+import { EmptyState } from "../states.js";
 import { Avatar, createStore, Kbd, timeAgo, useStore } from "../ui.js";
+import { machineSetup, type SetupCommand, SetupPanel } from "./Machines.js";
 import type { RunStatus } from "./Runs.js";
 
 /** The CEO: the first agent reporting to the owner, created with the company. */
-export function ceoOf(workspace: Workspace | null): Member | undefined {
+function ceoOf(workspace: Workspace | null): Member | undefined {
   const owner = workspace?.users.nodes.find((u) => u.kind === "owner");
   return workspace?.users.nodes.find((u) => u.kind === "agent" && u.manager?.id === owner?.id);
 }
@@ -41,6 +43,13 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
     2000,
   );
   const run = stale ? undefined : data?.run;
+  // The CEO runs on the owner's machines; until there's one, the chat offers to add it.
+  const [setup, setSetup] = useState<SetupCommand | null>(null);
+  const machines = useQuery<{ machines: { id: string; status: string }[] }>(
+    "{ machines { id status } }",
+    undefined,
+    setup ? 3_000 : 15_000,
+  );
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   // Each sent message starts a fresh editor.
@@ -86,10 +95,34 @@ export function ChatView({ workspace }: { workspace: Workspace }) {
     setSent((n) => n + 1);
   }
 
+  if (machines.data && !machines.data.machines.some((m) => m.status === "active"))
+    return (
+      <Page>
+        <PageHeader>
+          <PageTitle>Chat</PageTitle>
+        </PageHeader>
+        {setup ? (
+          <div className="m-auto w-full max-w-xl animate-rise-in px-4">
+            <SetupPanel setup={setup} added={undefined} onDone={() => setSetup(null)} />
+          </div>
+        ) : (
+          <EmptyState
+            icon="machine"
+            title="Add your first machine"
+            description={`${name} works on your own Mac or Linux computer, signed in with your Claude account. One command sets it up.`}
+            action={{
+              label: "Add machine",
+              onClick: async () => setSetup(await machineSetup(machines.data?.machines ?? [])),
+            }}
+          />
+        )}
+      </Page>
+    );
+
   return (
     <Page>
       <PageHeader>
-        <PageTitle>{name}</PageTitle>
+        <PageTitle>Chat</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-end px-4 pt-6 md:px-6">

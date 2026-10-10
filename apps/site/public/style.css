@@ -703,8 +703,10 @@ h1 {
   border-radius: 5px;
 }
 .foot a {
-  margin-left: auto;
   color: var(--fg-3);
+}
+.foot a:last-child {
+  margin-left: auto;
 }
 .foot a:hover {
   color: var(--fg);
@@ -812,7 +814,7 @@ h1 {
     flex: 1 1 0;
     justify-content: center;
   }
-  .foot a {
+  .foot a:last-child {
     margin-left: 0;
   }
 }

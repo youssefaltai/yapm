@@ -191,6 +191,10 @@ builder.mutationFields((t) => ({
       id: t.arg.string({ required: true }),
       token: t.arg.string({ required: false }),
       callbackUrl: t.arg.string({ required: false }),
+      returnTo: t.arg.string({
+        required: false,
+        description: "A path on the hub to come back to after signing in, e.g. /company.",
+      }),
     },
     resolve: async (_root, args, ctx) => ({
       serverId: args.id,

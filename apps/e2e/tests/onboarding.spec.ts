@@ -1271,12 +1271,15 @@ test.describe
     });
 
     test("sees connected servers on the Company page and signs in to one again", async () => {
+      let returnTo: unknown = null;
       await page.route("**/graphql", async (route) => {
-        const query: string = route.request().postDataJSON().query;
-        if (query.includes("mcpServerConnect"))
+        const { query, variables } = route.request().postDataJSON();
+        if (query.includes("mcpServerConnect")) {
+          returnTo = variables.returnTo;
           return route.fulfill({
             json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-again" } } },
           });
+        }
         if (!query.includes("mcpServers")) return route.fallback();
         // As above, the hub can't reach a provider, so linear is told it signs in with OAuth.
         const response = await route.fetch();
@@ -1297,6 +1300,8 @@ test.describe
       await linear.getByRole("button", { name: "Reconnect" }).click();
       await linear.getByRole("button", { name: "Sign in to linear" }).click();
       await page.waitForURL("**/signed-in-again");
+      // The sign-in comes back here, not to the request that first asked for the server.
+      expect(returnTo).toBe("/company");
       await page.unrouteAll({ behavior: "ignoreErrors" });
     });
 

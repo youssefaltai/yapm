@@ -3345,12 +3345,22 @@ export function hubContract(
         // Approved once only, so no one may use it standing.
         expect(servers.find((s) => s.name === "notion")?.grants.nodes).toEqual([]);
 
-        // Signing in again works on a server that is already connected.
-        const again = await client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
-          "mutation($id: String!) { mcpServerConnect(id: $id) { authorizationUrl } }",
-          { id: drive?.id },
+        // Signing in again works on a server that is already connected, and returns where it
+        // started: only to a path on the hub, never another site.
+        const connect = (returnTo: string) =>
+          client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
+            "mutation($id: String!, $r: String) { mcpServerConnect(id: $id, returnTo: $r) { authorizationUrl } }",
+            { id: drive?.id, r: returnTo },
+          );
+        for (const away of ["//evil.example", "https://evil.example/", "/\\evil.example"])
+          expect((await connect(away)).errors?.[0]?.message).toBe("returnTo must be a path");
+        const again = new URL(
+          (await connect("/company")).data?.mcpServerConnect.authorizationUrl ?? "",
         );
-        expect(again.data?.mcpServerConnect.authorizationUrl).toMatch(/^https:\/\//);
+        const back = await client.request(
+          `/api/mcp/oauth/callback?code=good-code&state=${again.searchParams.get("state")}`,
+        );
+        expect(back.headers.get("location")).toBe("http://localhost/company");
       } finally {
         fetchSpy.mockRestore();
       }

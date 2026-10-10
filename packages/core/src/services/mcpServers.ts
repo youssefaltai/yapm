@@ -281,11 +281,17 @@ export async function connectMcpServer(
     id: string;
     token?: string | null;
     callbackUrl?: string | null;
+    /** A path on the hub to come back to after signing in. */
+    returnTo?: string | null;
     origin: string;
   },
 ): Promise<{ authorizationUrl: string | null }> {
   const { db, now } = ctx;
   await requireOwner(ctx, "connect MCP servers");
+  // Only a path on the hub, so a sign-in can't send the owner to another site.
+  const returnTo = input.returnTo ?? "";
+  if (returnTo && !(returnTo.startsWith("/") && new URL(returnTo, "http://hub").host === "hub"))
+    throw badRequest("returnTo must be a path");
   const server = await requireMcpServer(db, input.id);
   const token = input.token?.trim();
   if (token) {
@@ -352,6 +358,7 @@ export async function connectMcpServer(
         redirectUri: redirectUri ?? "",
         state,
         verifier: await seal(deps.config.secret, verifier),
+        returnTo,
       },
       updatedAt: now,
     })
@@ -416,7 +423,7 @@ export async function finishOAuth(
   deps: HubDeps,
   query: { state?: string; code?: string; error?: string; error_description?: string },
   at: number,
-): Promise<{ requestId: string | null; error: string | null }> {
+): Promise<{ requestId: string | null; returnTo: string | null; error: string | null }> {
   const { db } = deps;
   const server = query.state
     ? await db
@@ -425,7 +432,7 @@ export async function finishOAuth(
         .where(sql`json_extract(${mcpServers.oauth}, '$.state') = ${query.state}`)
         .get()
     : undefined;
-  const { state: _, verifier, ...oauth } = server?.oauth ?? {};
+  const { state: _, verifier, returnTo, ...oauth } = server?.oauth ?? {};
   // Claim the flow before using its code, so a callback that arrives twice exchanges it once.
   const claimed =
     server && verifier
@@ -444,6 +451,7 @@ export async function finishOAuth(
   if (!server || !claimed.length)
     return {
       requestId: server?.requestId ?? null,
+      returnTo: null,
       error: "This sign-in has expired or was already used. Connect again from the request.",
     };
   try {
@@ -485,10 +493,14 @@ export async function finishOAuth(
         at,
       ),
     ]);
-    return { requestId: server.requestId, error: null };
+    return { requestId: server.requestId, returnTo: returnTo || null, error: null };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    return { requestId: server.requestId, error: `The sign-in didn't go through: ${reason}` };
+    return {
+      requestId: server.requestId,
+      returnTo: returnTo || null,
+      error: `The sign-in didn't go through: ${reason}`,
+    };
   }
 }
 

@@ -220,9 +220,12 @@ function ServerList() {
   const { data } = useQuery<{ mcpServers: { nodes: Server[] } }>(SERVERS);
   const [open, setOpen] = useState<string | null>(null);
   const servers = data?.mcpServers.nodes ?? [];
+  const error = new URLSearchParams(window.location.search).get("error");
   if (!servers.length) return null;
   return (
     <Section id="servers-title" title="Connected servers">
+      {/* Why a sign-in that came back here failed. */}
+      {!open && error && <p className="mb-2 text-critical">{error}</p>}
       <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
         {servers.map((s) => (
           <li key={s.id} className="px-4 py-2">

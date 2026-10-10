@@ -522,8 +522,9 @@ export function McpConnect({ server, onDone }: { server: McpServer; onDone?: () 
     setFailure(null);
     try {
       const result = await graphql<{ mcpServerConnect: { authorizationUrl: string | null } }>(
-        "mutation($id: String!, $token: String, $callbackUrl: String) { mcpServerConnect(id: $id, token: $token, callbackUrl: $callbackUrl) { authorizationUrl } }",
-        { id: server.id, ...variables },
+        "mutation($id: String!, $token: String, $callbackUrl: String, $returnTo: String) { mcpServerConnect(id: $id, token: $token, callbackUrl: $callbackUrl, returnTo: $returnTo) { authorizationUrl } }",
+        // A sign-in comes back to where it started.
+        { id: server.id, returnTo: window.location.pathname, ...variables },
       );
       invalidate();
       if (!result.mcpServerConnect.authorizationUrl) onDone?.();

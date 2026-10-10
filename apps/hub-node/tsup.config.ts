@@ -7,7 +7,7 @@ export default defineConfig({
   platform: "node",
   clean: true,
   // Workspace packages ship TypeScript source, so bundle them; keep npm deps external.
-  noExternal: [/^@life-os\//],
+  noExternal: [/^@yapm\//],
   // Some bundled CommonJS dependencies call require() for Node built-ins.
   banner: {
     js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",

@@ -1,17 +1,17 @@
-# Life OS hub on Node.js: serves the API, GraphQL and the web app, with a SQLite file in /data.
+# yapm hub on Node.js: serves the API, GraphQL and the web app, with a SQLite file in /data.
 FROM public.ecr.aws/docker/library/node:22-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @life-os/web build && pnpm --filter @life-os/hub-node build
+RUN pnpm --filter @yapm/web build && pnpm --filter @yapm/hub-node build
 # Production dependencies the bundle keeps external (native libSQL, Hono, Drizzle).
-RUN pnpm --filter @life-os/hub-node deploy --prod --legacy /out
+RUN pnpm --filter @yapm/hub-node deploy --prod --legacy /out
 
 FROM public.ecr.aws/docker/library/node:22-slim
 ENV NODE_ENV=production \
     PORT=8787 \
-    DATABASE_URL=file:/data/life-os.db
+    DATABASE_URL=file:/data/yapm.db
 WORKDIR /app/apps/hub-node
 COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /app/apps/hub-node/dist ./dist

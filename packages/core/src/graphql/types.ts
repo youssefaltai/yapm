@@ -15,7 +15,7 @@ import {
   WORKFLOW_STATE_TYPES,
   type workflowStates,
   type workspaces,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
 import { DEFAULT_ROUTING } from "../runs/routing.js";

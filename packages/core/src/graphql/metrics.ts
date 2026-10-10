@@ -1,4 +1,4 @@
-import type { AuditFilter, MetricScope, metricSnapshots } from "@life-os/schema";
+import type { AuditFilter, MetricScope, metricSnapshots } from "@yapm/schema";
 import { createGraphQLError } from "graphql-yoga";
 import {
   addCounts,

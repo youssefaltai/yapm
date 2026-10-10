@@ -21,9 +21,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     headers:
-      body === undefined
-        ? {}
-        : { "content-type": "application/json", "x-life-os-client": CLIENT_ID },
+      body === undefined ? {} : { "content-type": "application/json", "x-yapm-client": CLIENT_ID },
     body: body === undefined ? null : JSON.stringify(body),
     credentials: "same-origin",
   });

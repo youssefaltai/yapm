@@ -10,7 +10,7 @@ import {
   runs,
   users,
   workspaces,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, count, desc, eq, gte, ne } from "drizzle-orm";
 import type { HubDb } from "../db.js";
 import { badRequest, notFound } from "../errors.js";

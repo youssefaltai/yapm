@@ -5,7 +5,7 @@ import {
   requests,
   teams,
   users,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { HubDeps } from "./context.js";
 import { fromBase64Url, toBase64Url } from "./crypto.js";
@@ -202,7 +202,7 @@ async function message(db: HubDb, n: NotificationRow): Promise<PushMessage> {
   }
   const issue = n.issueId ? await findIssue(db, n.issueId) : null;
   const identifier = issue ? await identifierOf(db, issue.teamId, issue.number) : "";
-  const title = issue ? `${identifier} ${issue.title}` : "Life OS";
+  const title = issue ? `${identifier} ${issue.title}` : "yapm";
   const url = identifier ? `/issue/${identifier}` : "/inbox";
   const body: Record<NotificationRow["type"], string> = {
     issueAssignedToYou: `${who} assigned it to you`,
@@ -239,7 +239,7 @@ async function sendToDevices(
   const send = deps.fetch ?? fetch;
   const at = deps.now?.() ?? Date.now();
   const keys = await vapidKeys(db, at);
-  const subject = origin.startsWith("https://") ? origin : "mailto:life-os@localhost";
+  const subject = origin.startsWith("https://") ? origin : "mailto:yapm@localhost";
   const payload = encoder.encode(JSON.stringify({ ...msg, url: new URL(msg.url, origin).href }));
   const results = await Promise.all(
     devices.map(async (device) => {

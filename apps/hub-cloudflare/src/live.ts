@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { HubEvent, Realtime } from "@life-os/core";
+import type { HubEvent, Realtime } from "@yapm/core";
 import type { Env } from "./worker.js";
 
 /**

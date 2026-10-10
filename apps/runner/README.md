@@ -1,33 +1,33 @@
-# Life OS runner
+# yapm runner
 
 Runs your company's AI agents on this machine, signed in with your own Claude subscription.
 The hub decides who runs what; the runner claims runs, works through the Claude Agent SDK,
 streams the transcript back, and obeys Stop. Secrets (your Claude sign-in, files) never
 leave the machine.
 
-On the Machines page in Life OS, press **Add machine** and paste the command into Terminal on
+On the Machines page in yapm, press **Add machine** and paste the command into Terminal on
 the computer you're adding:
 
 ```sh
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
-It installs the runner into `~/.life-os-runner` (with a private Node.js when the machine has no
+It installs the runner into `~/.yapm-runner` (with a private Node.js when the machine has no
 Node 22+), connects it with the one-time token, signs in to Claude if needed and keeps it running
 in the background (launchd on macOS, systemd on Linux). Run it again without `--token` to update.
 
 ```sh
-life-os-runner logs                # follow what it's doing
-life-os-runner login               # sign in to Claude again
-life-os-runner service uninstall   # stop running in the background
+yapm-runner logs                # follow what it's doing
+yapm-runner login               # sign in to Claude again
+yapm-runner service uninstall   # stop running in the background
 ```
 
-By hand, or with the npm package: `life-os-runner enrol --hub https://your-hub.example` prints a
-six-digit code to approve in the app (or pass `--token`), then `life-os-runner start`.
+By hand, or with the npm package: `yapm-runner enrol --hub https://your-hub.example` prints a
+six-digit code to approve in the app (or pass `--token`), then `yapm-runner start`.
 
-Settings live in `~/.life-os-runner/config.json`. Agents start in your home folder and may work
+Settings live in `~/.yapm-runner/config.json`. Agents start in your home folder and may work
 anywhere on the machine; their Claude sign-in, sessions and settings live in
-`~/.life-os-runner/claude`.
+`~/.yapm-runner/claude`.
 
 Agents connect the MCP servers they need themselves: you approve each one, and sign in to it, from
 its request in the app. The hub hands a run the servers its agent may use. Your own Claude Code

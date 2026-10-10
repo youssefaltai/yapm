@@ -1,4 +1,4 @@
-import type { ClaudeAccount, PlanLimit, PlanUsage } from "@life-os/schema";
+import type { ClaudeAccount, PlanLimit, PlanUsage } from "@yapm/schema";
 import {
   claudeSubscriptions,
   type Subscription,

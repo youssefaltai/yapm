@@ -232,6 +232,6 @@ Both hub adapters run the same contract test suite (`packages/core/src/testing/c
 
 ## License
 
-[AGPL-3.0](LICENSE). Made by Youssef Al-Tai.
+[AGPL-3.0](LICENSE). Made by [Youssef Al-Tai](https://youssefaltai.com).
 
 Linear is a trademark of Linear Orbit, Inc. yapm is not affiliated with or endorsed by Linear. Claude is a trademark of Anthropic, PBC.

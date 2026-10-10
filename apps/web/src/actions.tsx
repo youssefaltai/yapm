@@ -1,5 +1,5 @@
 import { graphql } from "./api.js";
-import type { ContextEntry } from "./contextMenu.js";
+import type { ContextEntry, ContextItem } from "./contextMenu.js";
 import { confirmDialog, formatDate, isoDate, parseDate, promptDialog } from "./controls.js";
 import {
   ISSUE_FIELDS,
@@ -496,21 +496,77 @@ export function openInNewTab(path: string) {
   window.open(path, "_blank", "noopener");
 }
 
-/** The entries every linkable thing shares: open it in a new tab, copy its link. */
-export function linkEntries(path: string, name = "link"): ContextEntry[] {
+/** Something to copy: its link, and the ID and name (or title) worth pasting with it. */
+export interface Copyable {
+  path: string;
+  id?: string;
+  name?: string;
+  title?: string;
+}
+
+/** Linear's Copy submenu: the IDs, links, names and Markdown links of one thing or a few. */
+function copyMenu(things: Copyable[]): MenuSpec {
+  const [only] = things;
+  const name = only?.title ?? only?.name;
+  const many = things.length > 1;
+  const ids = things.flatMap((t) => t.id ?? []).join(", ");
+  return {
+    placeholder: "Copy…",
+    items: [
+      ...(ids
+        ? [{ id: "id", label: "Copy ID", hint: ids, onSelect: () => copyText(ids, ids) }]
+        : []),
+      {
+        id: "link",
+        label: many ? "Copy links" : "Copy link",
+        onSelect: () =>
+          copyText(things.map((t) => linkTo(t.path)).join("\n"), many ? "links" : "link"),
+      },
+      ...(only && name && !many
+        ? [
+            {
+              id: "name",
+              label: only.title ? "Copy title" : "Copy name",
+              onSelect: () => copyText(name, only.title ? "title" : "name"),
+            },
+            {
+              id: "markdown",
+              label: "Copy as Markdown link",
+              onSelect: () =>
+                copyText(
+                  `[${[only.id, name].filter(Boolean).join(" ")}](${linkTo(only.path)})`,
+                  "link",
+                ),
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+/** The Copy entry: a submenu when there's more to copy than the link. */
+export function copyEntry(things: Copyable[]): ContextItem {
+  const [only] = things;
+  if (only && things.length === 1 && !only.id && !only.name && !only.title)
+    return {
+      id: "copy-link",
+      icon: icon("link"),
+      label: "Copy link",
+      onSelect: () => copyText(linkTo(only.path), "link"),
+    };
+  return { id: "copy", icon: icon("copy"), label: "Copy", submenu: () => copyMenu(things) };
+}
+
+/** The entries every linkable thing shares: open it in a new tab, copy it. */
+export function linkEntries(thing: Copyable): ContextEntry[] {
   return [
     {
       id: "new-tab",
       icon: icon("newTab"),
       label: "Open in new tab",
-      onSelect: () => openInNewTab(path),
+      onSelect: () => openInNewTab(thing.path),
     },
-    {
-      id: "copy-link",
-      icon: icon("link"),
-      label: "Copy link",
-      onSelect: () => copyText(linkTo(path), name),
-    },
+    copyEntry([thing]),
   ];
 }
 
@@ -559,43 +615,11 @@ export function dateMenu({
   };
 }
 
-function copyMenu(issues: Issue[]): MenuSpec {
-  const [only] = issues;
-  const ids = issues.map((i) => i.identifier).join(", ");
-  return {
-    placeholder: `Copy ${plural(issues)}…`,
-    items: [
-      { id: "id", label: "Copy ID", hint: ids, onSelect: () => copyText(ids, ids) },
-      {
-        id: "link",
-        label: issues.length === 1 ? "Copy link" : "Copy links",
-        onSelect: () =>
-          copyText(
-            issues.map((i) => linkTo(paths.issue(i.identifier))).join("\n"),
-            issues.length === 1 ? "link" : "links",
-          ),
-      },
-      ...(only && issues.length === 1
-        ? [
-            {
-              id: "title",
-              label: "Copy title",
-              onSelect: () => copyText(only.title, "title"),
-            },
-            {
-              id: "markdown",
-              label: "Copy as Markdown link",
-              onSelect: () =>
-                copyText(
-                  `[${only.identifier} ${only.title}](${linkTo(paths.issue(only.identifier))})`,
-                  "link",
-                ),
-            },
-          ]
-        : []),
-    ],
-  };
-}
+export const issueCopyable = (i: { identifier: string; title: string }): Copyable => ({
+  path: paths.issue(i.identifier),
+  id: i.identifier,
+  title: i.title,
+});
 
 /** Linear's issue menu: every property, then copy, relations and archive. For a row or a selection. */
 export function issueContextMenu(issues: Issue[]): ContextEntry[] {
@@ -697,13 +721,7 @@ export function issueContextMenu(issues: Issue[]): ContextEntry[] {
       submenu: () => relationMenu(one),
     },
     "divider",
-    { id: "copy", icon: icon("copy"), label: "Copy", submenu: () => copyMenu(issues) },
-    one && {
-      id: "new-tab",
-      icon: icon("newTab"),
-      label: "Open in new tab",
-      onSelect: () => openInNewTab(paths.issue(one.identifier)),
-    },
+    ...(one ? linkEntries(issueCopyable(one)) : [copyEntry(issues.map(issueCopyable))]),
     "divider",
     archived
       ? {
@@ -767,7 +785,7 @@ export function documentContextMenu(
 ): ContextEntry[] {
   const title = doc.title || "Untitled";
   return [
-    ...linkEntries(paths.document(doc.id)),
+    ...linkEntries({ path: paths.document(doc.id), title }),
     "divider",
     {
       id: "rename",

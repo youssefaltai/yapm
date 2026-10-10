@@ -191,7 +191,7 @@ export function InitiativesView() {
                         type="button"
                         onClick={() => navigate(paths.project(p.id))}
                         onContextMenu={contextMenu(() => [
-                          ...linkEntries(paths.project(p.id)),
+                          ...linkEntries({ path: paths.project(p.id), name: p.name }),
                           "divider",
                           {
                             id: "unlink",

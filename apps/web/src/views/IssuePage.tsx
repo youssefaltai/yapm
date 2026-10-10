@@ -8,6 +8,7 @@ import {
   cycleName,
   estimateMenu,
   issueContextMenu,
+  issueCopyable,
   labelsMenu,
   linkEntries,
   parentMenu,
@@ -553,12 +554,7 @@ function Relations({ issue }: { issue: IssueDetail }) {
               label: "Open",
               onSelect: () => navigate(paths.issue(row.other.identifier)),
             },
-            ...linkEntries(paths.issue(row.other.identifier)),
-            {
-              id: "copy-id",
-              label: "Copy ID",
-              onSelect: () => copyText(row.other.identifier, row.other.identifier),
-            },
+            ...linkEntries(issueCopyable(row.other)),
             "divider",
             {
               id: "remove",

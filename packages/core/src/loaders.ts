@@ -1,6 +1,7 @@
 import {
   comments,
   cycles,
+  initiatives,
   issueLabels,
   issueRelations,
   issues,
@@ -15,7 +16,7 @@ import {
   workflowStates,
 } from "@life-os/schema";
 import DataLoader from "dataloader";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { HubDb } from "./db.js";
 
 /** D1 allows 100 bound parameters per statement; keep `IN (...)` lists below that. */
@@ -72,6 +73,49 @@ export function createLoaders(db: HubDb) {
     request: byId((ids) => db.select().from(requests).where(inArray(requests.id, ids)).all()),
     projectUpdate: byId((ids) =>
       db.select().from(projectUpdates).where(inArray(projectUpdates.id, ids)).all(),
+    ),
+    initiative: byId((ids) =>
+      db.select().from(initiatives).where(inArray(initiatives.id, ids)).all(),
+    ),
+    milestonesByProject: groupBy(
+      (ids) =>
+        db
+          .select()
+          .from(projectMilestones)
+          .where(inArray(projectMilestones.projectId, ids))
+          .orderBy(asc(projectMilestones.sortOrder), asc(projectMilestones.createdAt))
+          .all(),
+      "projectId",
+    ),
+    /** Newest first, so a project's health is its first entry. */
+    healthsByProject: groupBy(
+      (ids) =>
+        db
+          .select({ projectId: projectUpdates.projectId, health: projectUpdates.health })
+          .from(projectUpdates)
+          .where(inArray(projectUpdates.projectId, ids))
+          .orderBy(desc(projectUpdates.createdAt))
+          .all(),
+      "projectId",
+    ),
+    /** Unarchived issue counts per project, one row each (none when it has no issues). */
+    issueCountsByProject: groupBy(
+      async (ids) =>
+        (
+          await db
+            .select({
+              projectId: issues.projectId,
+              total: count(),
+              completed: count(issues.completedAt),
+              canceled: count(issues.canceledAt),
+              started: count(issues.startedAt),
+            })
+            .from(issues)
+            .where(and(inArray(issues.projectId, ids), isNull(issues.archivedAt)))
+            .groupBy(issues.projectId)
+            .all()
+        ).map((row) => ({ ...row, projectId: row.projectId ?? "" })),
+      "projectId",
     ),
     statesByTeam: groupBy(
       (ids) =>

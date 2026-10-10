@@ -1270,6 +1270,36 @@ test.describe
       await page.unrouteAll({ behavior: "ignoreErrors" });
     });
 
+    test("sees connected servers on the Company page and signs in to one again", async () => {
+      await page.route("**/graphql", async (route) => {
+        const query: string = route.request().postDataJSON().query;
+        if (query.includes("mcpServerConnect"))
+          return route.fulfill({
+            json: { data: { mcpServerConnect: { authorizationUrl: "/signed-in-again" } } },
+          });
+        if (!query.includes("mcpServers")) return route.fallback();
+        // As above, the hub can't reach a provider, so linear is told it signs in with OAuth.
+        const response = await route.fetch();
+        const body = await response.json();
+        for (const s of body.data.mcpServers.nodes)
+          if (s.name === "linear") Object.assign(s, { auth: "oauth", status: "ready" });
+        return route.fulfill({ response, json: body });
+      });
+      await page.goto("/company");
+      const servers = page.getByRole("region", { name: "Connected servers" });
+      const notion = servers.getByRole("listitem").filter({ hasText: "notion" });
+      await expect(notion).toContainText("https://mcp.example.com/mcp");
+      await expect(notion).toContainText("Connected");
+      await expect(servers.getByRole("listitem").filter({ hasText: "slack" })).toContainText(
+        "Needs sign-in",
+      );
+      const linear = servers.getByRole("listitem").filter({ hasText: "linear" });
+      await linear.getByRole("button", { name: "Reconnect" }).click();
+      await linear.getByRole("button", { name: "Sign in to linear" }).click();
+      await page.waitForURL("**/signed-in-again");
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    });
+
     test("changes show at once on a slow network, and a failed one rolls back", async () => {
       await page.goto("/team/PF");
       await page.getByRole("button", { name: "list" }).click();

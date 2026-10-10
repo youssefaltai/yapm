@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { createTeamStore, hireAgentStore } from "../actions.js";
-import type { Member, Workspace } from "../data.js";
+import { type Member, useQuery, type Workspace } from "../data.js";
 import { button, Page, PageBody, PageHeader, PageTitle, pageHeading, Section } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
 import { Avatar } from "../ui.js";
+import { McpConnect } from "./Requests.js";
 
 export function Company({ workspace }: { workspace: Workspace }) {
   const members = workspace.users.nodes;
@@ -67,6 +68,8 @@ export function Company({ workspace }: { workspace: Workspace }) {
               )}
               <TeamList teams={teams} members={members} />
             </Section>
+
+            {isOwner && <ServerList />}
           </div>
 
           <aside className="min-w-0 space-y-3">
@@ -188,4 +191,78 @@ function OrgNode({ member, members, depth }: { member: Member; members: Member[]
       ))}
     </>
   );
+}
+
+interface Server {
+  id: string;
+  name: string;
+  url: string | null;
+  command: string | null;
+  args: string[];
+  auth: "none" | "oauth" | "token";
+  status: "pending" | "ready";
+  pastesCallback: boolean;
+  grants: {
+    nodes: { scope: string; user: { name: string } | null; team: { name: string } | null }[];
+  };
+}
+
+const SERVERS = `{ mcpServers { nodes {
+  id name url command args auth status pastesCallback
+  grants { nodes { scope user { name } team { name } } }
+} } }`;
+
+/**
+ * The outside MCP servers agents asked for: whether each is signed in, who may use it, and a
+ * way to sign in again, say when a refresh stopped working, without waiting for a request.
+ */
+function ServerList() {
+  const { data } = useQuery<{ mcpServers: { nodes: Server[] } }>(SERVERS);
+  const [open, setOpen] = useState<string | null>(null);
+  const servers = data?.mcpServers.nodes ?? [];
+  if (!servers.length) return null;
+  return (
+    <Section id="servers-title" title="Connected servers">
+      <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+        {servers.map((s) => (
+          <li key={s.id} className="px-4 py-2">
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{s.name}</span>
+                <span className="block truncate text-[12px] text-faint">
+                  {s.url ?? [s.command, ...s.args].join(" ")} · {usedBy(s)}
+                </span>
+              </span>
+              <span
+                className={`shrink-0 text-[12px] ${s.status === "ready" ? "text-success" : "text-warning"}`}
+              >
+                {s.status === "ready" ? "Connected" : "Needs sign-in"}
+              </span>
+              {s.auth !== "none" && (
+                <button
+                  type="button"
+                  onClick={() => setOpen(open === s.id ? null : s.id)}
+                  className={button("ghost", "sm")}
+                >
+                  {s.status === "ready" ? "Reconnect" : "Sign in"}
+                </button>
+              )}
+            </div>
+            {open === s.id && (
+              <div className="mt-2">
+                <McpConnect server={s} onDone={() => setOpen(null)} />
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function usedBy(server: Server): string {
+  const grants = server.grants.nodes;
+  if (grants.some((g) => g.scope === "everyone")) return "Every agent";
+  const names = grants.map((g) => g.user?.name ?? g.team?.name).filter(Boolean);
+  return names.length ? `Used by ${[...new Set(names)].join(", ")}` : "No standing access";
 }

@@ -1424,15 +1424,18 @@ export function hubContract(
       const second = await runner<Claim>("/claim", machine.token, {});
       expect(second.body.run.kind).toBe("decision");
       expect(second.body.input.prompt).toContain("what's the plan?");
-      const decided = await runner(`/runs/${second.body.run.id}/complete`, machine.token, {
-        status: "completed",
-        result: {
-          action: "work",
-          reason: "Assigned and clear",
-          goal: "Draft the 12-week plan",
-          modelTier: "standard",
-        },
-      });
+      // Finishing a run drops it from the sidebar's running count without a poll.
+      const decided = await expectAnnounced(() =>
+        runner(`/runs/${second.body.run.id}/complete`, machine.token, {
+          status: "completed",
+          result: {
+            action: "work",
+            reason: "Assigned and clear",
+            goal: "Draft the 12-week plan",
+            modelTier: "standard",
+          },
+        }),
+      );
       expect(decided.body).toEqual({ status: "completed" });
 
       const work = await runner<Claim>("/claim", machine.token, {});

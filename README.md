@@ -105,6 +105,7 @@ Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Passkeys are bound t
 2. Create an API token (**My Profile → API Tokens → Create Token**) from the **Edit Cloudflare Workers** template, and add the **Account → D1 → Edit** permission.
 3. In this repository's **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (shown on the dashboard's Workers & Pages overview).
 4. Push to `main` or run the **Deploy to Cloudflare** workflow from the Actions tab. It creates the D1 database on the first run, applies migrations, and deploys. The log prints the URL (`https://yapm.<your-subdomain>.workers.dev`).
+5. Optionally, to serve it on your own domain (one on the same Cloudflare account), add the repository variable `HUB_DOMAIN` (for example `hub.example.com`) and deploy again.
 
 Open the URL and complete setup. Passkeys are bound to that hostname, so pick your final domain before creating your passkey.
 
@@ -146,3 +147,7 @@ node apps/runner/dist/main.js start
 | `YAPM_SECRET` | none | Encrypts the sign-ins of MCP servers agents connect; without it the hub stores none. Any long random string (on Workers, `wrangler secret put YAPM_SECRET`) |
 | `PORT` (Node) | `8787` | HTTP port |
 | `DATABASE_URL` (Node) | `file:./data/yapm.db` | libSQL URL; any `file:` path or a libSQL server |
+
+## License
+
+[AGPL-3.0](LICENSE).

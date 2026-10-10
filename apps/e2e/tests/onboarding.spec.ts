@@ -239,7 +239,7 @@ test.describe
       await tokenDialog.getByLabel("Token name").fill("Laptop");
       await tokenDialog.getByRole("button", { name: "Create token" }).click();
       await expect(page.getByText("Copy this token now.")).toBeVisible();
-      await expect(page.getByText(/claude mcp add --transport http life-os/)).toBeVisible();
+      await expect(page.getByText(/claude mcp add --transport http yapm/)).toBeVisible();
       agentToken = (await page.locator("code").first().textContent()) ?? "";
       expect(await mcp("get_user", { query: "me" })).toMatchObject({
         name: "Ada",
@@ -370,7 +370,7 @@ test.describe
         seq: 0,
         events: [
           { type: "text", text: "Pulling the statements from the bank export." },
-          { type: "tool", id: "t1", name: "mcp__life-os__get_issue", input: '{"id":"PF-1"}' },
+          { type: "tool", id: "t1", name: "mcp__yapm__get_issue", input: '{"id":"PF-1"}' },
           { type: "tool_result", id: "t1", error: false, text: '{"title":"Statements"}' },
           { type: "tool", id: "t2", name: "Bash", input: '{"command":"ls exports"}' },
           {
@@ -731,8 +731,8 @@ test.describe
 
       // The hub serves the installer and the runner package the command fetches.
       const script = await page.request.get("/install.sh");
-      expect(await script.text()).toContain(`${origin}/downloads/life-os-runner.tgz`);
-      const tarball = await page.request.get("/downloads/life-os-runner.tgz");
+      expect(await script.text()).toContain(`${origin}/downloads/yapm-runner.tgz`);
+      const tarball = await page.request.get("/downloads/yapm-runner.tgz");
       expect(tarball.ok()).toBe(true);
       expect((await tarball.body()).subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
 

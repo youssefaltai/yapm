@@ -1,6 +1,6 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "life-os",
+  "name": "yapm",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -14,8 +14,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "life-os",
-      // Replace with the id printed by `wrangler d1 create life-os`.
+      "database_name": "yapm",
+      // Replace with the id printed by `wrangler d1 create yapm`.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "../../packages/schema/migrations"
     }
@@ -29,7 +29,7 @@
   // The scheduler: cycles, recurring issues and other time-based work.
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
-    "LIFE_OS_VERSION": "dev"
+    "YAPM_VERSION": "dev"
   },
   "observability": { "enabled": true }
 }

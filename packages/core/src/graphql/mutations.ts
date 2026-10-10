@@ -1,5 +1,5 @@
-import { comments, issueRelations, issues, reactions, teams } from "@life-os/schema";
 import type { ObjectRef } from "@pothos/core";
+import { comments, issueRelations, issues, reactions, teams } from "@yapm/schema";
 import { eq, inArray } from "drizzle-orm";
 import { createApiToken } from "../auth.js";
 import {

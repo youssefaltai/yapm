@@ -1,4 +1,4 @@
-import { notifications, teams, templates, workflowStates } from "@life-os/schema";
+import { notifications, teams, templates, workflowStates } from "@yapm/schema";
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { audit } from "../audit.js";
 import type { HubDeps } from "../context.js";

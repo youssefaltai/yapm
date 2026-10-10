@@ -1,5 +1,5 @@
 import { createClient } from "@libsql/client";
-import * as schema from "@life-os/schema";
+import * as schema from "@yapm/schema";
 import { drizzle } from "drizzle-orm/libsql";
 import { describe, expect, it } from "vitest";
 import { databaseProblem } from "../src/hub.js";

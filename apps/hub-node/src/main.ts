@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { type HubDeps, tick } from "@life-os/core";
+import { type HubDeps, tick } from "@yapm/core";
 import { WebSocketServer } from "ws";
 import { createNodeApp } from "./app.js";
 import { openDatabase } from "./db.js";
@@ -8,7 +8,7 @@ import { createNodeRealtime } from "./realtime.js";
 
 const env = process.env;
 const port = Number(env.PORT ?? 8787);
-const databaseUrl = env.DATABASE_URL ?? "file:./data/life-os.db";
+const databaseUrl = env.DATABASE_URL ?? "file:./data/yapm.db";
 const webDir = env.WEB_DIR ?? fileURLToPath(new URL("../../web/dist", import.meta.url));
 
 if (databaseUrl.startsWith("file:")) {
@@ -22,10 +22,10 @@ const deps: HubDeps = {
   db,
   config: {
     platform: "node",
-    version: env.LIFE_OS_VERSION ?? "dev",
+    version: env.YAPM_VERSION ?? "dev",
     ...(env.ORIGIN ? { origin: env.ORIGIN } : {}),
     ...(env.RP_NAME ? { rpName: env.RP_NAME } : {}),
-    ...(env.LIFE_OS_SECRET ? { secret: env.LIFE_OS_SECRET } : {}),
+    ...(env.YAPM_SECRET ? { secret: env.YAPM_SECRET } : {}),
   },
   realtime: createNodeRealtime(),
 };
@@ -39,6 +39,6 @@ void runTick();
 serve(
   { fetch: app.fetch, port, websocket: { server: new WebSocketServer({ noServer: true }) } },
   (info) => {
-    console.log(`Life OS hub listening on http://localhost:${info.port}`);
+    console.log(`yapm hub listening on http://localhost:${info.port}`);
   },
 );

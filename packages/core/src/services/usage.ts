@@ -6,7 +6,7 @@ import {
   type ReportedUsage,
   runs,
   users,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import type { HubDb } from "../db.js";
 import { localDate } from "../time.js";

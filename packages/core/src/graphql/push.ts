@@ -1,4 +1,4 @@
-import { pushSubscriptions } from "@life-os/schema";
+import { pushSubscriptions } from "@yapm/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { sendPush, vapidKeys } from "../push.js";
 import { createPushSubscription, deletePushSubscription } from "../services/pushSubscriptions.js";
@@ -103,7 +103,7 @@ builder.mutationFields((t) => ({
     resolve: async (_root, _args, ctx) => {
       const viewer = requireViewer(ctx);
       return sendPush(ctx.deps, viewer.user.id, ctx.origin ?? "", {
-        title: "Life OS",
+        title: "yapm",
         body: "Notifications are on. Requests for your approval will show up like this.",
         url: "/inbox",
         tag: "test",

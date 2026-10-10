@@ -1,4 +1,4 @@
-import type * as schema from "@life-os/schema";
+import type * as schema from "@yapm/schema";
 import type { BatchItem } from "drizzle-orm/batch";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 

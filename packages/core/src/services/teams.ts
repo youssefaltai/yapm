@@ -1,4 +1,4 @@
-import { teamMemberships, teams, users, workflowStates } from "@life-os/schema";
+import { teamMemberships, teams, users, workflowStates } from "@yapm/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

@@ -9,7 +9,7 @@ describe("sealed secrets", () => {
     await expect(open("another secret", sealed)).rejects.toThrow();
   });
 
-  it("refuses to store one without LIFE_OS_SECRET", async () => {
-    await expect(seal(undefined, "xoxb-123")).rejects.toThrow(/LIFE_OS_SECRET/);
+  it("refuses to store one without YAPM_SECRET", async () => {
+    await expect(seal(undefined, "xoxb-123")).rejects.toThrow(/YAPM_SECRET/);
   });
 });

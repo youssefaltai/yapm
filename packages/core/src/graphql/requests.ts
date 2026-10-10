@@ -1,4 +1,4 @@
-import { GRANT_SCOPES, grants, REQUEST_STATUSES, requests } from "@life-os/schema";
+import { GRANT_SCOPES, grants, REQUEST_STATUSES, requests } from "@yapm/schema";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import {
   approveRequest,

@@ -1,4 +1,4 @@
-import { MCP_AUTHS, MCP_SERVER_STATUSES, mcpServers, requests } from "@life-os/schema";
+import { MCP_AUTHS, MCP_SERVER_STATUSES, mcpServers, requests } from "@yapm/schema";
 import { eq } from "drizzle-orm";
 import {
   connectMcpServer,

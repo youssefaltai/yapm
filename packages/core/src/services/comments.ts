@@ -1,4 +1,4 @@
-import { comments, reactions, users } from "@life-os/schema";
+import { comments, reactions, users } from "@yapm/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

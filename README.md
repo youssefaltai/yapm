@@ -1,4 +1,4 @@
-# Life OS
+# yapm
 
 A self-hosted, Linear-style operating system for running your life like a company. You are the owner; AI agents are the employees. They plan, work and report through issues, comments, projects and cycles, exactly the way a real company runs on Linear, and you steer from the browser or your phone.
 
@@ -22,12 +22,12 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 - An MCP server at `/mcp` with the tool names of Linear's official server (`list_issues`, `get_issue`, `create_issue`, `update_issue`, `create_comment`, `list_teams`, `list_users`, `get_user` and more). Create a token on an agent's page and connect any Claude Code session as that agent:
 
   ```sh
-  claude mcp add --transport http life-os https://your-hub.example/mcp \
+  claude mcp add --transport http yapm https://your-hub.example/mcp \
     --header "Authorization: Bearer los_…"
   ```
 - Requests and grants. Org changes by agents (`team.create`, `agent.hire`, `agent.retire`, `user.update`, `charter.update`) need permission, and agents can ask for anything else by name (`tool:Bash`, `spend`). An agent calls `create_request`; you answer under Approvals with **Approve** (once), **Always allow** (for that agent, one of its teams, or everyone) or **Reject** with a reason, on a single screen that works on a phone. Agents read the answer with `get_request` and check with `check_permission`. Every grant shows how often it was used and can be revoked.
 - An Inbox for everyone, agents included: assignments, mentions (`@Name`), comments and status changes on issues you follow, and requests and their answers. Creators, assignees, commenters and anyone mentioned follow an issue automatically; Subscribe and Unsubscribe on the issue page change that. Agents read theirs with `list_notifications`.
-- An installable app with push notifications. On an iPhone, open the hub in Safari, tap Share, then **Add to Home Screen**; open Life OS from the Home Screen and tap **Turn on** in the Inbox. A request for approval arrives as a notification, and tapping it opens the approval screen. The hub makes its own Web Push (VAPID) keys on first use, so there's nothing to configure.
+- An installable app with push notifications. On an iPhone, open the hub in Safari, tap Share, then **Add to Home Screen**; open yapm from the Home Screen and tap **Turn on** in the Inbox. A request for approval arrives as a notification, and tapping it opens the approval screen. The hub makes its own Web Push (VAPID) keys on first use, so there's nothing to configure.
 
 **Phase 3: agents that work on their own.**
 
@@ -58,7 +58,7 @@ The full design and build order is in [docs/plan.md](docs/plan.md).
 **Phase 6: polish** (done).
 
 - Light and dark themes (or follow the system) from `⌘K`.
-- The runner installs with one command from the Machines page: every hub serves its installer at `/install.sh` and the matching runner package at `/downloads/life-os-runner.tgz`. It is also packaged for npm as `@life-os/runner` (see `apps/runner/README.md` for releasing).
+- The runner installs with one command from the Machines page: every hub serves its installer at `/install.sh` and the matching runner package at `/downloads/yapm-runner.tgz`. It is also packaged for npm as `@yapm/runner` (see `apps/runner/README.md` for releasing).
 
 ## Repository layout
 
@@ -97,14 +97,15 @@ Schema changes: edit `packages/schema/src/tables.ts`, then `pnpm db:generate`.
 ORIGIN=https://life.example.com docker compose up -d
 ```
 
-Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Passkeys are bound to the domain in `ORIGIN`, so set it to the public URL you'll use; data lives in the `life-os-data` volume as one SQLite file.
+Put it behind HTTPS (Caddy, Traefik, Cloudflare Tunnel…). Passkeys are bound to the domain in `ORIGIN`, so set it to the public URL you'll use; data lives in the `yapm-data` volume as one SQLite file.
 
 ### Cloudflare (free plan), from GitHub
 
 1. In the Cloudflare dashboard, open **Workers & Pages** once so your account has a `workers.dev` subdomain.
 2. Create an API token (**My Profile → API Tokens → Create Token**) from the **Edit Cloudflare Workers** template, and add the **Account → D1 → Edit** permission.
 3. In this repository's **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (shown on the dashboard's Workers & Pages overview).
-4. Push to `main` or run the **Deploy to Cloudflare** workflow from the Actions tab. It creates the D1 database on the first run, applies migrations, and deploys. The log prints the URL (`https://life-os.<your-subdomain>.workers.dev`).
+4. Push to `main` or run the **Deploy to Cloudflare** workflow from the Actions tab. It creates the D1 database on the first run, applies migrations, and deploys. The log prints the URL (`https://yapm.<your-subdomain>.workers.dev`).
+5. Optionally, to serve it on your own domain (one on the same Cloudflare account), add the repository variable `HUB_DOMAIN` (for example `hub.example.com`) and deploy again.
 
 Open the URL and complete setup. Passkeys are bound to that hostname, so pick your final domain before creating your passkey.
 
@@ -125,24 +126,28 @@ Agents think and work on machines you own (macOS or Linux), signed in with your 
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
-The installer comes from your hub and installs the runner that matches it into `~/.life-os-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs the runner in to Claude through your browser (its own sign-in, separate from your Claude Code) (the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux. Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `life-os-runner logs` follows its output, and `life-os-runner service uninstall` stops it.
+The installer comes from your hub and installs the runner that matches it into `~/.yapm-runner` (with its own Node.js if the machine has no Node 22+, so nothing needs `sudo`). The token works once, within an hour, and approves the machine without a pairing code. It then signs the runner in to Claude through your browser (its own sign-in, separate from your Claude Code) (the Agent SDK ships Claude Code, so there's nothing else to install) and runs the runner in the background and at login: a launchd agent on macOS, a systemd user service on Linux. Run `curl -fsSL https://your-hub.example/install.sh | sh` again to update. `yapm-runner logs` follows its output, and `yapm-runner service uninstall` stops it.
 
 Without the installer, from a checkout:
 
 ```sh
-pnpm --filter @life-os/runner build
+pnpm --filter @yapm/runner build
 node apps/runner/dist/main.js enrol --hub https://your-hub.example --name "MacBook" --tags personal
 node apps/runner/dist/main.js start
 ```
 
-`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent starting in your home folder (it may work anywhere on the machine), streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents connect other MCP servers by asking you (see `docs/plan.md`, section 6a). Their Claude sign-in, sessions and settings live in `~/.life-os-runner/claude`, apart from your own `~/.claude`.
+`enrol` prints a six-digit code; approve the machine with it in the app. From then on the runner claims the runs this machine may take, runs each agent starting in your home folder (it may work anywhere on the machine), streams the transcript to the hub and reports the result. Agents reach the hub through its MCP server with a token that only lives as long as the run. Reading, searching and the hub's own tools are always allowed; anything else (`Bash`, editing files) asks you first, and the agent waits for your answer. Agents connect other MCP servers by asking you (see `docs/plan.md`, section 6a). Their Claude sign-in, sessions and settings live in `~/.yapm-runner/claude`, apart from your own `~/.claude`.
 
 ### Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `ORIGIN` | the request's origin | Public origin of the app; set it when behind a proxy that changes the host or scheme |
-| `RP_NAME` | `Life OS` | Name shown by the browser when creating a passkey |
-| `LIFE_OS_SECRET` | none | Encrypts the sign-ins of MCP servers agents connect; without it the hub stores none. Any long random string (on Workers, `wrangler secret put LIFE_OS_SECRET`) |
+| `RP_NAME` | `yapm` | Name shown by the browser when creating a passkey |
+| `YAPM_SECRET` | none | Encrypts the sign-ins of MCP servers agents connect; without it the hub stores none. Any long random string (on Workers, `wrangler secret put YAPM_SECRET`) |
 | `PORT` (Node) | `8787` | HTTP port |
-| `DATABASE_URL` (Node) | `file:./data/life-os.db` | libSQL URL; any `file:` path or a libSQL server |
+| `DATABASE_URL` (Node) | `file:./data/yapm.db` | libSQL URL; any `file:` path or a libSQL server |
+
+## License
+
+[AGPL-3.0](LICENSE).

@@ -8,7 +8,7 @@ import {
   users,
   type WorkflowStateType,
   workflowStates,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

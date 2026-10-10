@@ -9,7 +9,7 @@ import {
   metrics,
   requests,
   runs,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import {
   type AnyColumn,
   and,

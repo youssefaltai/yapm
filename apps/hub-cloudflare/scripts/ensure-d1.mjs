@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
-const name = process.env.D1_DATABASE_NAME ?? "life-os";
+const name = process.env.D1_DATABASE_NAME ?? "yapm";
 const configPath = new URL("../wrangler.jsonc", import.meta.url);
 
 function wrangler(...args) {

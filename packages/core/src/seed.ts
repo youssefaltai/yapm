@@ -1,4 +1,4 @@
-import { users, type WorkflowStateType, workspaces } from "@life-os/schema";
+import { users, type WorkflowStateType, workspaces } from "@yapm/schema";
 import { type AuditInput, audit } from "./audit.js";
 import { newId } from "./crypto.js";
 import type { HubDb, WriteOp } from "./db.js";

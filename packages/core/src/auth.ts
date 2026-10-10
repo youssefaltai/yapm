@@ -1,10 +1,10 @@
-import { apiTokens, authChallenges, passkeys, sessions, users } from "@life-os/schema";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
+import { apiTokens, authChallenges, passkeys, sessions, users } from "@yapm/schema";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -15,7 +15,7 @@ import { fromBase64Url, newId, randomToken, sha256Hex, toBase64Url } from "./cry
 import { commit, type HubDb } from "./db.js";
 import { seedCompany } from "./seed.js";
 
-export const SESSION_COOKIE = "life_os_session";
+export const SESSION_COOKIE = "yapm_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 export const API_TOKEN_PREFIX = "los_";
@@ -31,7 +31,7 @@ export function relyingParty(c: { var: { deps: HubDeps }; req: { url: string } }
 } {
   const { config } = c.var.deps;
   const origin = config.origin ?? new URL(c.req.url).origin;
-  return { origin, rpID: new URL(origin).hostname, rpName: config.rpName ?? "Life OS" };
+  return { origin, rpID: new URL(origin).hostname, rpName: config.rpName ?? "yapm" };
 }
 
 export async function ownerExists(db: HubDb): Promise<boolean> {

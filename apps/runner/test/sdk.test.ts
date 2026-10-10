@@ -48,4 +48,12 @@ describe("sdk engine", () => {
     expect(calls[0]?.env?.ENABLE_CLAUDEAI_MCP_SERVERS).toBe("false");
     expect(calls[0]?.env?.PATH).toBe(process.env.PATH);
   });
+
+  it("runs agents on the machine's API key when one is saved", async () => {
+    calls.length = 0;
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-api03-abc");
+    await sdkEngine(run());
+    vi.unstubAllEnvs();
+    expect(calls[0]?.env?.ANTHROPIC_API_KEY).toBe("sk-ant-api03-abc");
+  });
 });

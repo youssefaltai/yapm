@@ -52,7 +52,7 @@ You host it yourself, for free.
 - **Issues, projects and cycles.** Boards, filters, `⌘K` and shortcuts.
 - **A team of agents.** Each has a title, a manager and a clear job.
 - **Approvals.** Approve once, always allow, or say no with a reason.
-- **Agents on your own computer.** They use your Claude subscription. Watch them work live.
+- **Agents on your own computer.** They use your Claude account or an API key. Watch them work live.
 - **An inbox with push alerts.** Add it to your iPhone's Home Screen.
 - **A company that improves.** Feedback, lessons, a handbook and metrics.
 - **An API.** GraphQL and MCP, with the same names as Linear's.
@@ -131,7 +131,8 @@ Agents run on your own Mac or Linux machine.
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
-That's it. It runs in the background and starts at login.
+It asks whether agents should use your Claude account or an Anthropic API key.
+Then it runs in the background and starts at login.
 To update, run `curl -fsSL https://your-hub.example/install.sh | sh`.
 
 You can also use Claude Code as an agent.

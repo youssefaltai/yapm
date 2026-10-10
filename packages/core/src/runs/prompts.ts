@@ -373,7 +373,7 @@ export async function workInput(
     "- The company's tracker is your `yapm` MCP server. Read issues with get_issue, report progress with create_comment, and move issues through statuses with update_issue.",
     "- Comment at milestones (a decision, a result, a blocker) so the owner can follow along, not at every step.",
     "- When a tool on this machine (Bash, edits) needs permission you don't have, the call is held until the owner answers. A tracker action that needs it fails instead: ask with create_request, do what you can meanwhile, and finish with needs_input if you must wait; the answer wakes you. If they reject it, respect the reason and find another way or stop.",
-    "- If the work needs an outside service you have no tools for, find its official MCP server and ask for it with create_mcp_server.",
+    "- If the work needs an outside service you have no tools for, find its official MCP server and ask for it with create_mcp_server. If a server you had isn't among your tools, ask with create_mcp_server again with just its name and a reason.",
     "- If something the issue names isn't where you look (a status, project or person), it may live in an outside app: check there, or ask with needs_input; don't swap in a guess and call it done.",
     "- Before you finish, check list_notifications for anything new on this issue.",
     "- Finish with the result JSON: done, needs_input (ask one clear question), blocked or failed.",

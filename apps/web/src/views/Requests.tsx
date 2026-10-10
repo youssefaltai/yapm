@@ -268,10 +268,8 @@ export function RequestPage({ id }: { id: string }) {
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
-  // A connected OAuth server can be signed in to again, when its sign-in stopped working.
-  const server =
-    r.mcpServer?.status === "pending" || r.mcpServer?.auth === "oauth" ? r.mcpServer : null;
-  const signIn = server?.status === "ready" ? "Sign in again" : `Sign in to ${server?.name}`;
+  // Only a server that isn't connected, or whose sign-in stopped working, needs signing in to.
+  const server = r.mcpServer?.status === "pending" ? r.mcpServer : null;
   const connectError = failure ?? new URLSearchParams(window.location.search).get("error");
 
   /** Connects the server; answers where to sign in, if there is anywhere. */
@@ -437,7 +435,7 @@ export function RequestPage({ id }: { id: string }) {
                       onClick={signInElsewhere}
                       className={button("primary")}
                     >
-                      {signIn}
+                      Sign in to {server.name}
                     </button>
                     <form
                       className="flex gap-2"
@@ -473,7 +471,7 @@ export function RequestPage({ id }: { id: string }) {
                     }}
                     className={button("primary")}
                   >
-                    {signIn}
+                    Sign in to {server.name}
                   </button>
                 ) : (
                   <form
@@ -504,7 +502,7 @@ export function RequestPage({ id }: { id: string }) {
               <div className="sticky bottom-0 grid grid-cols-3 gap-2 bg-canvas py-3">
                 <button
                   type="button"
-                  disabled={busy || server?.status === "pending"}
+                  disabled={busy || !!server}
                   onClick={approveOnce}
                   className="rounded-lg bg-accent px-3 py-3 font-medium text-on-accent disabled:opacity-40"
                 >
@@ -512,7 +510,7 @@ export function RequestPage({ id }: { id: string }) {
                 </button>
                 <button
                   type="button"
-                  disabled={busy || server?.status === "pending"}
+                  disabled={busy || !!server}
                   onClick={() => setMode("always")}
                   className="rounded-lg border border-line px-3 py-3 font-medium hover:bg-raised"
                 >

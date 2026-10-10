@@ -173,7 +173,9 @@ function describe(server: Omit<McpServerRow, "requestId" | "secret">) {
 async function newServer(deps: HubDeps, input: McpServerCreateInput, name: string, now: number) {
   const url = input.url?.trim() ? cleanUrl(input.url) : null;
   const command = input.command?.trim() || null;
-  if (!url === !command) throw badRequest("Give either a url or a command");
+  if (!url && !command)
+    throw badRequest(`There is no ${name} MCP server yet: give its url or command to connect it`);
+  if (url && command) throw badRequest("Give either a url or a command");
   if (command && command.length > 200) throw badRequest("The command is too long");
   const secretEnv = input.secretEnv?.trim() || null;
   if (secretEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(secretEnv))
@@ -226,25 +228,18 @@ export async function createMcpServer(
   const name = cleanServerName(input.name);
   const permitted = (await checkPermission(db, ctx.actorId, "mcp.use", name)).allowed;
   const existing = await db.select().from(mcpServers).where(eq(mcpServers.name, name)).get();
-  // Asking again for an OAuth server it may use is how an agent says its sign-in stopped working.
-  if (existing && permitted && existing.auth !== "oauth")
-    return { serverId: existing.id, requestId: null };
+  if (existing && permitted) return { serverId: existing.id, requestId: null };
   const server = existing ?? (await newServer(deps, input, name, now));
-  const request =
-    permitted && !existing
-      ? null
-      : await requestOps(
-          ctx,
-          {
-            title: permitted ? `Sign in to ${name} again` : `Use the ${name} MCP server`,
-            action: "mcp.use",
-            resource: name,
-            reason: input.reason,
-            details: describe(server),
-            issueId: input.issueId ?? null,
-          },
-          permitted,
-        );
+  const request = permitted
+    ? null
+    : await requestOps(ctx, {
+        title: `Use the ${name} MCP server`,
+        action: "mcp.use",
+        resource: name,
+        reason: input.reason,
+        details: describe(server),
+        issueId: input.issueId ?? null,
+      });
   await commit(db, [
     ...(existing
       ? []

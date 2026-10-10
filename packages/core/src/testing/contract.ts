@@ -3200,6 +3200,8 @@ export function hubContract(
         // Its claim carries the server with a freshly refreshed token; others' don't.
         const claim = await claimFor(coach.id);
         expect(claim.input.systemPrompt).toContain("create_mcp_server");
+        // A server it had but lost is asked for again by name.
+        expect(claim.input.systemPrompt).toContain("with just its name and a reason");
         // A status or project the issue names that isn't here may live in an outside app.
         expect(claim.input.systemPrompt).toContain("don't swap in a guess");
         expect(claim.input.systemPrompt).toContain("Lead with the outcome");
@@ -3275,12 +3277,16 @@ export function hubContract(
         });
         await approve(weather.id, true);
 
-        // A name already taken: others ask to use it; its user already has it.
+        // A name already taken: others ask to use it by name; its user already has it.
         const chef = await agentToken("Chef");
+        const unknown = await callTool(chef.token, "create_mcp_server", {
+          name: "gitlab",
+          reason: "Recipes repo.",
+        });
+        expect(unknown.text).toContain("There is no gitlab MCP server yet");
         const shared = (
           await callTool(chef.token, "create_mcp_server", {
             name: "github",
-            command: "uvx",
             reason: "Recipes repo.",
           })
         ).json();
@@ -3398,16 +3404,22 @@ export function hubContract(
       }
     });
 
-    it("uses each sign-in once, and signs in again when the agent asks again", async () => {
+    it("uses each sign-in once", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
       try {
-        // Drive is ready and always allowed; its tokens stopped working, so the agent asks again.
+        // Drive is ready and always allowed: asking again files nothing.
         const coach = await agentToken("Coach");
-        const asked = await callTool(coach.token, "create_mcp_server", {
+        const again = await callTool(coach.token, "create_mcp_server", {
           name: "drive",
           reason: "Drive rejects my token.",
         });
-        expect(asked.json()).toMatchObject({ title: "Sign in to drive again", status: "pending" });
+        expect(again.json()).toMatchObject({ message: expect.stringContaining("already yours") });
+        // Another agent asks to use it, and the owner signs in from that request.
+        const chef = await agentToken("Chef");
+        const asked = await callTool(chef.token, "create_mcp_server", {
+          name: "drive",
+          reason: "The recipes are in Drive.",
+        });
         const filed = await client.graphql<{ request: { mcpServer: { id: string } } }>(
           "query($id: String!) { request(id: $id) { mcpServer { id } } }",
           { id: asked.json().id },

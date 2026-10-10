@@ -46,7 +46,7 @@ export function createHub(deps: HubDeps) {
     schema,
     graphqlEndpoint: "/graphql",
     landingPage: false,
-    graphiql: { title: "Life OS API" },
+    graphiql: { title: "yapm API" },
   });
 
   const app = new Hono<HubEnv>();

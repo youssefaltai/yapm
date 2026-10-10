@@ -14,7 +14,7 @@ import {
   projectUpdates,
   teams,
   users,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { eq, inArray } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

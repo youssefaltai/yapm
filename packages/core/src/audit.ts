@@ -1,4 +1,4 @@
-import { auditEvents } from "@life-os/schema";
+import { auditEvents } from "@yapm/schema";
 import { newId } from "./crypto.js";
 import type { HubDb, WriteOp } from "./db.js";
 import { insertRows } from "./write.js";

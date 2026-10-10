@@ -8,7 +8,7 @@ import {
   runLogs,
   runs,
   users,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, asc, count, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { API_TOKEN_PREFIX } from "../auth.js";

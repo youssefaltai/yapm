@@ -9,7 +9,7 @@ import {
   projectUpdates,
   teams,
   templates,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { updateCycle } from "../services/cycles.js";
 import {

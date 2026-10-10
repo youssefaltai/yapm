@@ -37,7 +37,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @life-os/e2e exec playwright install --with-deps chromium
+      - run: pnpm --filter @yapm/e2e exec playwright install --with-deps chromium
       - run: pnpm e2e
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -50,10 +50,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t life-os-hub .
+      - run: docker build -t yapm-hub .
       - name: Smoke test the image
         run: |
-          docker run -d --name hub -p 8787:8787 life-os-hub
+          docker run -d --name hub -p 8787:8787 yapm-hub
           for i in $(seq 1 30); do curl -sf localhost:8787/api/health && break; sleep 1; done
           curl -sf localhost:8787/api/setup | grep -q '"needsSetup":true'
           curl -sf localhost:8787/ | grep -q '<div id="root">'
@@ -69,5 +69,5 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @life-os/web build
-      - run: pnpm --filter @life-os/hub-cloudflare exec wrangler deploy --dry-run --outdir dist
+      - run: pnpm --filter @yapm/web build
+      - run: pnpm --filter @yapm/hub-cloudflare exec wrangler deploy --dry-run --outdir dist

@@ -1016,7 +1016,7 @@ export const mcpServers = sqliteTable("mcp_servers", {
   /** The agent's instructions for the owner, e.g. where to create the token. */
   howToConnect: text("how_to_connect"),
   status: text("status", { enum: MCP_SERVER_STATUSES }).notNull().default("pending"),
-  /** The sign-in, encrypted under `LIFE_OS_SECRET`: tokens and when they expire. */
+  /** The sign-in, encrypted under `YAPM_SECRET`: tokens and when they expire. */
   secret: text("secret"),
   /** What the OAuth flow needs: endpoints, client ID, and the pending PKCE verifier and state. */
   oauth: text("oauth", { mode: "json" }).$type<Record<string, string>>(),

@@ -15,7 +15,7 @@ import {
   WORKFLOW_STATE_TYPES,
   type WorkflowStateType,
   workflowStates,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, asc, desc, eq, isNull, or, type SQL, sql } from "drizzle-orm";
 import type { HubDeps, User } from "../context.js";
 import type { HubDb } from "../db.js";

@@ -1,10 +1,10 @@
 /** Where the hub serves the runner package; the web build puts it there (see apps/web). */
-export const RUNNER_PACKAGE_PATH = "/downloads/life-os-runner.tgz";
+export const RUNNER_PACKAGE_PATH = "/downloads/yapm-runner.tgz";
 
 /**
  * The one-line installer: `curl -fsSL <hub>/install.sh | sh -s -- --token lms_…`.
  *
- * Installs the runner from this hub into ~/.life-os-runner (with its own Node.js when the
+ * Installs the runner from this hub into ~/.yapm-runner (with its own Node.js when the
  * machine has none new enough, so nothing needs sudo), connects it to this hub, signs in to
  * Claude if needed and runs it in the background at login (launchd on macOS, systemd on
  * Linux). Run again without a token to update.
@@ -15,7 +15,7 @@ export function installScript(hub: string): string {
 
 const SCRIPT = `#!/bin/sh
 # Keep this file ASCII: macOS sh (bash 3.2) reads bytes after "$VAR" as part of its name.
-# Life OS runner installer. Usage:
+# yapm runner installer. Usage:
 #   curl -fsSL __HUB__/install.sh | sh -s -- --token <setup token> [--name "My laptop"] [--tags a,b]
 # Run it again without a token to update a machine that is already connected.
 set -eu
@@ -23,7 +23,7 @@ set -eu
 HUB="__HUB__"
 PACKAGE="__PACKAGE__"
 NODE_MAJOR=22
-HOME_DIR="\${LIFE_OS_RUNNER_HOME:-$HOME/.life-os-runner}"
+HOME_DIR="\${YAPM_RUNNER_HOME:-$HOME/.yapm-runner}"
 TOKEN=""
 NAME=""
 TAGS=""
@@ -90,26 +90,26 @@ fi
 
 say "Installing the runner from \${HUB}..."
 tmp=$(mktemp -d)
-curl -fsSL "$PACKAGE" -o "$tmp/life-os-runner.tgz" || fail "Couldn't download the runner from $HUB."
+curl -fsSL "$PACKAGE" -o "$tmp/yapm-runner.tgz" || fail "Couldn't download the runner from $HUB."
 mkdir -p "$HOME_DIR/app"
 [ -f "$HOME_DIR/app/package.json" ] || printf '{"private":true}\\n' > "$HOME_DIR/app/package.json"
 # Replace the runner itself; its dependencies stay and only change when it needs new ones.
-rm -rf "$HOME_DIR/app/node_modules/@life-os/runner"
+rm -rf "$HOME_DIR/app/node_modules/@yapm/runner"
 "$NPM" install --prefix "$HOME_DIR/app" --no-update-notifier --no-save --no-package-lock --omit=dev --no-audit \\
-  --no-fund --loglevel=error "$tmp/life-os-runner.tgz" >/dev/null
+  --no-fund --loglevel=error "$tmp/yapm-runner.tgz" >/dev/null
 rm -rf "$tmp"
 
 # A launcher that keeps working whatever is on PATH later.
 mkdir -p "$HOME_DIR/bin"
-BIN="$HOME_DIR/bin/life-os-runner"
+BIN="$HOME_DIR/bin/yapm-runner"
 cat > "$BIN" <<EOF
 #!/bin/sh
-export LIFE_OS_RUNNER_HOME="$HOME_DIR"
-exec "$NODE" "$HOME_DIR/app/node_modules/@life-os/runner/dist/main.js" "\\$@"
+export YAPM_RUNNER_HOME="$HOME_DIR"
+exec "$NODE" "$HOME_DIR/app/node_modules/@yapm/runner/dist/main.js" "\\$@"
 EOF
 chmod 755 "$BIN"
 LINK_DIR="$HOME/.local/bin"
-mkdir -p "$LINK_DIR" && ln -sf "$BIN" "$LINK_DIR/life-os-runner"
+mkdir -p "$LINK_DIR" && ln -sf "$BIN" "$LINK_DIR/yapm-runner"
 
 if [ -n "$TOKEN" ] && grep -qF "\\"hub\\": \\"$HUB\\"" "$HOME_DIR/config.json" 2>/dev/null &&
   "$BIN" status >/dev/null 2>&1; then
@@ -120,7 +120,7 @@ elif [ -n "$TOKEN" ]; then
   [ -n "$TAGS" ] && set -- "$@" --tags "$TAGS"
   "$BIN" "$@"
 elif ! "$BIN" status >/dev/null 2>&1; then
-  fail "This machine isn't connected yet. Copy the install command from Machines in Life OS: it carries a setup token."
+  fail "This machine isn't connected yet. Copy the install command from Machines in yapm: it carries a setup token."
 fi
 
 # Agents use this machine's Claude subscription; sign in once if it isn't already.
@@ -131,12 +131,12 @@ if [ -n "$TTY" ]; then "$BIN" login <"$TTY"; else "$BIN" login; fi
 if [ -n "$NO_SERVICE" ] && [ -z "$TOKEN" ]; then
   say "Updated the runner."
 elif [ -n "$NO_SERVICE" ]; then
-  say "Installed. Run: life-os-runner start"
+  say "Installed. Run: yapm-runner start"
 else
   "$BIN" service install
 fi
 case ":$PATH:" in
   *":$LINK_DIR:"*) ;;
-  *) echo "Tip: add $LINK_DIR to your PATH to use the life-os-runner command." ;;
+  *) echo "Tip: add $LINK_DIR to your PATH to use the yapm-runner command." ;;
 esac
 `;

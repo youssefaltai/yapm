@@ -1,5 +1,5 @@
 import { tmpdir } from "node:os";
-import { SoftwareAuthenticator, TestClient } from "@life-os/core/testing";
+import { SoftwareAuthenticator, TestClient } from "@yapm/core/testing";
 import { beforeAll, describe, expect, it } from "vitest";
 import { createNodeApp } from "../../hub-node/src/app.js";
 import { openDatabase } from "../../hub-node/src/db.js";
@@ -131,7 +131,7 @@ describe("runner daemon", () => {
     script = async (run) => {
       run.onSession("session-work");
       run.onEvent({ type: "tool", name: "Bash", input: '{"command":"ls"}' });
-      const hubTool = await run.canUseTool("mcp__life-os__create_comment", {});
+      const hubTool = await run.canUseTool("mcp__yapm__create_comment", {});
       expect(hubTool.behavior).toBe("allow");
       const read = await run.canUseTool("Read", { file_path: "/etc/hosts" });
       expect(read.behavior).toBe("allow");

@@ -1,5 +1,5 @@
 import { createClient } from "@libsql/client";
-import * as schema from "@life-os/schema";
+import * as schema from "@yapm/schema";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";

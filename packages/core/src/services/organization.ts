@@ -1,4 +1,4 @@
-import { workspaces } from "@life-os/schema";
+import { workspaces } from "@yapm/schema";
 import { eq } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { commit } from "../db.js";

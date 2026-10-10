@@ -1,4 +1,4 @@
-import { templates } from "@life-os/schema";
+import { templates } from "@yapm/schema";
 import { asc, eq } from "drizzle-orm";
 import {
   createTemplate,

@@ -1,4 +1,4 @@
-import { customViews, cycles, issues, workspaces } from "@life-os/schema";
+import { customViews, cycles, issues, workspaces } from "@yapm/schema";
 import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
 import { activeCycle, requireCycle, updateCycle } from "../services/cycles.js";

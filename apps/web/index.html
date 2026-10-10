@@ -9,12 +9,12 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="apple-mobile-web-app-title" content="Life OS" />
-    <title>Life OS</title>
+    <meta name="apple-mobile-web-app-title" content="yapm" />
+    <title>yapm</title>
     <script>
       // Apply the saved theme before the first paint (see src/theme.ts).
       try {
-        const saved = localStorage.getItem("life-os-theme");
+        const saved = localStorage.getItem("yapm-theme");
         const system = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         document.documentElement.dataset.theme =
           saved === "light" || saved === "dark" ? saved : system;

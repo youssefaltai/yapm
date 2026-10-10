@@ -45,7 +45,7 @@ export function claudeLogin(log: (line: string) => void): boolean {
   log(
     ok
       ? "Claude: signed in."
-      : "Claude isn't signed in yet; agents can't run until it is. Run: life-os-runner login",
+      : "Claude isn't signed in yet; agents can't run until it is. Run: yapm-runner login",
   );
   return ok;
 }

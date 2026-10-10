@@ -8,7 +8,7 @@ import {
   teamMemberships,
   teams,
   users,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

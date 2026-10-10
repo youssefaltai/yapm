@@ -355,20 +355,28 @@ export function MachinePage({ id }: { id: string }) {
     10_000,
   );
   const workspace = useStore(workspaceStore);
-  const canEdit = workspace?.viewer.kind === "owner";
-  const m = data?.machines.find((x) => x.id === id && x.status !== "revoked");
+  const m = data?.machines.find((x) => x.id === id);
+  // A removed machine keeps its page, read-only, so runs and usage can still link to it.
+  const canEdit = workspace?.viewer.kind === "owner" && m?.status !== "revoked";
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   if (!data || !workspace) return <PageSkeleton />;
   if (!m)
     return (
       <Page>
         <PageHeader>
-          <Breadcrumbs trail={[{ label: "Machines", to: paths.machines() }]}>Not found</Breadcrumbs>
+          <Breadcrumbs
+            trail={[
+              { label: "Runs", to: paths.runs(), wide: true },
+              { label: "Machines", to: paths.machines() },
+            ]}
+          >
+            Not found
+          </Breadcrumbs>
         </PageHeader>
         <EmptyState
           icon="machine"
           title="This machine isn't here"
-          description="It was removed, or the link is wrong."
+          description="The link may be wrong."
           action={{ label: "See all machines", onClick: () => navigate(paths.machines()) }}
         />
       </Page>
@@ -455,7 +463,13 @@ export function MachinePage({ id }: { id: string }) {
               <PropertyList>
                 <Property label="Status">
                   <StatusDot machine={m} />
-                  {m.status === "pending" ? "Pending" : m.online ? "Online" : "Offline"}
+                  {m.status === "revoked"
+                    ? "Removed"
+                    : m.status === "pending"
+                      ? "Pending"
+                      : m.online
+                        ? "Online"
+                        : "Offline"}
                 </Property>
                 {m.status === "active" && (
                   <Property label="Running">
@@ -521,8 +535,10 @@ function NameField({ machine: m, canEdit }: { machine: Machine; canEdit: boolean
 
 /** Tags pick which agents may work here; typed as a comma-separated list. */
 function TagsField({ machine: m, canEdit }: { machine: Machine; canEdit: boolean }) {
-  const [tags, setTags] = useState(m.tags.join(", "));
-  useEffect(() => setTags(m.tags.join(", ")), [m.tags]);
+  // Keyed on the text, not the array: every refetch brings a new array, which would wipe typing.
+  const saved = m.tags.join(", ");
+  const [tags, setTags] = useState(saved);
+  useEffect(() => setTags(saved), [saved]);
   const save = () => {
     const next = tags
       .split(",")

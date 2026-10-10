@@ -328,7 +328,7 @@ function reset() {
   document.querySelector(".runs-sec").classList.remove("on");
   document.querySelector(".subs-sec").classList.remove("on");
   page.dataset.stage = "ask";
-  $("crumb").textContent = "Chat";
+  $("crumb").textContent = "Ask CEO";
   $("url").textContent = "";
   clock = 0;
   step(-1);
@@ -363,7 +363,7 @@ async function play(s) {
   $("due").textContent = "";
   // It runs itself.
   step(1);
-  event("CEO", "filed it from your chat");
+  event("CEO", "filed it from Ask CEO");
   await next(900);
   if (!s.team.exists) {
     const li = document.createElement("li");
@@ -455,7 +455,7 @@ async function play(s) {
     ${s.request.on ? `<p class="sheet-on"><span>On</span><code>${esc(s.request.on)}</code></p>` : ""}
     <p class="sheet-on"><span>Issue</span>${s.id} ${esc(s.title)}</p>
     <div class="sheet-a">
-      <button type="button" class="b b-ok" data-answer="approve">Approve</button>
+      <button type="button" class="b b-ok" data-answer="approve">Approve once</button>
       <button type="button" class="b" data-answer="always">Always allow</button>
       <button type="button" class="b b-no" data-answer="reject">Reject</button>
     </div>`);

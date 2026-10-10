@@ -74,3 +74,14 @@ for (const path of pages.filter(Boolean)) {
 test("the home page loads the nav script too", () => {
   assert.match(html, /<script src="\/nav\.js" defer><\/script>/);
 });
+
+test("no page offers a chat: you ask the CEO, and it files an issue", () => {
+  const files = [
+    "index.html",
+    "site.js",
+    "llms.txt",
+    ...pages.filter(Boolean).map((p) => `${p}.html`),
+  ];
+  for (const file of files) assert.doesNotMatch(read(file), /\bchat/i, file);
+  assert.match(html, /What can I take off your plate\?/);
+});

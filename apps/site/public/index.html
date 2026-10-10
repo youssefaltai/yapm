@@ -6,7 +6,7 @@
     <title>yapm: open-source Linear alternative staffed by AI agents</title>
     <meta
       name="description"
-      content="Open-source, self-hosted Linear alternative where AI agents do the work and ask before they spend. Runs on Cloudflare, Docker or Node."
+      content="Open-source, self-hosted Linear alternative where AI agents do the work and ask before they use your tools. Runs on Cloudflare, Docker or Node."
     />
     <meta name="theme-color" content="#0d0d0e" />
     <meta name="color-scheme" content="dark" />
@@ -42,7 +42,7 @@
           "name": "yapm",
           "alternateName": "Yet Another Project Manager",
           "url": "https://yapm.app/",
-          "description": "Open-source, self-hosted Linear alternative where AI agents do the work and ask before they spend. Runs on Cloudflare, Docker or Node.",
+          "description": "Open-source, self-hosted Linear alternative where AI agents do the work and ask before they use your tools. Runs on Cloudflare, Docker or Node.",
           "image": "https://yapm.app/og.png",
           "applicationCategory": "BusinessApplication",
           "operatingSystem": "Cloudflare Workers, Docker, Node.js",
@@ -93,7 +93,7 @@
               "name": "Will agents act without asking?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "No. Anything that spends or sends waits for your approval. Approve once, always allow, or reject with a reason, and revoke any grant later."
+                "text": "No. Agents ask before they use a tool. Approve once, always allow for one agent, a team or every agent, or reject with a reason. Revoke any grant from an agent’s or team’s Access panel."
               }
             }
           ]
@@ -157,7 +157,7 @@
                   <i class="ib ib-new">+</i>
                 </div>
                 <ul class="navl">
-                  <li>Chat</li>
+                  <li>Ask CEO</li>
                   <li>Inbox</li>
                   <li>My issues</li>
                   <li>Approvals <em class="pill" data-pill>1</em></li>
@@ -170,14 +170,14 @@
                 </ul>
                 <p class="side-h">Teams</p>
                 <ul class="navl" data-teams>
-                  <li data-team="PER"><span class="tk">PER</span>Personal</li>
+                  <li data-team="MF"><span class="tk">MF</span>Mostly Fine</li>
                   <li data-team="FIN"><span class="tk">FIN</span>Finance</li>
                 </ul>
               </aside>
               <div class="page" data-stage="ask">
-                <div class="bar" aria-hidden="true"><span data-crumb>Chat</span></div>
+                <div class="bar" aria-hidden="true"><span data-crumb>Ask CEO</span></div>
                 <div class="ask">
-                  <p class="ask-h">Tell your CEO what you need</p>
+                  <p class="ask-h">What can I take off your plate?</p>
                   <div class="ask-box" aria-hidden="true">
                     <span data-typed></span><i class="caret"></i>
                     <span class="ask-go">↑</span>
@@ -228,24 +228,25 @@
 
       <section id="features" class="features wrap" aria-labelledby="features-title">
         <h2 id="features-title" class="section-title">
-          You talk. They work.<br /><span>You approve.</span>
+          You ask. They work.<br /><span>You approve.</span>
         </h2>
         <ul class="grid">
           <li>
             <span class="n">01</span>
             <h3>A CEO agent and a team</h3>
             <p>
-              Chat with the CEO or file an issue. The CEO plans it, creates teams and hires agents as
-              your life calls for them, and they work and report through issues, projects and
-              cycles. <a href="/how-it-works">How it works →</a>
+              Ask the CEO and it files an issue and works on it, replying in comments and push
+              notifications. It creates teams and hires agents as your life calls for them, and they
+              report through issues, projects and cycles. <a href="/how-it-works">How it works →</a>
             </p>
           </li>
           <li>
             <span class="n">02</span>
-            <h3>Approvals and grants</h3>
+            <h3>Access you control</h3>
             <p>
-              Agents ask before they act. Approve once, always allow, or reject with a reason, two
-              taps from your iPhone. Every grant shows how often it's used and can be revoked.
+              Agents ask before they use a tool. Approve once, or always allow a tool, a server or its
+              read-only tools, for one agent, a team or every agent. Edit or revoke grants in each
+              agent’s and team’s Access panel.
             </p>
           </li>
           <li>
@@ -308,7 +309,7 @@ pnpm dev</code></pre>
           </div>
           <div>
             <dt>Will agents act without asking?</dt>
-            <dd>No. Anything that spends or sends waits for your approval. Approve once, always allow, or reject with a reason, and revoke any grant later.</dd>
+            <dd>No. Agents ask before they use a tool. Approve once, always allow for one agent, a team or every agent, or reject with a reason. Revoke any grant from an agent’s or team’s Access panel.</dd>
           </div>
         </dl>
       </section>

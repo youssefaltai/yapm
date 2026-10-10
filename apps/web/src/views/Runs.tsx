@@ -404,8 +404,18 @@ export function RunPage({ id }: { id: string }) {
                   </Property>
                 )}
                 {triggers.length > 0 && <Property label="Woken by">{triggers.join(", ")}</Property>}
-                <Property label="Machine">
-                  {run.machine?.name ?? <span className="text-faint">Not picked up yet</span>}
+                <Property label="Machine" control={!!run.machine}>
+                  {run.machine ? (
+                    <button
+                      type="button"
+                      onClick={() => run.machine && navigate(paths.machine(run.machine.id))}
+                      className={propertyButton}
+                    >
+                      <span className="truncate">{run.machine.name}</span>
+                    </button>
+                  ) : (
+                    <span className="text-faint">Not picked up yet</span>
+                  )}
                 </Property>
                 <Property label="Started">
                   {run.startedAt ? (

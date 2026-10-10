@@ -20,6 +20,7 @@
   --animate-drawer-in: drawer-in 240ms var(--ease-snappy) backwards;
   --animate-badge-in: badge-in 220ms var(--ease-spring) backwards;
   --animate-grow-x: grow-x 700ms var(--ease-snappy) backwards;
+  --animate-typing: typing 1.2s ease-in-out infinite;
   /* Placeholders wait a beat, so a fast load goes straight to content without a flash. */
   --animate-skeleton-in: fade-in 240ms var(--ease-snappy) 180ms backwards;
   --animate-tile-in:
@@ -78,6 +79,19 @@
     from {
       opacity: 0;
       transform: scale(0.6);
+    }
+  }
+  /* The three dots of someone typing. */
+  @keyframes typing {
+    0%,
+    60%,
+    100% {
+      opacity: 0.3;
+      transform: none;
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-3px);
     }
   }
   @keyframes float {

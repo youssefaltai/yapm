@@ -89,12 +89,17 @@ test.describe
       });
 
       // It connects, and the chat opens.
-      await expect(page.getByText("This chat isn't saved")).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "What can I take off your plate?" }),
+      ).toBeVisible();
+      // A suggestion fills the composer, ready to edit or send.
+      await page.getByRole("button", { name: "Plan my week" }).click();
+      await expect(page.getByLabel("Message CEO")).toContainText("Plan my week");
       await page.getByLabel("Message CEO").fill("Set up a team for the household bills.");
-      await page.keyboard.press("ControlOrMeta+Enter");
+      await page.getByRole("button", { name: "Send" }).click();
       const thread = page.getByRole("list", { name: "Chat with CEO" });
       await expect(thread.getByText("Set up a team for the household bills.")).toBeVisible();
-      await expect(page.getByText("CEO is thinking…")).toBeVisible();
+      await expect(page.getByRole("status", { name: "CEO is thinking" })).toBeVisible();
     });
 
     test("creates a team and files issues from the keyboard", async () => {
@@ -160,6 +165,15 @@ test.describe
       await expect(page.getByRole("button", { name: /Find a cheaper tariff/ })).toBeVisible();
       page.off("request", track);
       expect(sent).toHaveLength(2);
+    });
+
+    test("suggests what to ask the CEO from the work at hand", async () => {
+      await page.reload();
+      await page.getByRole("link", { name: "Chat", exact: true }).click();
+      // The urgent issue already in progress comes first.
+      await page.getByRole("button", { name: /Pay the electricity bill/ }).click();
+      await expect(page.getByLabel("Message CEO")).toContainText("Pay the electricity bill");
+      await page.goBack();
     });
 
     test("opens an issue, comments, and sees its history", async () => {

@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 const HUB = "https://hub.example";
 
 /** Runs the installer with stub node, npm and curl; returns what the runner was asked to do. */
-function install(connectedTo?: string): string {
+function install(connectedTo?: string, token = "lms_x") {
   const home = mkdtempSync(join(tmpdir(), "install-"));
   const bin = join(home, "stubs");
   mkdirSync(bin);
@@ -30,23 +30,32 @@ shift; echo "$*" >> "$HOME/runner.log"
     const config = { hub: connectedTo, token: "lmr_x", machineId: "m", name: "Mac" };
     writeFileSync(join(home, ".life-os-runner/config.json"), JSON.stringify(config, null, 2));
   }
-  execFileSync("sh", ["-s", "--", "--token", "lms_x", "--no-service"], {
-    input: installScript(HUB),
-    env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` },
-  });
-  return readFileSync(join(home, "runner.log"), "utf8");
+  const said = execFileSync(
+    "sh",
+    ["-s", "--", ...(token ? ["--token", token] : []), "--no-service"],
+    {
+      input: installScript(HUB),
+      env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` },
+      encoding: "utf8",
+    },
+  );
+  return { ran: readFileSync(join(home, "runner.log"), "utf8"), said };
 }
 
 describe("install.sh", () => {
   it("connects a new machine to this hub", () => {
-    expect(install()).toContain(`enrol --hub ${HUB} --token lms_x`);
+    expect(install().ran).toContain(`enrol --hub ${HUB} --token lms_x`);
   });
 
   it("only updates a machine already connected to this hub", () => {
-    expect(install(HUB)).not.toContain("enrol");
+    expect(install(HUB).ran).not.toContain("enrol");
   });
 
   it("moves a machine connected to another hub over to this one", () => {
-    expect(install("https://other.example")).toContain(`enrol --hub ${HUB} --token lms_x`);
+    expect(install("https://other.example").ran).toContain(`enrol --hub ${HUB} --token lms_x`);
+  });
+
+  it("doesn't ask to start a runner it's updating, which restarts by itself", () => {
+    expect(install(HUB, "").said).not.toContain("life-os-runner start");
   });
 });

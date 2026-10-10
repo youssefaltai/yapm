@@ -128,7 +128,9 @@ fi
 TTY=$(tty 0<&2 2>/dev/null) || TTY=
 if [ -n "$TTY" ]; then "$BIN" login <"$TTY"; else "$BIN" login; fi
 
-if [ -n "$NO_SERVICE" ]; then
+if [ -n "$NO_SERVICE" ] && [ -z "$TOKEN" ]; then
+  say "Updated the runner."
+elif [ -n "$NO_SERVICE" ]; then
   say "Installed. Run: life-os-runner start"
 else
   "$BIN" service install

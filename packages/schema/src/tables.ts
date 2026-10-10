@@ -427,7 +427,7 @@ export const grants = sqliteTable(
     revokedAt: integer("revoked_at", { mode: "number" }),
     ...timestamps,
   },
-  (t) => [index("grants_action_idx").on(t.action)],
+  (t) => [index("grants_action_idx").on(t.action), index("grants_subject_idx").on(t.subjectId)],
 );
 
 export const NOTIFICATION_TYPES = [

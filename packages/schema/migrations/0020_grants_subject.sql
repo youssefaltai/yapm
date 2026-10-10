@@ -1,0 +1,1 @@
+CREATE INDEX `grants_subject_idx` ON `grants` (`subject_id`);

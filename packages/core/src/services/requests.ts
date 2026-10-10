@@ -14,7 +14,7 @@ import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
-import { type Ctx, cleanText, event } from "./common.js";
+import { type Ctx, changes, cleanText, event } from "./common.js";
 import { feedbackOp } from "./feedback.js";
 import { notify, ownerId } from "./notifications.js";
 import { isAbove } from "./users.js";
@@ -22,7 +22,8 @@ import { isAbove } from "./users.js";
 /**
  * Permissions are plain strings. Org changes use their audit action names (`team.create`,
  * `agent.hire`, `agent.retire`, `charter.update`, `user.update`); runners use `tool:<Name>`.
- * A grant for `*` allows everything.
+ * A grant's action may end in `*` to cover every action starting with the rest: `tool:slack__*`
+ * covers every Slack tool, and `*` everything.
  */
 const ACTION = /^[A-Za-z][\w.:*-]{0,79}$/;
 
@@ -38,27 +39,42 @@ async function loadActor(db: HubDb, id: string) {
   return user;
 }
 
-/** The first standing grant that lets `userId` do `action` on `resource`. */
-async function findGrant(db: HubDb, userId: string, action: string, resource: string | null) {
+/** Whether a grant's action covers `action`. */
+function covers(grantAction: string, action: string) {
+  return grantAction.endsWith("*")
+    ? action.startsWith(grantAction.slice(0, -1))
+    : grantAction === action;
+}
+
+/** Grants for `userId`: its own, its teams' and everyone's. */
+export function grantsFor(db: HubDb, userId: string) {
   const teamIds = db
     .select({ id: teamMemberships.teamId })
     .from(teamMemberships)
     .where(eq(teamMemberships.userId, userId));
+  return or(
+    eq(grants.scope, "everyone"),
+    and(eq(grants.scope, "user"), eq(grants.subjectId, userId)),
+    and(eq(grants.scope, "team"), inArray(grants.subjectId, teamIds)),
+  );
+}
+
+/** The first standing grant that lets `userId` do `action` on `resource`. */
+async function findGrant(db: HubDb, userId: string, action: string, resource: string | null) {
   return db
     .select({ id: grants.id })
     .from(grants)
     .where(
       and(
         isNull(grants.revokedAt),
-        inArray(grants.action, [action, "*"]),
+        or(
+          eq(grants.action, action),
+          sql`${grants.action} LIKE '%*' AND substr(${action}, 1, length(${grants.action}) - 1) = substr(${grants.action}, 1, length(${grants.action}) - 1)`,
+        ),
         resource
           ? or(isNull(grants.resource), eq(grants.resource, resource))
           : isNull(grants.resource),
-        or(
-          eq(grants.scope, "everyone"),
-          and(eq(grants.scope, "user"), eq(grants.subjectId, userId)),
-          and(eq(grants.scope, "team"), inArray(grants.subjectId, teamIds)),
-        ),
+        grantsFor(db, userId),
       ),
     )
     .get();
@@ -261,6 +277,8 @@ export interface AlwaysAllowInput {
   teamId?: string | null;
   /** Allow the action on anything, not only this request's resource. */
   anyResource?: boolean | null;
+  /** A wider action that covers the request's, e.g. `tool:slack__*`. */
+  action?: string | null;
 }
 
 export interface GrantCreateInput {
@@ -334,6 +352,9 @@ export async function approveRequest(
   let grantId: string | null = null;
   if (input.always) {
     const { scope } = input.always;
+    const action = input.always.action?.trim() || request.action;
+    if (!covers(action, request.action))
+      throw badRequest(`${action} doesn't cover ${request.action}`);
     const subjectId =
       scope === "user"
         ? request.requesterId
@@ -343,7 +364,7 @@ export async function approveRequest(
     const row = await grantRow(
       ctx,
       {
-        action: request.action,
+        action,
         resource: input.always.anyResource ? null : request.resource,
         scope,
         subjectId,
@@ -495,6 +516,37 @@ export async function createGrant(ctx: Ctx, input: GrantCreateInput): Promise<st
     ),
   ]);
   return row.id;
+}
+
+export interface GrantUpdateInput {
+  action?: string | null;
+  resource?: string | null;
+  note?: string | null;
+}
+
+export async function updateGrant(ctx: Ctx, id: string, input: GrantUpdateInput): Promise<string> {
+  const { db, now } = ctx;
+  await requireOwner(ctx, "edit grants");
+  const grant = await db.select().from(grants).where(eq(grants.id, id)).get();
+  if (!grant) throw notFound("Grant");
+  const next: Partial<typeof grant> = {};
+  if (input.action != null) {
+    next.action = input.action.trim();
+    if (!ACTION.test(next.action))
+      throw badRequest("Action must look like team.create or tool:Bash");
+  }
+  if (input.resource !== undefined) next.resource = input.resource?.trim() || null;
+  if (input.note !== undefined) next.note = input.note?.trim() || null;
+  const diff = changes(grant, next);
+  if (!diff) return id;
+  await commit(db, [
+    db
+      .update(grants)
+      .set({ ...next, updatedAt: now })
+      .where(eq(grants.id, id)),
+    ...audit(db, [event(ctx, "grant.update", "grant", id, diff)], now),
+  ]);
+  return id;
 }
 
 export async function revokeGrant(ctx: Ctx, id: string): Promise<string> {

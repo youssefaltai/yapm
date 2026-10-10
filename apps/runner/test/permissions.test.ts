@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { describeRequest } from "../src/permissions.js";
+import type { HubClient } from "../src/hub.js";
+import { decideTool, describeRequest } from "../src/permissions.js";
 
 describe("permission request titles", () => {
   it("puts a short command in the title and the description as the reason", () => {
@@ -26,5 +27,42 @@ describe("permission request titles", () => {
     const { title } = describeRequest("CEO", "Bash", `echo ${"x".repeat(100)}`, "", null);
     expect(title).toMatch(/^CEO wants to use Bash: echo x+…$/);
     expect(title.length).toBeLessThan(90);
+  });
+
+  it("names an MCP tool by its server and the tool, not its arguments", () => {
+    expect(describeRequest("CEO", "mcp__slack__slack_read_channel", null, "", null).title).toBe(
+      "CEO wants to use Slack: read_channel",
+    );
+    expect(
+      describeRequest("CEO", "mcp__linear__create_issue", null, "Fix the tap", null).title,
+    ).toBe("CEO wants to use Linear: create_issue");
+  });
+});
+
+describe("deciding a tool call", () => {
+  it("asks for a read-only tool with the readOnly marker as its resource", async () => {
+    const asked: Record<string, unknown>[] = [];
+    const hub = {
+      graphql: async (_token: string, _query: string, variables: Record<string, unknown>) => {
+        asked.push(variables);
+        return { permissionUse: { allowed: true, pendingRequestId: null } };
+      },
+    } as unknown as HubClient;
+    const ctx = {
+      hub,
+      token: "t",
+      agent: "CEO",
+      issueId: null,
+      issue: null,
+      pollMs: 1,
+      signal: new AbortController().signal,
+      onEvent: () => {},
+    };
+    await decideTool(ctx, "mcp__slack__slack_read_channel", {}, true);
+    await decideTool(ctx, "mcp__slack__slack_send_message", {});
+    expect(asked).toEqual([
+      { action: "tool:slack__slack_read_channel", resource: "readOnly" },
+      { action: "tool:slack__slack_send_message", resource: null },
+    ]);
   });
 });

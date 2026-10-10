@@ -1,9 +1,10 @@
-import { createIssueStore } from "../actions.js";
+import { createIssueStore, workspaceStore } from "../actions.js";
 import { confirmDialog, Select as Dropdown, promptDialog } from "../controls.js";
 import { mutate, type StateType, type Team, toast, type WorkflowState } from "../data.js";
 import { Breadcrumbs, button, PageHeader } from "../layout.js";
 import { paths } from "../router.js";
-import { StatusIcon } from "../ui.js";
+import { Avatar, openMenu, StatusIcon, useStore } from "../ui.js";
+import { AccessPanel } from "./Access.js";
 import { SettingsLayout, SettingsPanel, SettingsRow } from "./SettingsLayout.js";
 
 const PRIORITY_SLAS = [
@@ -234,9 +235,83 @@ export function TeamSettings({ team }: { team: Team }) {
               </SettingsPanel>
             ),
           },
+          {
+            id: "members",
+            title: "Members",
+            description: "Who works in the team. The team's access applies to each of them.",
+            actions: <AddMember team={team} />,
+            children: <Members team={team} />,
+          },
+          {
+            id: "access",
+            title: "Access",
+            description: "What the team's agents may do without asking.",
+            children: <AccessPanel teamId={team.id} />,
+          },
         ]}
       />
     </div>
+  );
+}
+
+function AddMember({ team }: { team: Team }) {
+  const workspace = useStore(workspaceStore);
+  const members = new Set(team.members.nodes.map((m) => m.id));
+  const agents = workspace?.users.nodes.filter((u) => u.kind === "agent" && !members.has(u.id));
+  if (!agents?.length) return null;
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        openMenu({
+          placeholder: `Add to ${team.name}`,
+          items: agents.map((u) => ({
+            id: u.id,
+            label: u.name,
+            hint: u.title ?? undefined,
+            icon: <Avatar name={u.name} kind={u.kind} size={16} />,
+            onSelect: () =>
+              void mutate(
+                "mutation($t: String!, $u: String!) { teamMembershipCreate(input: { teamId: $t, userId: $u }) { success } }",
+                { t: team.id, u: u.id },
+              ),
+          })),
+        })
+      }
+      className={button("ghost", "sm")}
+    >
+      + Add member
+    </button>
+  );
+}
+
+function Members({ team }: { team: Team }) {
+  const workspace = useStore(workspaceStore);
+  const ids = new Set(team.members.nodes.map((m) => m.id));
+  const members = workspace?.users.nodes.filter((u) => ids.has(u.id)) ?? [];
+  return (
+    <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-panel">
+      {members.map((u) => (
+        <li key={u.id} className="flex items-center gap-3 px-4 py-2.5">
+          <Avatar name={u.name} kind={u.kind} size={20} />
+          <span className="min-w-0 flex-1 truncate">{u.name}</span>
+          {u.kind === "agent" && (
+            <button
+              type="button"
+              onClick={() =>
+                void mutate(
+                  "mutation($t: String!, $u: String!) { teamMembershipDelete(teamId: $t, userId: $u) { success } }",
+                  { t: team.id, u: u.id },
+                )
+              }
+              className="text-faint hover:text-critical"
+            >
+              Remove
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

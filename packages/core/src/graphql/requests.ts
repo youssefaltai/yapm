@@ -6,8 +6,10 @@ import {
   checkPermission,
   createGrant,
   createRequest,
+  grantsFor,
   rejectRequest,
   revokeGrant,
+  updateGrant,
   usePermission,
 } from "../services/requests.js";
 import {
@@ -154,6 +156,16 @@ const RequestFilter = builder.inputType("RequestFilter", {
   }),
 });
 
+const GrantFilter = builder.inputType("GrantFilter", {
+  fields: (t) => ({
+    userId: t.string({
+      required: false,
+      description: "Grants that apply to this member: its own, its teams' and everyone's.",
+    }),
+    teamId: t.string({ required: false, description: "Grants for this team." }),
+  }),
+});
+
 builder.queryFields((t) => ({
   requests: t.field({
     type: RequestConnection,
@@ -193,13 +205,24 @@ builder.queryFields((t) => ({
   grants: t.field({
     type: GrantConnection,
     description: "Standing permissions, newest first. Every member can read them.",
-    args: { ...pageArgs, includeRevoked: t.arg.boolean({ required: false }) },
+    args: {
+      ...pageArgs,
+      includeRevoked: t.arg.boolean({ required: false }),
+      filter: t.arg({ type: GrantFilter, required: false }),
+    },
     resolve: async (_root, args, ctx) => {
       requireViewer(ctx);
+      const f = args.filter;
       const rows = await db(ctx)
         .select()
         .from(grants)
-        .where(args.includeRevoked ? undefined : isNull(grants.revokedAt))
+        .where(
+          and(
+            args.includeRevoked ? undefined : isNull(grants.revokedAt),
+            f?.userId ? grantsFor(db(ctx), f.userId) : undefined,
+            f?.teamId ? and(eq(grants.scope, "team"), eq(grants.subjectId, f.teamId)) : undefined,
+          ),
+        )
         .orderBy(desc(grants.createdAt))
         .all();
       return paginate(rows, args);
@@ -290,6 +313,11 @@ const AlwaysAllowInput = builder.inputType("AlwaysAllowInput", {
       required: false,
       description: "Allow it on anything, not only this resource.",
     }),
+    action: t.string({
+      required: false,
+      description:
+        "A wider action that covers this one, e.g. `tool:slack__*` for every Slack tool.",
+    }),
   }),
 });
 
@@ -302,6 +330,14 @@ const GrantCreateInput = builder.inputType("GrantCreateInput", {
       required: false,
       description: "The agent or team id; omit for everyone.",
     }),
+    note: t.string({ required: false }),
+  }),
+});
+
+const GrantUpdateInput = builder.inputType("GrantUpdateInput", {
+  fields: (t) => ({
+    action: t.string({ required: false }),
+    resource: t.string({ required: false }),
     note: t.string({ required: false }),
   }),
 });
@@ -361,6 +397,16 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: GrantCreateInput, required: true }) },
     resolve: async (_root, args, ctx) => ({
       id: await act(ctx, (s) => createGrant(s, args.input)),
+    }),
+  }),
+  grantUpdate: t.field({
+    type: GrantPayload,
+    args: {
+      id: t.arg.string({ required: true }),
+      input: t.arg({ type: GrantUpdateInput, required: true }),
+    },
+    resolve: async (_root, args, ctx) => ({
+      id: await act(ctx, (s) => updateGrant(s, args.id, args.input)),
     }),
   }),
   grantRevoke: t.field({

@@ -26,6 +26,17 @@ export function resourceOf(tool: string, input: Record<string, unknown>): string
   return null;
 }
 
+/** The resource a read-only MCP tool asks with, so a grant can cover only a server's read-only tools. */
+export const READ_ONLY = "readOnly";
+
+/** `mcp__slack__slack_read_channel` reads as `Slack: read_channel`; other tools as themselves. */
+function toolName(tool: string): string | null {
+  const [, server = "", name = ""] = /^mcp__(.+?)__(.+)$/.exec(tool) ?? [];
+  if (!server) return null;
+  const short = name.startsWith(`${server}_`) ? name.slice(server.length + 1) : name;
+  return `${server[0]?.toUpperCase()}${server.slice(1)}: ${short}`;
+}
+
 /** Commands this short read well as a title; longer ones wrap the heading and get cut. */
 const TITLE_RESOURCE_MAX = 60;
 
@@ -42,6 +53,8 @@ export function describeRequest(
   issue: string | null,
 ): { title: string; reason: string } {
   const needed = `Needed for the work on ${issue ?? "the current task"}; the session is paused until you answer.`;
+  const mcp = toolName(tool);
+  if (mcp) return { title: `${agent} wants to use ${mcp}`, reason: description || needed };
   const short = resource && resource.length <= TITLE_RESOURCE_MAX && !resource.includes("\n");
   const subject = short
     ? resource
@@ -111,17 +124,25 @@ export async function decideTool(
   ctx: PermissionContext,
   tool: string,
   input: Record<string, unknown>,
+  /** The tool says it only reads (its MCP `readOnlyHint`); it still needs a grant. */
+  readOnly = false,
 ): Promise<ToolDecision> {
   if (SAFE_TOOLS.has(tool) || tool.startsWith(`mcp__${HUB_MCP}__`)) return { behavior: "allow" };
   const action = `tool:${tool.startsWith("mcp__") ? tool.slice(5) : tool}`;
-  const resource = resourceOf(tool, input);
+  const resource = readOnly ? READ_ONLY : resourceOf(tool, input);
   const now = await use(ctx, action, resource);
   if (now.allowed) return { behavior: "allow" };
 
   let requestId = now.pendingRequestId;
   if (!requestId) {
     const description = typeof input.description === "string" ? input.description : "";
-    const { title, reason } = describeRequest(ctx.agent, tool, resource, description, ctx.issue);
+    const { title, reason } = describeRequest(
+      ctx.agent,
+      tool,
+      resourceOf(tool, input),
+      description,
+      ctx.issue,
+    );
     const created = await ctx.hub.graphql<{ requestCreate: { request: { id: string } } }>(
       ctx.token,
       "mutation($input: RequestCreateInput!) { requestCreate(input: $input) { request { id } } }",

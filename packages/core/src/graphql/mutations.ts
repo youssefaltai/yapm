@@ -19,7 +19,7 @@ import {
 } from "../services/issues.js";
 import { createLabel, deleteLabel, updateLabel } from "../services/labels.js";
 import { archiveState, createState, updateState } from "../services/states.js";
-import { createTeam, updateTeam } from "../services/teams.js";
+import { createTeam, setTeamMembership, updateTeam } from "../services/teams.js";
 import { hireAgent, retireAgent, revokeApiToken, updateUser } from "../services/users.js";
 import { act, builder, db, notFoundError, requireOwner, type Types } from "./builder.js";
 import {
@@ -100,6 +100,13 @@ const TeamCreateInput = builder.inputType("TeamCreateInput", {
     icon: t.string({ required: false }),
     color: t.string({ required: false }),
     leadId: t.string({ required: false }),
+  }),
+});
+
+const TeamMembershipCreateInput = builder.inputType("TeamMembershipCreateInput", {
+  fields: (t) => ({
+    teamId: t.string({ required: true }),
+    userId: t.string({ required: true }),
   }),
 });
 
@@ -317,6 +324,32 @@ builder.mutationType({
       },
       resolve: async (_root, args, ctx) => {
         const id = await act(ctx, (s) => updateTeam(s, args.id, args.input));
+        const team = await db(ctx).select().from(teams).where(eq(teams.id, id)).get();
+        if (!team) throw notFoundError("Team");
+        return { entity: team };
+      },
+    }),
+    teamMembershipCreate: t.field({
+      type: TeamPayload,
+      description: "Adds a member to a team. Owner only.",
+      args: { input: t.arg({ type: TeamMembershipCreateInput, required: true }) },
+      resolve: async (_root, args, ctx) => {
+        const { teamId, userId } = args.input;
+        const id = await act(ctx, (s) => setTeamMembership(s, teamId, userId));
+        const team = await db(ctx).select().from(teams).where(eq(teams.id, id)).get();
+        if (!team) throw notFoundError("Team");
+        return { entity: team };
+      },
+    }),
+    teamMembershipDelete: t.field({
+      type: TeamPayload,
+      description: "Takes a member off a team. Owner only.",
+      args: {
+        teamId: t.arg.string({ required: true }),
+        userId: t.arg.string({ required: true }),
+      },
+      resolve: async (_root, args, ctx) => {
+        const id = await act(ctx, (s) => setTeamMembership(s, args.teamId, args.userId, true));
         const team = await db(ctx).select().from(teams).where(eq(teams.id, id)).get();
         if (!team) throw notFoundError("Team");
         return { entity: team };

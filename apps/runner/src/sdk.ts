@@ -61,6 +61,14 @@ export function transcriptEvents(message: SDKMessage): Record<string, unknown>[]
   return events;
 }
 
+/** Whether an MCP tool's annotations say it only reads; the SDK reports them per server. */
+async function readOnly(session: Query, tool: string): Promise<boolean> {
+  const [, server, name] = /^mcp__(.+?)__(.+)$/.exec(tool) ?? [];
+  if (!server) return false;
+  const status = (await session.mcpServerStatus()).find((s) => s.name === server);
+  return status?.tools?.find((t) => t.name === name)?.annotations?.readOnly === true;
+}
+
 /** Runs a session on the Claude Agent SDK, on the machine's Claude account or API key. */
 export const sdkEngine: Engine = async (run) => {
   const abortController = new AbortController();
@@ -90,7 +98,7 @@ export const sdkEngine: Engine = async (run) => {
             },
           },
           canUseTool: async (tool, input) => {
-            const decision = await run.canUseTool(tool, input);
+            const decision = await run.canUseTool(tool, input, await readOnly(session, tool));
             return decision.behavior === "allow"
               ? { behavior: "allow", updatedInput: input }
               : decision;

@@ -6,7 +6,18 @@ const calls: Options[] = [];
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: ({ options }: { options: Options }) => {
     calls.push(options);
-    return (async function* () {})();
+    return Object.assign((async function* () {})(), {
+      mcpServerStatus: async () => [
+        {
+          name: "slack",
+          status: "connected",
+          tools: [
+            { name: "slack_read_channel", annotations: { readOnly: true } },
+            { name: "slack_send_message", annotations: {} },
+          ],
+        },
+      ],
+    });
   },
 }));
 
@@ -81,6 +92,29 @@ describe("sdk engine", () => {
         error: false,
         text: "mcp__yapm__get_issue, mcp__yapm__create_comment",
       },
+    ]);
+  });
+
+  it("tells which MCP tools only read, from their annotations", async () => {
+    calls.length = 0;
+    const seen: [string, boolean | undefined][] = [];
+    await sdkEngine(
+      run({
+        canUseTool: async (tool, _input, readOnly) => {
+          seen.push([tool, readOnly]);
+          return { behavior: "allow" };
+        },
+      }),
+    );
+    const canUseTool = calls[0]?.canUseTool;
+    const options = { signal: new AbortController().signal, toolUseID: "t", requestId: "r" };
+    await canUseTool?.("mcp__slack__slack_read_channel", {}, options);
+    await canUseTool?.("mcp__slack__slack_send_message", {}, options);
+    await canUseTool?.("Bash", { command: "ls" }, options);
+    expect(seen).toEqual([
+      ["mcp__slack__slack_read_channel", true],
+      ["mcp__slack__slack_send_message", false],
+      ["Bash", false],
     ]);
   });
 });

@@ -3891,5 +3891,151 @@ export function hubContract(
       await mcp("archive_issue_status", { id: errands.id });
       expect(await names()).not.toContain("Chores");
     });
+
+    it("always allows a whole server's tools, or only its read-only ones", async () => {
+      await client.graphql('mutation { agentHire(input: { name: "Scout" }) { success } }');
+      const scout = await agentToken("Scout");
+      const use = async (action: string, resource: string | null = null) =>
+        (
+          await client.graphql<{ permissionUse: { allowed: boolean } }>(
+            "mutation($a: String!, $r: String) { permissionUse(action: $a, resource: $r) { allowed } }",
+            { a: action, r: resource },
+            scout.token,
+          )
+        ).data?.permissionUse.allowed;
+      const ask = async (action: string, resource: string | null = null) =>
+        (
+          await client.graphql<{ requestCreate: { request: { id: string } } }>(
+            'mutation($a: String!, $r: String) { requestCreate(input: { title: $a, action: $a, resource: $r, reason: "Work." }) { request { id } } }',
+            { a: action, r: resource },
+            scout.token,
+          )
+        ).data?.requestCreate.request.id;
+      const approve = (id: string | undefined, always: Record<string, unknown>) =>
+        client.graphql(
+          "mutation($id: String!, $always: AlwaysAllowInput!) { requestApprove(id: $id, alwaysAllow: $always) { success } }",
+          { id, always },
+        );
+
+      // Read-only tools still need a grant.
+      expect(await use("tool:slack__slack_read_channel", "readOnly")).toBe(false);
+      const read = await ask("tool:slack__slack_read_channel", "readOnly");
+      // The wider action must cover the one asked for.
+      const wrong = await approve(read, { scope: "user", action: "tool:github__*" });
+      expect(wrong.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      expect((await approve(read, { scope: "user", action: "tool:slack__*" })).errors).toBe(
+        undefined,
+      );
+      expect(await use("tool:slack__slack_search", "readOnly")).toBe(true);
+      expect(await use("tool:slack__slack_send_message")).toBe(false);
+      expect(await use("tool:slackbot__chat", "readOnly")).toBe(false);
+
+      // All of a server's tools, read-only or not.
+      const send = await ask("tool:slack__slack_send_message");
+      await approve(send, { scope: "user", action: "tool:slack__*", anyResource: true });
+      expect(await use("tool:slack__slack_delete_message")).toBe(true);
+      expect(await use("tool:github__create_issue")).toBe(false);
+    });
+
+    it("lists the grants that apply to an agent or a team, and edits them", async () => {
+      const scout = await agentToken("Scout");
+      const ceo = await agentToken("CEO");
+      const field = await client.graphql<{ teamCreate: { team: { id: string } } }>(
+        'mutation($l: String) { teamCreate(input: { name: "Field", leadId: $l }) { team { id } } }',
+        { l: scout.id },
+      );
+      const teamId = field.data?.teamCreate.team.id;
+      const grant = async (action: string, scope: string, subjectId?: string) =>
+        (
+          await client.graphql<{ grantCreate: { grant: { id: string } } }>(
+            "mutation($input: GrantCreateInput!) { grantCreate(input: $input) { grant { id } } }",
+            { input: { action, scope, subjectId } },
+          )
+        ).data?.grantCreate.grant.id;
+      const teamGrant = await grant("doc.write", "team", teamId);
+      await grant("web.read", "everyone");
+      await grant("ceo.only", "user", ceo.id);
+      type Row = { action: string; note: string | null; revokedAt: string | null };
+      const list = async (filter: Record<string, unknown>, includeRevoked = false) =>
+        (
+          await client.graphql<{ grants: { nodes: Row[] } }>(
+            "query($f: GrantFilter, $r: Boolean) { grants(filter: $f, includeRevoked: $r) { nodes { action note revokedAt } } }",
+            { f: filter, r: includeRevoked },
+          )
+        ).data?.grants.nodes ?? [];
+
+      // An agent's grants: its own, its teams' and everyone's.
+      const scouts = (await list({ userId: scout.id })).map((g) => g.action);
+      expect(scouts).toEqual(expect.arrayContaining(["tool:slack__*", "doc.write", "web.read"]));
+      expect(scouts).not.toContain("ceo.only");
+      expect((await list({ teamId })).map((g) => g.action)).toEqual(["doc.write"]);
+
+      // Only the owner edits a grant, and the edit is audited.
+      const edit = (token?: string) =>
+        client.graphql(
+          'mutation($id: String!) { grantUpdate(id: $id, input: { note: "Field notes", resource: "notes" }) { grant { note resource } } }',
+          { id: teamGrant },
+          token,
+        );
+      expect((await edit(scout.token)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect((await edit()).data).toEqual({
+        grantUpdate: { grant: { note: "Field notes", resource: "notes" } },
+      });
+      const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
+        { id: teamGrant },
+      );
+      expect(log.data?.auditEntries.nodes.map((n) => n.action).sort()).toEqual([
+        "grant.create",
+        "grant.update",
+      ]);
+
+      // Revoked grants stay as history.
+      await client.graphql("mutation($id: String!) { grantRevoke(id: $id) { success } }", {
+        id: teamGrant,
+      });
+      expect(await list({ teamId })).toEqual([]);
+      expect((await list({ teamId }, true))[0]?.revokedAt).toBeTruthy();
+    });
+
+    it("adds agents to a team and removes them, owner only", async () => {
+      const ceo = await agentToken("CEO");
+      const scout = await agentToken("Scout");
+      const team = await client.graphql<{ teamCreate: { team: { id: string } } }>(
+        'mutation { teamCreate(input: { name: "Crew" }) { team { id } } }',
+      );
+      const teamId = team.data?.teamCreate.team.id;
+      const members = async () =>
+        (
+          await client.graphql<{ team: { members: { nodes: { name: string }[] } } }>(
+            "query($id: String!) { team(id: $id) { members { nodes { name } } } }",
+            { id: teamId },
+          )
+        ).data?.team.members.nodes.map((m) => m.name);
+      const add = (userId: string, token?: string) =>
+        client.graphql(
+          "mutation($t: String!, $u: String!) { teamMembershipCreate(input: { teamId: $t, userId: $u }) { success } }",
+          { t: teamId, u: userId },
+          token,
+        );
+      const remove = (userId: string) =>
+        client.graphql(
+          "mutation($t: String!, $u: String!) { teamMembershipDelete(teamId: $t, userId: $u) { success } }",
+          { t: teamId, u: userId },
+        );
+
+      expect((await add(ceo.id, scout.token)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect((await add(ceo.id)).errors).toBeUndefined();
+      expect(await members()).toContain("CEO");
+      expect((await remove(ceo.id)).errors).toBeUndefined();
+      expect(await members()).not.toContain("CEO");
+      const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
+        { id: teamId },
+      );
+      expect(log.data?.auditEntries.nodes.map((n) => n.action)).toEqual(
+        expect.arrayContaining(["teamMembership.create", "teamMembership.delete"]),
+      );
+    });
   });
 }

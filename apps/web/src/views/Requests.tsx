@@ -7,7 +7,6 @@ import {
   Breadcrumbs,
   button,
   dialogField,
-  listItem,
   listRow,
   PageHeader,
   PageTitle,
@@ -26,6 +25,7 @@ import {
   timeAgo,
   useStore,
 } from "../ui.js";
+import { mcpTool, READ_ONLY } from "./Access.js";
 
 type Status = "pending" | "approved" | "rejected" | "canceled";
 type Person = { id: string; name: string; kind: "owner" | "agent" };
@@ -57,18 +57,6 @@ interface RequestDetail extends RequestSummary {
     pastesCallback: boolean;
   } | null;
   requester: Person & { title: string | null; teams: { nodes: { id: string; name: string }[] } };
-}
-
-interface Grant {
-  id: string;
-  action: string;
-  resource: string | null;
-  scope: "user" | "team" | "everyone";
-  useCount: number;
-  lastUsedAt: string | null;
-  createdAt: string;
-  user: Person | null;
-  team: { id: string; name: string } | null;
 }
 
 const PENDING_COUNT = "{ requests(filter: { status: [pending] }) { nodes { id } } }";
@@ -115,16 +103,13 @@ export function RequestsView({ tab }: { tab: RequestsTab }) {
             >
               Answered
             </TabLink>
-            <TabLink group="requests-tabs" active={tab === "grants"} to={paths.requests("grants")}>
-              Always allowed
-            </TabLink>
           </TabRow>
         }
       >
         <PageTitle>Approvals</PageTitle>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "grants" ? <GrantList /> : <RequestList answered={tab === "answered"} />}
+        <RequestList answered={tab === "answered"} />
       </div>
     </div>
   );
@@ -179,67 +164,6 @@ function RequestList({ answered }: { answered: boolean }) {
   );
 }
 
-function GrantList() {
-  const workspace = useStore(workspaceStore);
-  const { data, error } = useQuery<{ grants: { nodes: Grant[] } }>(
-    "{ grants(first: 200) { nodes { id action resource scope useCount lastUsedAt createdAt user { id name kind } team { id name } } } }",
-  );
-  if (error) return <p className="p-6 text-critical">{error}</p>;
-  if (!data) return <ListSkeleton rows={4} />;
-  const isOwner = workspace?.viewer.kind === "owner";
-  if (data.grants.nodes.length === 0)
-    return (
-      <EmptyState
-        icon="key"
-        title="Nothing is always allowed yet"
-        description="Choose “Always allow” on a request to let an agent do that again without asking."
-      />
-    );
-  return (
-    <ul>
-      {data.grants.nodes.map((g) => (
-        <li key={g.id} className={listItem}>
-          <div className="min-w-0 flex-1">
-            <p className="truncate">
-              <span className="font-medium">
-                {g.scope === "everyone" ? "Everyone" : (g.user?.name ?? g.team?.name ?? "?")}
-              </span>{" "}
-              <span className="text-muted">may</span> <code>{g.action}</code>
-              {g.resource && (
-                <>
-                  {" "}
-                  <span className="text-muted">on</span> <code>{g.resource}</code>
-                </>
-              )}
-            </p>
-            <p className="text-[12px] text-faint">
-              Used {g.useCount === 1 ? "once" : `${g.useCount} times`}
-              {g.lastUsedAt ? `, last ${timeAgo(g.lastUsedAt)}` : ""} · granted{" "}
-              {timeAgo(g.createdAt)}
-            </p>
-          </div>
-          {isOwner && (
-            <button
-              type="button"
-              onClick={async () => {
-                if (
-                  await mutate("mutation($id: String!) { grantRevoke(id: $id) { success } }", {
-                    id: g.id,
-                  })
-                )
-                  toast("Grant revoked");
-              }}
-              className={button("danger", "sm")}
-            >
-              Revoke
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /** Longer resources move from the sidebar into the body. */
 const RESOURCE_SIDEBAR_MAX = 48;
 
@@ -260,6 +184,7 @@ export function RequestPage({ id }: { id: string }) {
   const [reason, setReason] = useState("");
   const [scope, setScope] = useState<string>("user");
   const [anyResource, setAnyResource] = useState(false);
+  const [what, setWhat] = useState<"tool" | "server" | "readOnly">("tool");
   const [token, setToken] = useState("");
   const [callbackUrl, setCallbackUrl] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
@@ -268,6 +193,7 @@ export function RequestPage({ id }: { id: string }) {
   const r = data?.request;
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
+  const tool = mcpTool(r.action);
   // Only a server that isn't connected, or whose sign-in stopped working, needs signing in to.
   const server = r.mcpServer?.status === "pending" ? r.mcpServer : null;
   const connectError = failure ?? new URLSearchParams(window.location.search).get("error");
@@ -318,7 +244,9 @@ export function RequestPage({ id }: { id: string }) {
         always: {
           scope: scope.startsWith("team:") ? "team" : scope,
           teamId: scope.startsWith("team:") ? scope.slice(5) : null,
-          anyResource,
+          ...(tool
+            ? { action: what === "tool" ? r.action : tool.all, anyResource: what !== "readOnly" }
+            : { anyResource }),
         },
       },
       "Always allowed",
@@ -506,7 +434,7 @@ export function RequestPage({ id }: { id: string }) {
                   onClick={approveOnce}
                   className="rounded-lg bg-accent px-3 py-3 font-medium text-on-accent disabled:opacity-40"
                 >
-                  Approve
+                  Approve once
                 </button>
                 <button
                   type="button"
@@ -529,7 +457,24 @@ export function RequestPage({ id }: { id: string }) {
 
             {canAnswer && mode === "always" && (
               <fieldset className="rounded-lg border border-line p-4">
-                <legend className="px-1 font-medium">Always allow {r.action} for</legend>
+                <legend className="px-1 font-medium">
+                  Always allow {tool ? "" : `${r.action} `}for
+                </legend>
+                {tool && (
+                  <div className="mb-3 space-y-2 border-b border-line pb-3">
+                    <ScopeOption name="what" value="tool" current={what} onChange={setWhat}>
+                      This tool
+                    </ScopeOption>
+                    <ScopeOption name="what" value="server" current={what} onChange={setWhat}>
+                      All {tool.server} tools
+                    </ScopeOption>
+                    {r.resource === READ_ONLY && (
+                      <ScopeOption name="what" value="readOnly" current={what} onChange={setWhat}>
+                        Read-only {tool.server} tools
+                      </ScopeOption>
+                    )}
+                  </div>
+                )}
                 <div className="space-y-2">
                   <ScopeOption value="user" current={scope} onChange={setScope}>
                     {r.requester.name} only
@@ -548,7 +493,7 @@ export function RequestPage({ id }: { id: string }) {
                     Every agent
                   </ScopeOption>
                 </div>
-                {r.resource && (
+                {r.resource && !tool && (
                   <label className="mt-3 flex items-center gap-2 text-muted">
                     <input
                       type="checkbox"
@@ -636,22 +581,24 @@ export function RequestPage({ id }: { id: string }) {
   );
 }
 
-function ScopeOption({
+function ScopeOption<T extends string>({
+  name = "scope",
   value,
   current,
   onChange,
   children,
 }: {
-  value: string;
+  name?: string;
+  value: T;
   current: string;
-  onChange: (value: string) => void;
+  onChange: (value: T) => void;
   children: ReactNode;
 }) {
   return (
     <label className="flex items-center gap-2">
       <input
         type="radio"
-        name="scope"
+        name={name}
         checked={current === value}
         onChange={() => onChange(value)}
       />

@@ -8,7 +8,7 @@ import { DEFAULT_STATES } from "../seed.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
 import { companyTimeZone, syncTeamCycles } from "./cycles.js";
-import { authorize } from "./requests.js";
+import { authorize, requireOwner } from "./requests.js";
 
 export interface TeamCreateInput {
   name: string;
@@ -137,6 +137,38 @@ export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
   ];
   await commit(db, ops);
   return id;
+}
+
+/** The owner adds a member to a team, or with `remove` takes them off it. */
+export async function setTeamMembership(
+  ctx: Ctx,
+  teamId: string,
+  userId: string,
+  remove = false,
+): Promise<string> {
+  const { db, now } = ctx;
+  await requireOwner(ctx, "change team members");
+  const team = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).get();
+  if (!team) throw notFound("Team");
+  await assertActiveUser(db, userId, "Member");
+  const where = and(eq(teamMemberships.teamId, teamId), eq(teamMemberships.userId, userId));
+  const member = await db.select().from(teamMemberships).where(where).get();
+  if (!!member !== remove) return teamId;
+  await commit(db, [
+    remove
+      ? db.delete(teamMemberships).where(where)
+      : db.insert(teamMemberships).values({ teamId, userId, createdAt: now }),
+    ...audit(
+      db,
+      [
+        event(ctx, `teamMembership.${remove ? "delete" : "create"}`, "team", teamId, {
+          userId,
+        }),
+      ],
+      now,
+    ),
+  ]);
+  return teamId;
 }
 
 export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {

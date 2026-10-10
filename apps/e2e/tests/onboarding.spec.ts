@@ -326,6 +326,13 @@ test.describe
       await expect(page.getByText("Rejected", { exact: true })).toBeVisible();
       // The run itself, besides the call still waiting on its result.
       await expect(page.getByText("Running", { exact: true })).toHaveCount(2);
+      // A long run keeps showing its newest output, past the hub's 200 batches a request.
+      for (let seq = 1; seq <= 200; seq++)
+        await runner(`/runs/${runId}/logs`, machine.token, {
+          seq,
+          events: [{ type: "text", text: `Checked statement ${seq}.` }],
+        });
+      await expect(page.getByText("Checked statement 200.")).toBeVisible();
 
       await page.getByRole("button", { name: "Stop", exact: true }).click();
       await page.getByLabel("Reason").fill("Wait until payday");

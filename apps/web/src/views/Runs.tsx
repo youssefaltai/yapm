@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { workspaceStore } from "../actions.js";
-import { mutate, toast, useQuery } from "../data.js";
+import { graphql } from "../api.js";
+import { mutate, onInvalidate, toast, useQuery } from "../data.js";
 import { RichEditor, RichText } from "../editor/index.js";
 import { Emoji } from "../emoji/Emoji.js";
 import {
@@ -245,14 +246,61 @@ interface RunDetail extends RunSummary {
   costUsd: number;
   machine: { id: string; name: string } | null;
   stoppedBy: { name: string } | null;
-  logs: { seq: number; events: TranscriptEvent[] }[];
 }
 
 const RUN_DETAIL = `query($id: String!) { run(id: $id) {
   ${RUN_SUMMARY} trigger result error stopReason numTurns model effort routeRule costUsd
   machine { id name } stoppedBy { name }
-  logs { seq events }
 } }`;
+
+type LogBatch = { seq: number; events: TranscriptEvent[] };
+
+const RUN_LOGS = `query($id: String!, $afterSeq: Int) { run(id: $id) { logs(afterSeq: $afterSeq) { seq events } } }`;
+
+/**
+ * A run's transcript, fetching only the batches after the last one here: while live, whenever
+ * views refresh, and once more when it ends. The hub sends at most 200 at a time.
+ */
+function useRunLogs(id: string, live: boolean) {
+  const [logs, setLogs] = useState<LogBatch[]>([]);
+  const last = useRef<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let busy = false;
+    const load = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        let page: LogBatch[];
+        do {
+          const variables = { id, afterSeq: last.current };
+          const data = await graphql<{ run: { logs: LogBatch[] } }>(RUN_LOGS, variables, {
+            quiet: true,
+          });
+          page = data.run.logs;
+          const newest = page.at(-1);
+          if (!alive || !newest) return;
+          const from = last.current ?? -1;
+          last.current = newest.seq;
+          setLogs((logs) => [...logs, ...page.filter((batch) => batch.seq > from)]);
+        } while (page.length === 200);
+      } catch {
+        // The next poll or refresh tries again.
+      } finally {
+        busy = false;
+      }
+    };
+    load();
+    const timer = live ? setInterval(load, 2000) : undefined;
+    const off = onInvalidate(load);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      off();
+    };
+  }, [id, live]);
+  return logs;
+}
 
 const TRIGGERS: Record<string, string> = {
   issueAssignedToYou: "Assigned an issue",
@@ -267,6 +315,7 @@ const TRIGGERS: Record<string, string> = {
 export function RunPage({ id }: { id: string }) {
   const [live, setLive] = useState(true);
   const { data, error } = useQuery<{ run: RunDetail }>(RUN_DETAIL, { id }, live ? 2000 : undefined);
+  const logs = useRunLogs(id, live);
   const workspace = useStore(workspaceStore);
   const [stopping, setStopping] = useState(false);
   const [reason, setReason] = useState("");
@@ -275,7 +324,7 @@ export function RunPage({ id }: { id: string }) {
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   if (!run || !workspace) return <PageSkeleton />;
   const canStop = workspace.viewer.kind === "owner" && isActive(run.status);
-  const events = run.logs.flatMap((batch) => batch.events);
+  const events = logs.flatMap((batch) => batch.events);
   const triggers = (run.trigger?.notes ?? []).map((n) => TRIGGERS[n.type] ?? n.type);
 
   async function stop() {

@@ -7,7 +7,7 @@ const SCENARIOS = [
     title: "Renew passport before the Lisbon trip",
     team: { key: "TRV", name: "Travel" },
     id: "TRV-1",
-    agent: { name: "Travel agent", charter: "trips, documents and bookings" },
+    agent: { name: "Travel Manager", charter: "trips, documents and bookings" },
     priority: "High",
     label: "Documents",
     due: "Apr 12",
@@ -25,7 +25,7 @@ const SCENARIOS = [
     later: {
       id: "TRV-4",
       title: "Renew the EU health card",
-      text: "Travel agent's monthly check found it expiring in June. Renewing is free, so it just did it and told you after.",
+      text: "Travel Manager's monthly check found it expiring in June. Renewing is free, so it just did it and told you after.",
     },
   },
   {
@@ -34,7 +34,7 @@ const SCENARIOS = [
     title: "Cancel the gym and find a cheaper one nearby",
     team: { key: "FIN", name: "Finance", exists: true },
     id: "FIN-17",
-    agent: { name: "Money agent", charter: "bills, subscriptions and savings" },
+    agent: { name: "Finance Manager", charter: "bills, subscriptions and savings" },
     priority: "Medium",
     label: "Subscriptions",
     due: "Fri",
@@ -56,7 +56,7 @@ const SCENARIOS = [
     later: {
       id: "FIN-23",
       title: "Cancel two unused subscriptions",
-      text: "Money agent's weekly review found two you hadn't used in three months and lined up both cancellations in one request. One tap saves €18 a month.",
+      text: "Finance Manager's weekly review found two you hadn't used in three months and lined up both cancellations in one request. One tap saves €18 a month.",
     },
   },
   {
@@ -65,7 +65,7 @@ const SCENARIOS = [
     title: "Plan Mom's 60th birthday dinner",
     team: { key: "FAM", name: "Family" },
     id: "FAM-1",
-    agent: { name: "Events agent", charter: "family events, gifts and invites" },
+    agent: { name: "Event Planner", charter: "family events, gifts and invites" },
     priority: "Medium",
     label: "Family",
     due: "Sat 18",
@@ -87,7 +87,7 @@ const SCENARIOS = [
     later: {
       id: "FAM-4",
       title: "Dad's birthday gift",
-      text: "Events agent filed it three weeks ahead and shortlisted three gifts from what Dad liked last year. You just pick one.",
+      text: "Event Planner filed it three weeks ahead and shortlisted three gifts from what Dad liked last year. You just pick one.",
     },
   },
 ];

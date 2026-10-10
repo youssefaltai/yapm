@@ -1398,6 +1398,8 @@ export function hubContract(
       expect(decision.body.input.systemPrompt).not.toContain("Linear");
       // Every agent writes briefly, without dropping what the next reader needs.
       expect(decision.body.input.systemPrompt).toContain("Lead with the outcome");
+      // Owners never see internal ids; requests go by title.
+      expect(decision.body.input.systemPrompt).toContain("never by internal id");
       expect(decision.body.input.prompt).toContain("Youssef assigned the issue to you");
       expect(decision.body.input.prompt).toContain("Build a 12-week training plan");
       expect(decision.body.input.outputSchema.properties).toHaveProperty("action");

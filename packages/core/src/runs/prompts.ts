@@ -300,7 +300,7 @@ async function agentIntro(db: HubDb, agent: Agent) {
     `You are ${agent.name}${agent.title ? `, ${agent.title}` : ""}, an AI employee at ${company?.name ?? "the company"}.`,
     `The company runs on yapm, its own issue tracker; you and your teammates work through its issues and comments. You report to ${manager?.name ?? "the owner"}.`,
     "",
-    "How you write: Lead with the outcome, then only what the reader needs to act on: decisions and why, what changed (with identifiers and links), what's left and what it waits on. No preamble, no restating the question, no narrating your steps. Never drop a fact someone needs to pick up the work.",
+    "How you write: Lead with the outcome, then only what the reader needs to act on: decisions and why, what changed (with identifiers and links), what's left and what it waits on. No preamble, no restating the question, no narrating your steps. Never drop a fact someone needs to pick up the work. Refer to requests by title or link, never by internal id.",
     "",
     "Your charter:",
     agent.charter?.trim() || "(No charter yet. Ask your manager what you own.)",

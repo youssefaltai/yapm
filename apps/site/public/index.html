@@ -155,6 +155,7 @@
                   <i class="ib ib-new">+</i>
                 </div>
                 <ul class="navl">
+                  <li>Chat</li>
                   <li>Inbox</li>
                   <li>My issues</li>
                   <li>Approvals <em class="pill" data-pill>1</em></li>
@@ -172,9 +173,9 @@
                 </ul>
               </aside>
               <div class="page" data-stage="ask">
-                <div class="bar" aria-hidden="true"><span data-crumb>New issue</span></div>
+                <div class="bar" aria-hidden="true"><span data-crumb>Chat</span></div>
                 <div class="ask">
-                  <p class="ask-h">What do you need done?</p>
+                  <p class="ask-h">Tell your CEO what you need</p>
                   <div class="ask-box" aria-hidden="true">
                     <span data-typed></span><i class="caret"></i>
                     <span class="ask-go">↑</span>
@@ -217,8 +218,8 @@
         </div>
         <ol class="rail" data-rail>
           <li><b>You yap</b><span>Ask in plain words, from any device.</span></li>
-          <li><b>It runs itself</b><span>The CEO files it, builds the team and hires for the job.</span></li>
-          <li><b>You approve</b><span>Anything that spends or sends waits for one tap.</span></li>
+          <li><b>It runs itself</b><span>The CEO files it, builds a team and hires for the job.</span></li>
+          <li><b>You approve</b><span>Anything that acts for you waits for two taps.</span></li>
           <li><b>It learns</b><span>Lessons, feedback and grants mean it needs you less next time.</span></li>
         </ol>
       </section>
@@ -232,9 +233,9 @@
             <span class="n">01</span>
             <h3>A CEO agent and a team</h3>
             <p>
-              File an issue or leave a comment. The CEO agent triages it, hires agents and creates
-              teams as your life calls for them, and they plan, work and report through issues,
-              projects and cycles.
+              Chat with the CEO or file an issue. The CEO plans it, creates teams and hires agents as
+              your life calls for them, and they work and report through issues, projects and
+              cycles.
             </p>
           </li>
           <li>
@@ -247,7 +248,7 @@
           </li>
           <li>
             <span class="n">03</span>
-            <h3>Runs on your Macs</h3>
+            <h3>Runs on your machines</h3>
             <p>
               A one-line runner puts agents on your own machines, on the Claude Agent SDK with your
               own Claude account or API key. Watch any run live, or stop it with a reason.
@@ -264,7 +265,8 @@
           <li>
             <h3>Cloudflare</h3>
             <p>Workers and D1, on the free plan.</p>
-            <pre><code>cd apps/hub-cloudflare
+            <pre><code>pnpm install
+cd apps/hub-cloudflare
 npx wrangler login
 node scripts/ensure-d1.mjs
 pnpm run deploy</code></pre>
@@ -283,7 +285,7 @@ pnpm dev</code></pre>
           </li>
         </ul>
         <p class="host-more">
-          Prefer GitHub Actions, or want agents on your Macs?
+          Prefer GitHub Actions, or want agents on your machines?
           <a href="https://github.com/youssefaltai/yapm#self-host">The README has the rest →</a>
         </p>
       </section>

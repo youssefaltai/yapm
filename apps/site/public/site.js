@@ -572,12 +572,6 @@ for (const el of document.querySelectorAll(
   reveal.observe(el);
 }
 
-// The nav's glass shows once the page scrolls.
-const nav = document.querySelector(".nav");
-const stick = () => nav.classList.toggle("stuck", scrollY > 8);
-addEventListener("scroll", stick, { passive: true });
-stick();
-
 // A soft light that follows the pointer across the cards.
 for (const card of document.querySelectorAll(".grid li, .hosts li")) {
   card.addEventListener("pointermove", (e) => {

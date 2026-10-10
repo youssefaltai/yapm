@@ -1237,7 +1237,7 @@ test.describe
         return route.fulfill({ response, json: body });
       });
       await page.goto(`/request/${asked.id}`);
-      await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Approve once" })).toBeEnabled();
       await expect(page.getByRole("button", { name: /Sign in/ })).toHaveCount(0);
       // The page's live refetches may still be in flight.
       await page.unrouteAll({ behavior: "ignoreErrors" });

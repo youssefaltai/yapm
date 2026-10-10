@@ -1,4 +1,4 @@
-import { type McpAuth, mcpServers } from "@life-os/schema";
+import { type McpAuth, mcpServers } from "@yapm/schema";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import type { HubDeps } from "../context.js";
@@ -36,7 +36,7 @@ export function cleanServerName(value: string) {
   const name = value.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(name))
     throw badRequest("Name it with 1–40 letters, digits, - or _, e.g. slack-acme");
-  if (name === "life-os") throw badRequest("life-os is the company's own server");
+  if (name === "yapm") throw badRequest("yapm is the company's own server");
   return name;
 }
 
@@ -90,7 +90,7 @@ async function discoverAuth(
       params: {
         protocolVersion: "2025-06-18",
         capabilities: {},
-        clientInfo: { name: "life-os", version: "1" },
+        clientInfo: { name: "yapm", version: "1" },
       },
     }),
   });
@@ -382,7 +382,7 @@ async function register(deps: HubDeps, endpoint: string, client: object) {
 export function clientMetadata(origin: string) {
   return {
     client_id: `${origin}/api/mcp/oauth/client.json`,
-    client_name: "Life OS",
+    client_name: "yapm",
     redirect_uris: [`${origin}/api/mcp/oauth/callback`],
     grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],

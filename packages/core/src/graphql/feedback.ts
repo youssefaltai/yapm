@@ -4,7 +4,7 @@ import {
   type RevisionSubject,
   type revisions,
   workspaces,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { eq } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
 import {

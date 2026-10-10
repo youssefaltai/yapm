@@ -1,5 +1,5 @@
 {
-  "name": "@life-os/web",
+  "name": "@yapm/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -33,7 +33,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@life-os/runner": "workspace:*",
+    "@yapm/runner": "workspace:*",
     "@tailwindcss/vite": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

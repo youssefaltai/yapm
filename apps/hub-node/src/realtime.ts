@@ -1,5 +1,5 @@
 import { upgradeWebSocket } from "@hono/node-server";
-import type { HubEvent, Realtime } from "@life-os/core";
+import type { HubEvent, Realtime } from "@yapm/core";
 import type { WSContext } from "hono/ws";
 
 /** Live updates for a single Node process: sockets live in memory and every event goes to all. */

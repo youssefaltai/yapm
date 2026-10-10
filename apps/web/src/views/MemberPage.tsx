@@ -494,7 +494,7 @@ function GiveWork({ agent }: { agent: { id: string; name: string } }) {
 }
 
 function NewToken({ token, name, onDone }: { token: string; name: string; onDone: () => void }) {
-  const command = `claude mcp add --transport http life-os ${location.origin}/mcp --header "Authorization: Bearer ${token}"`;
+  const command = `claude mcp add --transport http yapm ${location.origin}/mcp --header "Authorization: Bearer ${token}"`;
   return (
     <div className="mb-3 rounded-lg border border-accent/50 bg-accent/5 p-4">
       <p className="font-medium">Copy this token now. It won't be shown again.</p>

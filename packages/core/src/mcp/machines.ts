@@ -1,4 +1,4 @@
-import { machines, RUN_STATUSES, type RunStatus, runs } from "@life-os/schema";
+import { machines, RUN_STATUSES, type RunStatus, runs } from "@yapm/schema";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { announce } from "../realtime.js";
 import { stopRun } from "../runs/service.js";

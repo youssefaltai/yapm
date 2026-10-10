@@ -8,9 +8,9 @@ services:
       # Public HTTPS origin of the app, e.g. https://life.example.com. Passkeys are bound to it.
       ORIGIN: ${ORIGIN:-}
       # Encrypts MCP server sign-ins; any long random string.
-      LIFE_OS_SECRET: ${LIFE_OS_SECRET:-}
+      YAPM_SECRET: ${YAPM_SECRET:-}
     volumes:
-      - life-os-data:/data
+      - yapm-data:/data
 
 volumes:
-  life-os-data:
+  yapm-data:

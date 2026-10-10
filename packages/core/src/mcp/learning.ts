@@ -4,7 +4,7 @@ import {
   REVISION_SUBJECTS,
   type RevisionSubject,
   workspaces,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, desc, eq, lt } from "drizzle-orm";
 import {
   addressFeedback,

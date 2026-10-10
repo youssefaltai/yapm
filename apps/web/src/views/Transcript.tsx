@@ -264,7 +264,7 @@ function describe(name: string, input: Input | null): ToolView {
     icon: "tool",
     title: humanize(mcp ? (mcp[2] ?? name) : name),
     subject: subjectKey ? str(input, subjectKey) : undefined,
-    source: mcp && mcp[1] !== "life-os" ? mcp[1] : undefined,
+    source: mcp && mcp[1] !== "yapm" ? mcp[1] : undefined,
   };
 }
 

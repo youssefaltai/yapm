@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { type Client, createClient } from "@libsql/client";
-import { neutral } from "@life-os/core/testing";
+import { neutral } from "@yapm/core/testing";
 import { describe, expect, it } from "vitest";
 
 const dir = new URL("../../../packages/schema/migrations/", import.meta.url);

@@ -18,8 +18,8 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       PORT: String(port),
-      DATABASE_URL: `file:${dataDir}life-os.db`,
-      LIFE_OS_SECRET: "e2e secret",
+      DATABASE_URL: `file:${dataDir}yapm.db`,
+      YAPM_SECRET: "e2e secret",
     },
   },
 });

@@ -1,4 +1,4 @@
-import { pushSubscriptions } from "@life-os/schema";
+import { pushSubscriptions } from "@yapm/schema";
 import { and, eq } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { fromBase64Url, newId } from "../crypto.js";

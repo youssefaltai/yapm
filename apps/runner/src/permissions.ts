@@ -13,7 +13,7 @@ export const SAFE_TOOLS = new Set([
   "StructuredOutput",
 ]);
 
-export const HUB_MCP = "life-os";
+export const HUB_MCP = "yapm";
 
 export type ToolDecision = { behavior: "allow" } | { behavior: "deny"; message: string };
 

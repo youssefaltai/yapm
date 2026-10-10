@@ -5,7 +5,7 @@ import {
   revisions,
   users,
   workspaces,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

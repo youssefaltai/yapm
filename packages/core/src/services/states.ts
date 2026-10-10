@@ -4,7 +4,7 @@ import {
   WORKFLOW_STATE_TYPES,
   type WorkflowStateType,
   workflowStates,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { asc, eq } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

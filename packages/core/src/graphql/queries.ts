@@ -7,7 +7,7 @@ import {
   users,
   workflowStates,
   workspaces,
-} from "@life-os/schema";
+} from "@yapm/schema";
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
 import { findIssue } from "../services/issues.js";

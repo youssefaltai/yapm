@@ -3,7 +3,7 @@
 
 export type ThemeChoice = "system" | "light" | "dark";
 
-const KEY = "life-os-theme";
+const KEY = "yapm-theme";
 const dark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 
 export function themeChoice(): ThemeChoice {

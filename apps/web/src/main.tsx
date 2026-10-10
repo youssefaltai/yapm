@@ -8,6 +8,8 @@ import { watchTheme } from "./theme.js";
 
 watchTheme();
 registerServiceWorker();
+// iOS ignores the viewport's maximum-scale for pinches; an app doesn't zoom.
+document.addEventListener("gesturestart", (event) => event.preventDefault());
 
 const root = document.getElementById("root");
 if (root) {

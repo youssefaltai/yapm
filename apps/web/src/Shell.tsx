@@ -17,7 +17,7 @@ import { eyebrow, TabLink, TabRow } from "./layout.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
 import { EmptyState, SelectedPill } from "./states.js";
-import { Kbd, MenuHost, openMenu, useHotkeys, usePresence } from "./ui.js";
+import { MenuHost, openMenu, useHotkeys, usePresence } from "./ui.js";
 import { Company } from "./views/Company.js";
 import { CreateIssueHost } from "./views/CreateIssue.js";
 import { CreateTeamHost } from "./views/CreateTeam.js";
@@ -273,34 +273,30 @@ function Sidebar({
   lastTeam.current = expanded;
   return (
     <>
-      <div className="flex items-center gap-2 px-2 py-1.5">
+      <div className="flex items-center gap-2 py-1 pl-2">
         <img src="/icon.svg" alt="" className="size-5" />
-        <span className="truncate font-medium">{workspace?.organization.name ?? " "}</span>
-      </div>
-      <div className="mt-3 flex gap-1.5">
+        <span className="flex-1 truncate font-medium">{workspace?.organization.name ?? " "}</span>
         <button
           type="button"
+          aria-label="Search and commands"
+          title="Search  ⌘K"
+          onClick={() => openMenu(commandPalette())}
+          className="grid size-7 place-items-center rounded-md text-muted hover:bg-raised hover:text-ink"
+        >
+          <AppIcon name="search" />
+        </button>
+        <button
+          type="button"
+          aria-label="New issue"
+          title="New issue  C"
           onClick={() =>
             createIssueStore.set(
               teamFor(workspace, route) ? { teamId: teamFor(workspace, route)?.id } : {},
             )
           }
-          className="flex flex-1 items-center gap-2 rounded-md border border-line bg-raised px-2 py-1.5 text-muted hover:text-ink"
+          className="grid size-7 place-items-center rounded-md border border-line bg-panel text-ink shadow-xs hover:bg-raised"
         >
           <AppIcon name="newIssue" />
-          New issue
-          <span className="ml-auto">
-            <Kbd>C</Kbd>
-          </span>
-        </button>
-        <button
-          type="button"
-          aria-label="Search and commands"
-          onClick={() => openMenu(commandPalette())}
-          className="flex items-center gap-1.5 rounded-md border border-line bg-raised px-2 py-1.5 text-muted hover:text-ink"
-        >
-          <AppIcon name="search" />
-          <Kbd>⌘K</Kbd>
         </button>
       </div>
       <nav className="mt-4 space-y-0.5">

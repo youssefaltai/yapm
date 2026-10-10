@@ -1439,6 +1439,16 @@ export function hubContract(
         input: { tools: true },
       });
       expect(work.body.input.prompt).toContain("Your goal: Draft the 12-week plan");
+      // A machine's page lists the runs it picked up.
+      const onMachine = await gql<{ runs: { nodes: { id: string }[] } }>(
+        "query($m: String) { runs(filter: { machineId: $m }) { nodes { id } } }",
+        { m: machine.id },
+      );
+      expect(onMachine.data?.runs.nodes.map((r) => r.id)).toContain(work.body.run.id);
+      const elsewhere = await gql<{ runs: { nodes: { id: string }[] } }>(
+        'query { runs(filter: { machineId: "nope" }) { nodes { id } } }',
+      );
+      expect(elsewhere.data?.runs.nodes).toEqual([]);
       // The agent works through the hub's MCP server with the run's token; history names the run.
       await client.request("/mcp", {
         method: "POST",

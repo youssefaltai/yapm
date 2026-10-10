@@ -44,6 +44,7 @@ export type Route =
   | { name: "runs"; tab: RunsTab }
   | { name: "run"; id: string }
   | { name: "machines" }
+  | { name: "machine"; id: string }
   | { name: "projects" }
   | { name: "project"; id: string; tab: "overview" | "issues" }
   | { name: "initiatives" }
@@ -72,6 +73,7 @@ export function parseRoute(path: string): Route {
   if (first === "runs") return { name: "runs", tab: second === "all" ? "all" : "active" };
   if (first === "run" && second) return { name: "run", id: second };
   if (first === "machines") return { name: "machines" };
+  if (first === "machine" && second) return { name: "machine", id: second };
   if (first === "projects") return { name: "projects" };
   if (first === "project" && second)
     return { name: "project", id: second, tab: third === "issues" ? "issues" : "overview" };
@@ -115,6 +117,7 @@ export const paths = {
   runs: (tab: RunsTab = "active") => (tab === "active" ? "/runs" : "/runs/all"),
   run: (id: string) => `/run/${id}`,
   machines: () => "/machines",
+  machine: (id: string) => `/machine/${id}`,
   projects: () => "/projects",
   project: (id: string, tab: "overview" | "issues" = "overview") =>
     tab === "overview" ? `/project/${id}` : `/project/${id}/issues`,

@@ -218,11 +218,11 @@ export function hubContract(
       expect(status).toBe(409);
     });
 
-    it("starts blank: just the owner and the CEO, no teams or labels", async () => {
+    it("starts with the owner, the CEO and one team named after the company", async () => {
       const result = await client.graphql<{
         organization: { name: string; urlKey: string };
         viewer: { kind: string; isMe: boolean; directReports: { nodes: { name: string }[] } };
-        teams: { nodes: unknown[] };
+        teams: { nodes: { key: string; name: string; members: { nodes: { name: string }[] } }[] };
         issueLabels: { nodes: unknown[] };
         users: {
           nodes: {
@@ -235,7 +235,7 @@ export function hubContract(
       }>(`{
         organization { name urlKey }
         viewer { kind isMe directReports { nodes { name } } }
-        teams { nodes { id } }
+        teams { nodes { key name members { nodes { name } } } }
         issueLabels { nodes { id } }
         users { nodes { name kind manager { name } charter } }
       }`);
@@ -248,12 +248,19 @@ export function hubContract(
         isMe: true,
         directReports: { nodes: [{ name: "CEO" }] },
       });
-      expect(data.teams.nodes).toEqual([]);
+      // Every issue needs a team, as in Linear, so the company starts with one.
+      expect(data.teams.nodes).toEqual([
+        {
+          key: "YI",
+          name: "Youssef Inc",
+          members: { nodes: expect.arrayContaining([{ name: "Youssef" }, { name: "CEO" }]) },
+        },
+      ]);
       expect(data.issueLabels.nodes).toEqual([]);
       expect(data.users.nodes.map((u) => u.name).sort()).toEqual(["CEO", "Youssef"]);
       const ceo = data.users.nodes.find((u) => u.name === "CEO");
       expect(ceo).toMatchObject({ kind: "agent", manager: { name: "Youssef" } });
-      expect(ceo?.charter).toContain("starts empty");
+      expect(ceo?.charter).toContain("one team named after it");
     });
 
     it("records every founding change in the audit log", async () => {
@@ -263,6 +270,7 @@ export function hubContract(
       const actions = result.data?.auditEntries.nodes.map((n) => n.action) ?? [];
       expect(actions.filter((a) => a === "user.create")).toHaveLength(2);
       expect(actions).toContain("workspace.create");
+      expect(actions).toContain("team.create");
       expect(result.data?.auditEntries.nodes.every((n) => n.actor.name === "Youssef")).toBe(true);
     });
 
@@ -1680,46 +1688,14 @@ export function hubContract(
         result: { outcome: "done", summary: "Gym is open 6-22." },
       });
 
-      // The owner follows up on a finished run, like a chat: it carries on in the same session,
-      // and chat runs stay out of Runs.
-      const followUp = (input: Record<string, unknown>) =>
-        gql<{ runCreate: { run: { id: string; status: string } } }>(
-          "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id status } } }",
-          { input },
+      // Follow-ups happen on issues, where every reply lands: runs have no chat of their own.
+      for (const input of [{ chat: true }, { resumeRunId: tagged.body.run.id }]) {
+        const followUp = await gql(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+          { input: { agentId: coachId, goal: "And on Sundays?", ...input } },
         );
-      const chat = await followUp({
-        agentId: coachId,
-        goal: "And on Sundays?",
-        chat: true,
-        resumeRunId: tagged.body.run.id,
-      });
-      expect(chat.data?.runCreate.run.status).toBe("queued");
-      const visible = await gql<{ runs: { nodes: { id: string }[] } }>("{ runs { nodes { id } } }");
-      expect(visible.data?.runs.nodes.map((r) => r.id)).not.toContain(chat.data?.runCreate.run.id);
-      const continued = await runner<Claim>("/claim", machine.token, {});
-      expect(continued.body.run).toMatchObject({
-        id: chat.data?.runCreate.run.id,
-        sessionId: "session-gym",
-      });
-      expect(continued.body.input.prompt).toContain("And on Sundays?");
-      // Only a finished run of the same agent can be followed up.
-      const ceoId = people.data?.users.nodes.find((u) => u.name === "CEO")?.id ?? "";
-      const otherAgent = await followUp({
-        agentId: ceoId,
-        goal: "Hi",
-        resumeRunId: tagged.body.run.id,
-      });
-      expect(otherAgent.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
-      const unfinished = await followUp({
-        agentId: coachId,
-        goal: "Hi",
-        resumeRunId: continued.body.run.id,
-      });
-      expect(unfinished.errors?.[0]?.extensions?.code).toBe("CONFLICT");
-      await runner(`/runs/${continued.body.run.id}/complete`, machine.token, {
-        status: "completed",
-        result: { outcome: "done", summary: "Sundays 8-20." },
-      });
+        expect(followUp.errors?.[0]?.message).toMatch(/not defined by type "RunCreateInput"/);
+      }
 
       // A run that pauses on its own request resumes when the owner answers it, on its own issue
       // whichever issue the request is filed on.
@@ -1790,6 +1766,17 @@ export function hubContract(
       await runner(`/runs/${paid.body.run.id}/complete`, machine.token, {
         status: "completed",
         result: { outcome: "blocked", summary: "Entered; the shop email waits on approval." },
+      });
+      // The resumed run's result lands on the issue, and its creator hears about it.
+      const news = await gql<{
+        notifications: {
+          nodes: { type: string; issue: { id: string }; comment: { body: string } | null }[];
+        };
+      }>("{ notifications(first: 1) { nodes { type issue { id } comment { body } } } }");
+      expect(news.data?.notifications.nodes[0]).toEqual({
+        type: "issueNewComment",
+        issue: { id: raceId },
+        comment: { body: "Entered; the shop email waits on approval." },
       });
       await gql(
         'mutation($id: String!) { requestReject(id: $id, reason: "Keep the old shoes") { success } }',

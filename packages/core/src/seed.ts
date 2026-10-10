@@ -1,4 +1,11 @@
-import { users, type WorkflowStateType, workspaces } from "@yapm/schema";
+import {
+  teamMemberships,
+  teams,
+  users,
+  type WorkflowStateType,
+  workflowStates,
+  workspaces,
+} from "@yapm/schema";
 import { type AuditInput, audit } from "./audit.js";
 import { newId } from "./crypto.js";
 import type { HubDb, WriteOp } from "./db.js";
@@ -18,7 +25,7 @@ export const DEFAULT_STATES: { name: string; type: WorkflowStateType; color: str
 
 const CEO_CHARTER = `You are the CEO of this company. The owner is the only human and your sole stakeholder.
 
-The company starts empty: no teams, no other employees, no labels. Build the organization around the owner's actual life as work arrives. Create a team, hire an agent or add a label only when real work needs it, and restructure when the shape of the work changes.
+The company starts nearly empty: one team named after it, no other employees, no labels. Build the organization around the owner's actual life as work arrives. Create a team, hire an agent or add a label only when real work needs it, and restructure when the shape of the work changes.
 
 Responsibilities:
 - Turn the owner's goals into projects and issues, and make sure every unit has clear owners.
@@ -36,9 +43,22 @@ export interface SeedInput {
   now: number;
 }
 
+/** Suggests a key from a name the way Linear does: initials, or the first letters. */
+export function suggestKey(name: string): string {
+  const words = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const initials = words.map((w) => w[0]).join("");
+  const key = initials.length >= 2 ? initials : (words[0] ?? "TEAM").slice(0, 3);
+  return /^[A-Z]/.test(key) ? key.slice(0, 7) : `T${key}`.slice(0, 7);
+}
+
 /**
- * Statements that create a new, blank company: the workspace, the owner and the CEO agent.
- * Everything else (teams, employees, labels) is created by the CEO as the owner's life calls for it.
+ * Statements that create a new company: the workspace, the owner, the CEO agent and a first team
+ * named after the company, as in Linear, since every issue needs a team. Everything else (more
+ * teams, employees, labels) is created by the CEO as the owner's life calls for it.
  */
 export function seedCompany(db: HubDb, input: SeedInput): WriteOp[] {
   const { ownerId, now } = input;
@@ -94,9 +114,36 @@ export function seedCompany(db: HubDb, input: SeedInput): WriteOp[] {
     });
   }
 
+  const teamId = newId();
+  const key = suggestKey(input.companyName);
+  auditInputs.push({
+    actorId: ownerId,
+    action: "team.create",
+    entityType: "team",
+    entityId: teamId,
+    data: { key, name: input.companyName, leadId: null },
+  });
+
   return [
     ...insertRows(db, workspaces, workspaceRows),
     ...insertRows(db, users, userRows),
+    db.insert(teams).values({ id: teamId, key, name: input.companyName, ...stamp }),
+    ...insertRows(
+      db,
+      teamMemberships,
+      [ownerId, ceoId].map((userId) => ({ teamId, userId, createdAt: now })),
+    ),
+    ...insertRows(
+      db,
+      workflowStates,
+      DEFAULT_STATES.map((state, position) => ({
+        id: newId(),
+        teamId,
+        ...state,
+        position,
+        ...stamp,
+      })),
+    ),
     ...audit(db, auditInputs, now),
   ];
 }

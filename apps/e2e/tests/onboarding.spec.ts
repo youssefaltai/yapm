@@ -932,8 +932,7 @@ test.describe
       await expect(toolbar).toBeVisible();
       if (process.env.SCREENSHOTS)
         await page.screenshot({ path: `${process.env.SCREENSHOTS}/editor-toolbar.png` });
-      // A click that doesn't scroll: on a page tall enough to scroll, the toolbar appearing makes it jump.
-      await toolbar.getByLabel("Bold").dispatchEvent("click");
+      await toolbar.getByLabel("Bold").click();
       await expect(description.locator("strong")).toHaveText("tariffs");
       await page.setViewportSize({ width: 1280, height: 720 });
 

@@ -1,4 +1,4 @@
-import { apiTokens, MODEL_TIERS, type ModelTier, teamMemberships, users } from "@life-os/schema";
+import { apiTokens, MODEL_TIERS, type ModelTier, teamMemberships, users } from "@yapm/schema";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

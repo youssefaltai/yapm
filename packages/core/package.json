@@ -1,5 +1,5 @@
 {
-  "name": "@life-os/core",
+  "name": "@yapm/core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@life-os/schema": "workspace:*",
+    "@yapm/schema": "workspace:*",
     "@pothos/core": "4.15.1",
     "@simplewebauthn/server": "14.0.3",
     "dataloader": "2.2.3",

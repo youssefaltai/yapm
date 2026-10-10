@@ -31,9 +31,9 @@ export function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-/** The AES-GCM key for sign-ins the hub keeps, derived from `LIFE_OS_SECRET`. */
+/** The AES-GCM key for sign-ins the hub keeps, derived from `YAPM_SECRET`. */
 async function secretKey(secret: string | undefined) {
-  if (!secret) throw badRequest("Set LIFE_OS_SECRET on the hub before storing sign-ins");
+  if (!secret) throw badRequest("Set YAPM_SECRET on the hub before storing sign-ins");
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(secret));
   return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
 }

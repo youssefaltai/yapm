@@ -156,8 +156,8 @@ export function searchEmoji(data: EmojiData, query: string, limit = Infinity): E
 
 // Preferences ---------------------------------------------------------------
 
-const SKIN_KEY = "life-os-emoji-skin";
-const RECENT_KEY = "life-os-emoji-recent";
+const SKIN_KEY = "yapm-emoji-skin";
+const RECENT_KEY = "yapm-emoji-recent";
 
 function read<T>(key: string, fallback: T): T {
   try {

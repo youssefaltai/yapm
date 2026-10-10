@@ -1,4 +1,4 @@
-import { hubContract } from "@life-os/core/testing";
+import { hubContract } from "@yapm/core/testing";
 import { createNodeApp } from "../src/app.js";
 import { openDatabase } from "../src/db.js";
 import { createNodeRealtime } from "../src/realtime.js";

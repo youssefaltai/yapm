@@ -1,4 +1,4 @@
-import type { users } from "@life-os/schema";
+import type { users } from "@yapm/schema";
 import type { HubDb } from "./db.js";
 import type { Realtime } from "./realtime.js";
 
@@ -15,7 +15,7 @@ export interface HubConfig {
    * origin of each request is used, which is right whenever the hub serves the app itself.
    */
   origin?: string;
-  /** `LIFE_OS_SECRET`: encrypts the MCP sign-ins the hub keeps. Without it, it keeps none. */
+  /** `YAPM_SECRET`: encrypts the MCP sign-ins the hub keeps. Without it, it keeps none. */
   secret?: string;
 }
 

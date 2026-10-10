@@ -1,5 +1,5 @@
 {
-  "name": "@life-os/e2e",
+  "name": "@yapm/e2e",
   "version": "0.0.0",
   "private": true,
   "type": "module",

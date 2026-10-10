@@ -1,4 +1,4 @@
-import type { machines } from "@life-os/schema";
+import type { machines } from "@yapm/schema";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { relyingParty } from "../auth.js";

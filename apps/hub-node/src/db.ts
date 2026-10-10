@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { createClient } from "@libsql/client";
-import type { HubDb } from "@life-os/core";
-import * as schema from "@life-os/schema";
+import type { HubDb } from "@yapm/core";
+import * as schema from "@yapm/schema";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 

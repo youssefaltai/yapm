@@ -693,7 +693,7 @@ export function hubContract(
       await client.request("/graphql", {
         method: "POST",
         json: { query: 'mutation { issueUpdate(id: "PF-1", input: { estimate: 3 }) { success } }' },
-        headers: { "x-life-os-client": "tab-1" },
+        headers: { "x-yapm-client": "tab-1" },
       });
       expect(await received).toMatchObject({ type: "change", clientId: "tab-1" });
       socket.close();
@@ -788,7 +788,7 @@ export function hubContract(
       });
       expect(init.result).toMatchObject({
         protocolVersion: "2025-06-18",
-        serverInfo: { name: "life-os" },
+        serverInfo: { name: "yapm" },
       });
       // Agents must not mistake it for the owner's Linear, so nothing they read names Linear.
       expect(init.result?.instructions).not.toContain("Linear");
@@ -2633,7 +2633,7 @@ export function hubContract(
       const text = await script.text();
       expect(text.startsWith("#!/bin/sh")).toBe(true);
       expect(text).toContain(`HUB="${client.origin}"`);
-      expect(text).toContain(`${client.origin}/downloads/life-os-runner.tgz`);
+      expect(text).toContain(`${client.origin}/downloads/yapm-runner.tgz`);
       expect(text).not.toContain("__HUB__");
       // macOS sh reads non-ASCII bytes after a variable as part of its name.
       expect(text).not.toMatch(/[^\t\n -~]/);

@@ -1,4 +1,4 @@
-import { issueSubscriptions, NOTIFICATION_TYPES, notifications, users } from "@life-os/schema";
+import { issueSubscriptions, NOTIFICATION_TYPES, notifications, users } from "@yapm/schema";
 import { and, asc, count, desc, eq, isNull } from "drizzle-orm";
 import { findIssue } from "../services/issues.js";
 import {

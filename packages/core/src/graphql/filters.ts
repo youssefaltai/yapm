@@ -1,4 +1,4 @@
-import { cycles, issueLabels, issues, labels, teams, workflowStates } from "@life-os/schema";
+import { cycles, issueLabels, issues, labels, teams, workflowStates } from "@yapm/schema";
 import {
   and,
   type Column,

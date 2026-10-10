@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { installScript } from "@life-os/core";
+import { installScript } from "@yapm/core";
 import { describe, expect, it } from "vitest";
 
 const HUB = "https://hub.example";
@@ -21,14 +21,14 @@ function install(connectedTo?: string, token = "lms_x") {
     "node",
     `[ "$1" = -p ] && { echo 22; exit 0; }
 shift; echo "$*" >> "$HOME/runner.log"
-[ "$1" != status ] || [ -f "$HOME/.life-os-runner/config.json" ]`,
+[ "$1" != status ] || [ -f "$HOME/.yapm-runner/config.json" ]`,
   );
   stub("npm", "exit 0");
   stub("curl", `while [ $# -gt 0 ]; do [ "$1" = -o ] && touch "$2"; shift; done`);
   if (connectedTo) {
-    mkdirSync(join(home, ".life-os-runner"));
+    mkdirSync(join(home, ".yapm-runner"));
     const config = { hub: connectedTo, token: "lmr_x", machineId: "m", name: "Mac" };
-    writeFileSync(join(home, ".life-os-runner/config.json"), JSON.stringify(config, null, 2));
+    writeFileSync(join(home, ".yapm-runner/config.json"), JSON.stringify(config, null, 2));
   }
   const said = execFileSync(
     "sh",
@@ -56,6 +56,6 @@ describe("install.sh", () => {
   });
 
   it("doesn't ask to start a runner it's updating, which restarts by itself", () => {
-    expect(install(HUB, "").said).not.toContain("life-os-runner start");
+    expect(install(HUB, "").said).not.toContain("yapm-runner start");
   });
 });

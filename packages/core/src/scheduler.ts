@@ -1,4 +1,4 @@
-import { auditEvents } from "@life-os/schema";
+import { auditEvents } from "@yapm/schema";
 import { gte } from "drizzle-orm";
 import type { HubDeps } from "./context.js";
 import { deliverPush } from "./push.js";

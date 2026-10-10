@@ -7,8 +7,8 @@ import { dirname, join } from "node:path";
  * Keeps the runner going in the background and starts it at login, the way the platform
  * expects: a launchd agent on macOS, a systemd user service on Linux.
  */
-export const LAUNCHD_LABEL = "com.life-os.runner";
-export const SYSTEMD_UNIT = "life-os-runner.service";
+export const LAUNCHD_LABEL = "com.yapm.runner";
+export const SYSTEMD_UNIT = "yapm-runner.service";
 
 export interface ServiceSpec {
   /** The program and its arguments, e.g. node, main.js, start. */
@@ -68,7 +68,7 @@ export function systemdUnit(spec: ServiceSpec): string {
     .map(([k, v]) => `Environment=${unitQuote(`${k}=${v}`)}`)
     .join("\n");
   return `[Unit]
-Description=Life OS runner: runs your company's agents on this machine
+Description=yapm runner: runs your company's agents on this machine
 
 [Service]
 ExecStart=${spec.command.map(unitQuote).join(" ")}
@@ -126,12 +126,12 @@ export async function installService(
     const linger = run("loginctl", ["enable-linger", userInfo().username]);
     log(
       linger.status === 0
-        ? "Running in the background, also when you're logged out. Logs: life-os-runner logs"
+        ? "Running in the background, also when you're logged out. Logs: yapm-runner logs"
         : "Running in the background while you're logged in. To keep it running after you log out: sudo loginctl enable-linger $USER",
     );
     return true;
   }
-  log("This system has no launchd or systemd user services. Run: life-os-runner start");
+  log("This system has no launchd or systemd user services. Run: yapm-runner start");
   return false;
 }
 

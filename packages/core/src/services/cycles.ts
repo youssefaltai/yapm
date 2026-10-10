@@ -1,4 +1,4 @@
-import { cycles, issues, teams, workspaces } from "@life-os/schema";
+import { cycles, issues, teams, workspaces } from "@yapm/schema";
 import { and, asc, count, eq, gt, inArray, isNull } from "drizzle-orm";
 import { type AuditInput, audit } from "../audit.js";
 import { newId } from "../crypto.js";

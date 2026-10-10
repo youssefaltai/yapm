@@ -1,4 +1,4 @@
-import { issueLabels, labels, teams } from "@life-os/schema";
+import { issueLabels, labels, teams } from "@yapm/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

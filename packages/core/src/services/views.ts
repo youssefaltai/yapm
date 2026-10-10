@@ -1,4 +1,4 @@
-import { customViews, teams } from "@life-os/schema";
+import { customViews, teams } from "@yapm/schema";
 import { eq } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";

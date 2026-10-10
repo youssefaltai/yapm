@@ -53,7 +53,7 @@ jobs:
       - if: steps.secrets.outputs.ready == 'true'
         name: Deploy the Worker
         working-directory: apps/hub-cloudflare
-        # Set the repository variable HUB_DOMAIN to serve the hub on your own domain.
+        # Set the repository variable HUB_DOMAIN to serve the hub on your own domain; it also sets ORIGIN.
         env:
           HUB_DOMAIN: ${{ vars.HUB_DOMAIN }}
-        run: npx wrangler deploy --var YAPM_VERSION:${GITHUB_SHA::7} ${HUB_DOMAIN:+--domain "$HUB_DOMAIN"}
+        run: npx wrangler deploy --var YAPM_VERSION:${GITHUB_SHA::7} ${HUB_DOMAIN:+--domain "$HUB_DOMAIN" --var ORIGIN:"https://$HUB_DOMAIN"}

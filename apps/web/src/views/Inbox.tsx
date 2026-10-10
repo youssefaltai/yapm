@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { linkEntries } from "../actions.js";
 import { type ContextEntry, contextMenu } from "../contextMenu.js";
-import { mutate, toast, useQuery } from "../data.js";
+import { mutate, mutateEach, toast, useQuery } from "../data.js";
 import { plainText } from "../editor/plain.js";
 import { icon } from "../icons.js";
 import { button, PageHeader, PageTitle } from "../layout.js";
@@ -123,24 +123,21 @@ function grouped(items: Notification[]): Group[] {
 }
 
 const markRead = (g: Group, read: boolean) =>
-  Promise.all(
-    g.all
-      .filter((n) => !n.readAt === read)
-      .map((n) =>
-        mutate(
-          "mutation($id: String!, $at: DateTime) { notificationUpdate(id: $id, input: { readAt: $at }) { success } }",
-          { id: n.id, at: read ? new Date().toISOString() : null },
-        ),
-      ),
+  mutateEach(
+    g.all.filter((n) => !n.readAt === read).map((n) => n.id),
+    "notificationUpdate",
+    ", input: { readAt: $at }",
+    { at: ["DateTime", read ? new Date().toISOString() : null] },
   );
 
 const archiveAll = (g: Group, op: "notificationArchive" | "notificationUnarchive") =>
-  Promise.all(
-    g.all.map((n) => mutate(`mutation($id: String!) { ${op}(id: $id) { success } }`, { id: n.id })),
+  mutateEach(
+    g.all.map((n) => n.id),
+    op,
   );
 
 async function archive(g: Group) {
-  if (!(await archiveAll(g, "notificationArchive")).every(Boolean)) return;
+  if (!(await archiveAll(g, "notificationArchive"))) return;
   toast("Archived notification", {
     label: "Undo",
     run: () => void archiveAll(g, "notificationUnarchive"),

@@ -272,6 +272,24 @@ test.describe
       await expect(agentComment.locator("[data-mention=user]")).toHaveText(/Youssef/);
       await page.getByRole("button", { name: "Mark all read" }).click();
       await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(0);
+
+      // A row's notifications change together, in one request.
+      const sent: string[] = [];
+      const track = (r: { postData: () => string | null }) => {
+        const body = r.postData() ?? "";
+        if (/notification(Update|Archive)/.test(body)) sent.push(body);
+      };
+      page.on("request", track);
+      await latest.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Mark as unread" }).click();
+      await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(1);
+      await latest.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Archive" }).click();
+      await expect(latest).toBeHidden();
+      page.off("request", track);
+      expect(sent).toHaveLength(2);
+      await page.getByRole("status").getByRole("button", { name: "Undo" }).click();
+      await expect(latest).toBeVisible();
     });
 
     test("runs an agent on a machine, follows the transcript and stops it", async () => {

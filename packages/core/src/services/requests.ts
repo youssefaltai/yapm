@@ -155,8 +155,6 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
 export async function requestOps(
   ctx: Ctx,
   input: RequestCreateInput,
-  /** Ask even though it's allowed, e.g. for the owner to sign in to a server again. */
-  again = false,
 ): Promise<{ id: string; ops: WriteOp[] }> {
   const { db, now } = ctx;
   const actor = await loadActor(db, ctx.actorId);
@@ -173,12 +171,9 @@ export async function requestOps(
     throw badRequest("Details must be at most 20000 characters");
 
   const permission = await checkPermission(db, actor.id, action, resource);
-  if (permission.allowed && !again)
+  if (permission.allowed)
     throw new ServiceError("CONFLICT", "You can already do this; no need to ask");
-  const pending = permission.allowed
-    ? (await ownRequests(db, actor.id, action, resource)).find((r) => r.status === "pending")?.id
-    : permission.pendingRequestId;
-  if (pending) return { id: pending, ops: [] };
+  if (permission.pendingRequestId) return { id: permission.pendingRequestId, ops: [] };
 
   let issueId: string | null = null;
   if (input.issueId) {

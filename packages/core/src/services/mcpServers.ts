@@ -228,25 +228,18 @@ export async function createMcpServer(
   const name = cleanServerName(input.name);
   const permitted = (await checkPermission(db, ctx.actorId, "mcp.use", name)).allowed;
   const existing = await db.select().from(mcpServers).where(eq(mcpServers.name, name)).get();
-  // Asking again for an OAuth server it may use is how an agent says its sign-in stopped working.
-  if (existing && permitted && existing.auth !== "oauth")
-    return { serverId: existing.id, requestId: null };
+  if (existing && permitted) return { serverId: existing.id, requestId: null };
   const server = existing ?? (await newServer(deps, input, name, now));
-  const request =
-    permitted && !existing
-      ? null
-      : await requestOps(
-          ctx,
-          {
-            title: permitted ? `Sign in to ${name} again` : `Use the ${name} MCP server`,
-            action: "mcp.use",
-            resource: name,
-            reason: input.reason,
-            details: describe(server),
-            issueId: input.issueId ?? null,
-          },
-          permitted,
-        );
+  const request = permitted
+    ? null
+    : await requestOps(ctx, {
+        title: `Use the ${name} MCP server`,
+        action: "mcp.use",
+        resource: name,
+        reason: input.reason,
+        details: describe(server),
+        issueId: input.issueId ?? null,
+      });
   await commit(db, [
     ...(existing
       ? []

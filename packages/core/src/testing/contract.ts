@@ -3404,16 +3404,22 @@ export function hubContract(
       }
     });
 
-    it("uses each sign-in once, and signs in again when the agent asks again", async () => {
+    it("uses each sign-in once", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
       try {
-        // Drive is ready and always allowed; its tokens stopped working, so the agent asks again.
+        // Drive is ready and always allowed: asking again files nothing.
         const coach = await agentToken("Coach");
-        const asked = await callTool(coach.token, "create_mcp_server", {
+        const again = await callTool(coach.token, "create_mcp_server", {
           name: "drive",
           reason: "Drive rejects my token.",
         });
-        expect(asked.json()).toMatchObject({ title: "Sign in to drive again", status: "pending" });
+        expect(again.json()).toMatchObject({ message: expect.stringContaining("already yours") });
+        // Another agent asks to use it, and the owner signs in from that request.
+        const chef = await agentToken("Chef");
+        const asked = await callTool(chef.token, "create_mcp_server", {
+          name: "drive",
+          reason: "The recipes are in Drive.",
+        });
         const filed = await client.graphql<{ request: { mcpServer: { id: string } } }>(
           "query($id: String!) { request(id: $id) { mcpServer { id } } }",
           { id: asked.json().id },

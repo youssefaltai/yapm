@@ -34,3 +34,8 @@ export async function saveConfig(config: Config) {
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   await chmod(configPath, 0o600);
 }
+
+/** Agent sessions and plan readings pick a saved API key up from the environment. */
+export function useApiKey(config: Pick<Config, "apiKey">, env = process.env) {
+  if (config.apiKey) env.ANTHROPIC_API_KEY = config.apiKey;
+}

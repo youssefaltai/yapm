@@ -6,7 +6,7 @@ import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { apiKeyLooksRight, authChoice, claudeLogin, claudeReady } from "./claude.js";
-import { configPath, home, loadConfig, saveConfig } from "./config.js";
+import { configPath, home, loadConfig, saveConfig, useApiKey } from "./config.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
 import { probePlan, sdkEngine } from "./sdk.js";
@@ -181,8 +181,7 @@ async function main() {
   }
 
   if (command === "start") {
-    // Agent sessions and plan readings pick the key up from the environment.
-    if (config.apiKey) process.env.ANTHROPIC_API_KEY = config.apiKey;
+    useApiKey(config);
     const runner = new Runner({
       hub,
       token: config.token,

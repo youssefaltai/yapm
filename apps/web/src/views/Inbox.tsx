@@ -103,49 +103,71 @@ function pathOf(n: Notification): string | null {
   return null;
 }
 
-const markRead = (n: Notification, read: boolean) =>
-  mutate(
-    "mutation($id: String!, $at: DateTime) { notificationUpdate(id: $id, input: { readAt: $at }) { success } }",
-    { id: n.id, at: read ? new Date().toISOString() : null },
+/** One row per issue, request or project, like Linear: its latest notification stands for all. */
+interface Group {
+  latest: Notification;
+  all: Notification[];
+  read: boolean;
+}
+
+function grouped(items: Notification[]): Group[] {
+  const groups = new Map<string, Group>();
+  for (const n of items) {
+    const key = pathOf(n) ?? n.id;
+    const group = groups.get(key);
+    if (group) group.all.push(n);
+    else groups.set(key, { latest: n, all: [n], read: true });
+  }
+  for (const group of groups.values()) group.read = group.all.every((n) => n.readAt !== null);
+  return [...groups.values()];
+}
+
+const markRead = (g: Group, read: boolean) =>
+  Promise.all(
+    g.all
+      .filter((n) => !n.readAt === read)
+      .map((n) =>
+        mutate(
+          "mutation($id: String!, $at: DateTime) { notificationUpdate(id: $id, input: { readAt: $at }) { success } }",
+          { id: n.id, at: read ? new Date().toISOString() : null },
+        ),
+      ),
   );
 
-async function archive(n: Notification) {
-  if (
-    !(await mutate("mutation($id: String!) { notificationArchive(id: $id) { success } }", {
-      id: n.id,
-    }))
-  )
-    return;
+const archiveAll = (g: Group, op: "notificationArchive" | "notificationUnarchive") =>
+  Promise.all(
+    g.all.map((n) => mutate(`mutation($id: String!) { ${op}(id: $id) { success } }`, { id: n.id })),
+  );
+
+async function archive(g: Group) {
+  if (!(await archiveAll(g, "notificationArchive")).every(Boolean)) return;
   toast("Archived notification", {
     label: "Undo",
-    run: () =>
-      void mutate("mutation($id: String!) { notificationUnarchive(id: $id) { success } }", {
-        id: n.id,
-      }),
+    run: () => void archiveAll(g, "notificationUnarchive"),
   });
 }
 
-function notificationMenu(n: Notification, open: () => void): ContextEntry[] {
-  const path = pathOf(n);
+function notificationMenu(g: Group, open: () => void): ContextEntry[] {
+  const path = pathOf(g.latest);
   return [
     { id: "open", icon: icon("open"), label: "Open", onSelect: open },
-    n.readAt
+    g.read
       ? {
           id: "unread",
           icon: icon("unread"),
           label: "Mark as unread",
-          onSelect: () => markRead(n, false),
+          onSelect: () => markRead(g, false),
         }
       : {
           id: "read",
           icon: icon("read"),
           label: "Mark as read",
-          onSelect: () => markRead(n, true),
+          onSelect: () => markRead(g, true),
         },
     "divider",
     ...(path ? linkEntries(path) : []),
     "divider",
-    { id: "archive", icon: icon("archive"), label: "Archive", onSelect: () => archive(n) },
+    { id: "archive", icon: icon("archive"), label: "Archive", onSelect: () => archive(g) },
   ];
 }
 
@@ -153,10 +175,12 @@ export function InboxView() {
   const { data, error } = useQuery<{ notifications: { nodes: Notification[] } }>(INBOX_QUERY);
   const [selected, setSelected] = useState<string | null>(null);
   const items = data?.notifications.nodes ?? [];
-  const current = items.find((n) => n.id === selected) ?? null;
+  const groups = grouped(items);
+  const current = groups.find((g) => g.all.some((n) => n.id === selected))?.latest ?? null;
 
-  function open(n: Notification) {
-    if (!n.readAt) void markRead(n, true);
+  function open(g: Group) {
+    const n = g.latest;
+    if (!g.read) void markRead(g, true);
     if (window.matchMedia("(min-width: 768px)").matches && (n.request || n.issue)) {
       setSelected(n.id);
       return;
@@ -196,19 +220,23 @@ export function InboxView() {
             />
           )}
           <ul aria-label="Notifications">
-            {items.map((n) => (
-              <li key={n.id} className="group relative animate-fade-in">
+            {groups.map((g) => (
+              <li key={pathOf(g.latest) ?? g.latest.id} className="group relative animate-fade-in">
                 <button
                   type="button"
-                  onClick={() => open(n)}
-                  onContextMenu={contextMenu(() => notificationMenu(n, () => open(n)))}
+                  onClick={() => open(g)}
+                  onContextMenu={contextMenu(() => notificationMenu(g, () => open(g)))}
                   className={`flex w-full gap-3 border-b border-line px-4 py-3 text-left hover:bg-raised md:px-6 ${
-                    n.id === selected ? "bg-raised" : ""
+                    g.latest === current ? "bg-raised" : ""
                   }`}
                 >
                   <span className="relative mt-0.5">
-                    <Avatar name={n.actor?.name ?? "?"} kind={n.actor?.kind} size={20} />
-                    {!n.readAt && (
+                    <Avatar
+                      name={g.latest.actor?.name ?? "?"}
+                      kind={g.latest.actor?.kind}
+                      size={20}
+                    />
+                    {!g.read && (
                       <span
                         role="img"
                         aria-label="Unread"
@@ -218,16 +246,18 @@ export function InboxView() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2">
-                      <span className={`truncate ${n.readAt ? "text-muted" : "font-medium"}`}>
-                        {heading(n)}
+                      <span className={`truncate ${g.read ? "text-muted" : "font-medium"}`}>
+                        {heading(g.latest)}
                       </span>
                       <span className="ml-auto shrink-0 text-[12px] text-faint">
-                        {timeAgo(n.createdAt)}
+                        {timeAgo(g.latest.createdAt)}
                       </span>
                     </span>
                     <span className="mt-0.5 block truncate text-[13px] text-muted">
-                      {n.issue && <span className="text-faint">{n.issue.identifier} · </span>}
-                      {describe(n)}
+                      {g.latest.issue && (
+                        <span className="text-faint">{g.latest.issue.identifier} · </span>
+                      )}
+                      {describe(g.latest)}
                     </span>
                   </span>
                 </button>
@@ -235,8 +265,8 @@ export function InboxView() {
                   type="button"
                   aria-label="Archive"
                   title="Archive"
-                  onClick={() => void archive(n)}
-                  className="absolute right-4 bottom-2 hidden md:right-6 animate-fade-in rounded px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
+                  onClick={() => void archive(g)}
+                  className="absolute right-4 bottom-2 hidden md:right-6 animate-fade-in rounded bg-raised px-1.5 text-[12px] text-faint group-hover:block hover:bg-panel hover:text-ink"
                 >
                   Archive
                 </button>

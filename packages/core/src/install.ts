@@ -111,7 +111,8 @@ chmod 755 "$BIN"
 LINK_DIR="$HOME/.local/bin"
 mkdir -p "$LINK_DIR" && ln -sf "$BIN" "$LINK_DIR/life-os-runner"
 
-if [ -n "$TOKEN" ] && "$BIN" status >/dev/null 2>&1; then
+if [ -n "$TOKEN" ] && grep -qF "\\"hub\\": \\"$HUB\\"" "$HOME_DIR/config.json" 2>/dev/null &&
+  "$BIN" status >/dev/null 2>&1; then
   say "This machine is already connected; updated the runner."
 elif [ -n "$TOKEN" ]; then
   set -- enrol --hub "$HUB" --token "$TOKEN"

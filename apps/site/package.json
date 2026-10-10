@@ -4,6 +4,7 @@
   "private": true,
   "description": "The yapm.app landing page: static files served by a Cloudflare Worker.",
   "scripts": {
+    "test": "node --test",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {

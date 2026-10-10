@@ -1,0 +1,7 @@
+# yapm
+
+> yapm (Yet Another Project Manager) is an open-source, self-hosted alternative to Linear for running your life like a company staffed by AI agents. A CEO agent triages what you ask for, hires agents and creates teams, and they work through issues, projects and cycles. Anything that spends or sends waits for your approval. Free under AGPL-3.0; runs on Cloudflare Workers and D1, Docker or Node.
+
+- [README](https://github.com/youssefaltai/yapm#readme): what it is, how it works, and how to self-host it
+- [Source code](https://github.com/youssefaltai/yapm)
+- [License](https://github.com/youssefaltai/yapm/blob/main/LICENSE): AGPL-3.0

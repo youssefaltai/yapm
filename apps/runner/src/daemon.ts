@@ -169,7 +169,7 @@ export class Runner {
         resume: claim.run.sessionId,
         cwd: this.options.cwd,
         signal: abort.signal,
-        canUseTool: (tool, input) =>
+        canUseTool: (tool, input, readOnly) =>
           decideTool(
             {
               hub,
@@ -183,6 +183,7 @@ export class Runner {
             },
             tool,
             input,
+            readOnly,
           ),
         onEvent,
         onSession: (id) => {

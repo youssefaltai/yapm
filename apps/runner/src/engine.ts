@@ -18,7 +18,12 @@ export interface EngineRun {
   resume: string | null;
   cwd: string;
   signal: AbortSignal;
-  canUseTool: (tool: string, input: Record<string, unknown>) => Promise<ToolDecision>;
+  /** `readOnly` when an MCP tool's annotations say it only reads. */
+  canUseTool: (
+    tool: string,
+    input: Record<string, unknown>,
+    readOnly?: boolean,
+  ) => Promise<ToolDecision>;
   /** Transcript events, compact and JSON-safe, in order. */
   onEvent: (event: Record<string, unknown>) => void;
   onSession: (sessionId: string) => void;

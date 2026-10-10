@@ -15,8 +15,10 @@ export function useLiveUpdates() {
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     let pongTimer: ReturnType<typeof setTimeout> | undefined;
 
-    // Batch bursts (a bulk edit is one event per request, but agents can be busy).
+    // Batch bursts (a bulk edit is one event per request, but agents can be busy). A hidden tab
+    // skips them: it refetches everything when it becomes visible.
     const refresh = () => {
+      if (document.hidden) return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(invalidate, 100);
     };
@@ -35,8 +37,12 @@ export function useLiveUpdates() {
           return;
         }
         try {
-          const event = JSON.parse(String(message.data)) as { clientId?: string | null };
-          if (event.clientId !== CLIENT_ID) refresh();
+          // "runs" events are for runners, and each comes with a "change" event.
+          const event = JSON.parse(String(message.data)) as {
+            type?: string;
+            clientId?: string | null;
+          };
+          if (event.type === "change" && event.clientId !== CLIENT_ID) refresh();
         } catch {
           refresh();
         }

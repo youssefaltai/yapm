@@ -84,8 +84,6 @@ export function RunStatusBadge({ status }: { status: RunStatus }) {
 export function useRunningCount(): number {
   const { data } = useQuery<{ runs: { nodes: { id: string }[] } }>(
     "{ runs(first: 100, filter: { status: [running] }) { nodes { id } } }",
-    undefined,
-    30_000,
   );
   return data?.runs.nodes.length ?? 0;
 }

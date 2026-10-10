@@ -321,6 +321,35 @@ describe("tick", () => {
   });
 });
 
+describe("lost runs", () => {
+  it("fails a run whose machine went quiet and announces the change", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
+    await db.insert(schema.runs).values({
+      id: "lost",
+      agentId: ceo?.id ?? "",
+      kind: "work",
+      status: "running",
+      heartbeatAt: start,
+      createdAt: start,
+      updatedAt: start,
+    });
+    const events: HubEvent[] = [];
+    const deps = {
+      db,
+      config: { platform: "node" as const, version: "test" },
+      realtime: { connect: () => new Response(), publish: (e: HubEvent) => void events.push(e) },
+    };
+
+    const at = start + 10 * 60_000;
+    await tick(deps, at);
+    const run = await db.select().from(schema.runs).where(eq(schema.runs.id, "lost")).get();
+    expect(run?.status).toBe("failed");
+    expect(events).toEqual([{ type: "change", actorId: "", clientId: null, at }]);
+  });
+});
+
 describe("metrics", () => {
   it("counts the day's work and snapshots it once after the day ends", async () => {
     const start = Date.parse("2026-10-08T07:00:00Z");

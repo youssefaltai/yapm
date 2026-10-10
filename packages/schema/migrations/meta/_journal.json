@@ -134,6 +134,13 @@
       "when": 1791586180286,
       "tag": "0018_recolor_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1791615554899,
+      "tag": "0019_machine_upgrade",
+      "breakpoints": true
     }
   ]
 }

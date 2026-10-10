@@ -129,6 +129,7 @@ export class HubClient {
     return this.call<{
       status: string;
       stop: { id: string; reason: string | null }[];
+      upgrade?: boolean;
     }>("/api/runner/heartbeat", token, info);
   }
 

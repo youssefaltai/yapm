@@ -344,4 +344,57 @@ describe("runner daemon", () => {
     // Nothing new: the next check-in doesn't send the reading again.
     expect(planRunner.plan.pending()).toEqual({});
   });
+
+  it("upgrades when the owner asks, once its runs finish", async () => {
+    const enrolment = await hub.enrol({
+      name: "Old machine",
+      tags: [],
+      capacity: 1,
+      version: "test",
+    });
+    await gql(
+      "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
+      { id: enrolment.id, code: enrolment.pairingCode },
+    );
+    const old = new Runner({
+      hub,
+      token: enrolment.token,
+      engine,
+      capacity: 1,
+      version: "test",
+      cwd: tmpdir(),
+      pollMs: 10,
+      heartbeatMs: 0,
+      log: (line) => lines.push(line),
+    });
+    let finish = () => {};
+    script = () =>
+      new Promise((resolve) => {
+        finish = () =>
+          resolve({ output: { outcome: "done", summary: "Done." }, sessionId: null, usage: {} });
+      });
+    const runCreate = async (goal: string) =>
+      (
+        await gql<{ runCreate: { run: { id: string } } }>(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
+          { input: { agentId, goal } },
+        )
+      ).runCreate.run.id;
+    const first = await runCreate("Finish this first");
+    const ended = old.run();
+    await until(() => old.running.includes(first), "the run to start");
+
+    await gql("mutation($id: String!) { machineUpgrade(id: $id) { success } }", {
+      id: enrolment.id,
+    });
+    const next = await runCreate("Wait for the new runner");
+    await until(() => lines.includes("Upgrading once the runs in progress finish…"), "the ask");
+    finish();
+    expect(await ended).toBe("upgrade");
+    const queued = await gql<{ run: { status: string } }>(
+      "query($id: String!) { run(id: $id) { status } }",
+      { id: next },
+    );
+    expect(queued.run.status).toBe("queued");
+  });
 });

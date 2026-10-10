@@ -626,9 +626,14 @@ test.describe
       await page.getByRole("tab", { name: "Machine" }).click();
       await expect(page.getByRole("row", { name: /MacBook/ })).toBeVisible();
       await page.goto("/machines");
-      await expect(
-        page.getByText("owner@example.com · max · session 42% · week 85%"),
-      ).toBeVisible();
+      await page.getByRole("button", { name: /MacBook/ }).click();
+      const claude = page.getByRole("region", { name: "Claude" });
+      await expect(claude.getByText("owner@example.com")).toBeVisible();
+      await expect(claude.getByText("Max plan")).toBeVisible();
+      await expect(claude.getByRole("meter", { name: "This week, all models" })).toHaveAttribute(
+        "aria-valuenow",
+        "85",
+      );
     });
 
     test("adds a machine by pasting one command", async () => {
@@ -654,8 +659,7 @@ test.describe
       });
       expect((await enrolled.json()).status).toBe("active");
       await expect(page.getByText("Studio Mac is connected.")).toBeVisible();
-      await page.getByRole("button", { name: "Done" }).click();
-      await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Open Studio Mac" }).click();
 
       // Renamed, it keeps the name it enrolled with, and goes back to it when cleared.
       const name = page.getByLabel("Name for Studio Mac");
@@ -663,13 +667,30 @@ test.describe
       await name.fill("Music room");
       await name.press("Enter");
       await expect(page.getByText("Music room", { exact: true })).toBeVisible();
-      await expect(page.getByText("Studio Mac", { exact: true })).toBeVisible();
+      await expect(page.getByText("Enrolled as Studio Mac")).toBeVisible();
       await page.reload();
       await expect(name).toHaveValue("Music room");
       await name.fill("");
       await name.press("Enter");
       await expect(page.getByText("Music room", { exact: true })).toBeHidden();
       await expect(name).toHaveValue("");
+
+      // Tags being typed survive the page refreshing underneath them.
+      const tags = page.getByLabel("Tags for Studio Mac");
+      await tags.fill("studio");
+      await page.waitForResponse((r) => !!r.request().postData()?.includes("machines {"), {
+        timeout: 20_000,
+      });
+      await expect(tags).toHaveValue("studio");
+
+      // Removed, links to it still open its page, now read-only.
+      await page.getByRole("button", { name: "Remove" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Remove" }).click();
+      await expect(page).toHaveURL(/\/machines$/);
+      await page.goBack();
+      await expect(page.getByText("Removed", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Remove" })).toBeHidden();
+      await expect(name).toBeDisabled();
     });
 
     test("switches between light and dark themes from the command menu", async () => {

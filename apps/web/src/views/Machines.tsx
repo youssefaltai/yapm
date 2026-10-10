@@ -2,11 +2,24 @@ import { useEffect, useState } from "react";
 import { copyText, workspaceStore } from "../actions.js";
 import { confirmDialog } from "../controls.js";
 import { mutate, toast, useQuery } from "../data.js";
-import { button, field, Page, PageBody, PageHeader, PageTitle } from "../layout.js";
+import {
+  Breadcrumbs,
+  button,
+  field,
+  GroupHeader,
+  listItem,
+  listRow,
+  Page,
+  PageHeader,
+  PageTitle,
+  pageHeading,
+  Section,
+} from "../layout.js";
 import { navigate, paths } from "../router.js";
-import { EmptyState } from "../states.js";
-import { timeAgo, useStore } from "../ui.js";
-import { RunsTabs } from "./Runs.js";
+import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
+import { DetailLayout, Property, PropertyList, propertyButton, timeAgo, useStore } from "../ui.js";
+import { RUN_SUMMARY, RunRows, type RunSummary, RunsTabs } from "./Runs.js";
+import { Meter, type PlanLimit, planName } from "./Usage.js";
 
 interface Machine {
   id: string;
@@ -23,16 +36,13 @@ interface Machine {
   createdAt: string;
   runningCount: number;
   claudeAccount: { email: string | null; subscriptionType: string | null } | null;
-  planUsage: {
-    available: boolean;
-    limits: { kind: string; utilization: number | null; resetsAt: string | null }[];
-  } | null;
+  planUsage: { available: boolean; limits: PlanLimit[] } | null;
 }
 
 const MACHINES = `{ machines {
   id name originalName status tags capacity version online lastSeenAt createdAt runningCount
   claudeAccount { email subscriptionType }
-  planUsage { available limits { kind utilization resetsAt } }
+  planUsage { available limits { kind label utilization resetsAt status } }
 } }`;
 
 interface SetupCommand {
@@ -42,7 +52,56 @@ interface SetupCommand {
   known: Set<string>;
 }
 
-/** The computers agents run on: add them with one command, tag them, remove them. */
+const update = (id: string, input: { name?: string; tags?: string[] }) =>
+  mutate(
+    "mutation($id: String!, $input: MachineUpdateInput!) { machineUpdate(id: $id, input: $input) { success } }",
+    { id, input },
+  );
+
+/** "Online · 1/2 running", "Offline · seen 3h ago" or "Waiting for approval". */
+function statusText(m: Machine) {
+  if (m.status === "pending") return "Waiting for approval";
+  if (m.online) return `Online · ${m.runningCount}/${m.capacity} running`;
+  return `Offline${m.lastSeenAt ? ` · seen ${timeAgo(m.lastSeenAt)}` : ""}`;
+}
+
+function StatusDot({ machine: m, size = "size-2" }: { machine: Machine; size?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`${size} shrink-0 rounded-full ${
+        m.status === "pending" ? "bg-warning" : m.online ? "bg-success" : "bg-faint"
+      }`}
+    />
+  );
+}
+
+function TagChips({ tags }: { tags: string[] }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1 overflow-hidden">
+      {tags.map((t) => (
+        <span
+          key={t}
+          className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[12px] text-muted"
+        >
+          {t}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** The plan window that's live and fullest, so a row can show how much room is left. */
+function busiestLimit(m: Machine) {
+  if (!m.planUsage?.available) return undefined;
+  return m.planUsage.limits
+    .filter(
+      (l) => l.utilization !== null && (!l.resetsAt || new Date(l.resetsAt).getTime() > Date.now()),
+    )
+    .sort((a, b) => (b.utilization ?? 0) - (a.utilization ?? 0))[0];
+}
+
+/** The computers agents run on, one row each; a row opens the machine. */
 export function MachinesView() {
   const [setup, setSetup] = useState<SetupCommand | null>(null);
   // Poll quickly while a setup command is out, so the new machine shows up as it connects.
@@ -54,29 +113,30 @@ export function MachinesView() {
   const workspace = useStore(workspaceStore);
   const isOwner = workspace?.viewer.kind === "owner";
   const machines = (data?.machines ?? []).filter((m) => m.status !== "revoked");
+  const pending = machines.filter((m) => m.status === "pending");
+  const active = machines.filter((m) => m.status === "active");
   const added = setup ? machines.find((m) => !setup.known.has(m.id)) : undefined;
+
+  async function addMachine() {
+    const result = await mutate<{
+      machineSetupTokenCreate: { token: string; expiresAt: string };
+    }>("mutation { machineSetupTokenCreate { token expiresAt } }");
+    if (!result) return;
+    const { token, expiresAt } = result.machineSetupTokenCreate;
+    setSetup({
+      command: `curl -fsSL ${location.origin}/install.sh | sh -s -- --token ${token}`,
+      expiresAt,
+      known: new Set((data?.machines ?? []).map((m) => m.id)),
+    });
+  }
+
   return (
     <Page>
       <PageHeader
         actions={
           isOwner &&
           !setup && (
-            <button
-              type="button"
-              onClick={async () => {
-                const result = await mutate<{
-                  machineSetupTokenCreate: { token: string; expiresAt: string };
-                }>("mutation { machineSetupTokenCreate { token expiresAt } }");
-                if (!result) return;
-                const { token, expiresAt } = result.machineSetupTokenCreate;
-                setSetup({
-                  command: `curl -fsSL ${location.origin}/install.sh | sh -s -- --token ${token}`,
-                  expiresAt,
-                  known: new Set((data?.machines ?? []).map((m) => m.id)),
-                });
-              }}
-              className={button("primary", "sm")}
-            >
+            <button type="button" onClick={addMachine} className={button("primary", "sm")}>
               Add machine
             </button>
           )
@@ -85,40 +145,140 @@ export function MachinesView() {
       >
         <PageTitle>Runs</PageTitle>
       </PageHeader>
-      <PageBody>
-        {error && <p className="text-critical">{error}</p>}
-        {setup ? (
-          <SetupPanel setup={setup} added={added} onDone={() => setSetup(null)} />
-        ) : (
-          <p className="text-muted">
-            Agents think and work on your own Mac or Linux computers, signed in with your Claude
-            subscription.{" "}
-            {isOwner
-              ? "Add machine gives you one command to paste on the computer; it sets everything up."
-              : "The owner adds them."}
-          </p>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {error && <p className="p-6 text-critical">{error}</p>}
+        {setup && (
+          <div className="border-b border-line px-4 py-4 md:px-6">
+            <SetupPanel setup={setup} added={added} onDone={() => setSetup(null)} />
+          </div>
         )}
-        <div className="mt-6 space-y-3">
-          {data && machines.length === 0 && (
-            <EmptyState
-              compact
-              icon="machine"
-              title="No machines yet"
-              description={
-                isOwner
-                  ? "Add machine gives you one command to paste on a Mac or Linux computer."
-                  : "Once the owner adds a computer, agents can run on it."
-              }
-              className="rounded-lg border border-dashed border-line"
-            />
-          )}
-          {machines.map((m) => (
-            <MachineCard key={m.id} machine={m} canEdit={isOwner} />
-          ))}
-        </div>
-        {machines.length > 0 && <UpdateCommand />}
-      </PageBody>
+        {!data && !error && <ListSkeleton rows={3} />}
+        {data && machines.length === 0 && !setup && (
+          <EmptyState
+            icon="machine"
+            title="No machines yet"
+            description={
+              isOwner
+                ? "Agents work on your own Mac or Linux computers, signed in with your Claude subscription. Add one with a single command."
+                : "Agents work on the owner's own computers. Once the owner adds one, agents can run on it."
+            }
+            action={isOwner ? { label: "Add machine", onClick: addMachine } : undefined}
+          />
+        )}
+        {pending.length > 0 && (
+          <>
+            <GroupHeader label="Waiting for approval" count={pending.length} />
+            {pending.map((m) => (
+              <PendingRow key={m.id} machine={m} canApprove={isOwner} />
+            ))}
+            {active.length > 0 && <GroupHeader label="Machines" count={active.length} />}
+          </>
+        )}
+        {active.map((m) => (
+          <MachineRow key={m.id} machine={m} />
+        ))}
+      </div>
     </Page>
+  );
+}
+
+function MachineRow({ machine: m }: { machine: Machine }) {
+  const limit = busiestLimit(m);
+  return (
+    <button type="button" onClick={() => navigate(paths.machine(m.id))} className={listRow}>
+      <StatusDot machine={m} />
+      <span className="min-w-0 flex-1 truncate">
+        <span className="font-medium">{m.name}</span>
+        {m.name !== m.originalName && (
+          <span className="ml-2 text-[12px] text-faint max-sm:hidden">{m.originalName}</span>
+        )}
+      </span>
+      <span className="max-w-56 max-md:hidden">
+        <TagChips tags={m.tags} />
+      </span>
+      <span
+        className="flex w-24 shrink-0 items-center gap-2 max-sm:hidden"
+        title={limit ? `${limit.label}: ${Math.round(limit.utilization ?? 0)}% used` : undefined}
+      >
+        {limit && (
+          <>
+            <span className="h-1 flex-1 overflow-hidden rounded-full bg-raised">
+              <span
+                className="block h-full rounded-full"
+                style={{
+                  width: `${Math.min(Math.max(limit.utilization ?? 0, 2), 100)}%`,
+                  background:
+                    (limit.utilization ?? 0) >= 100
+                      ? "var(--color-critical)"
+                      : (limit.utilization ?? 0) >= 80
+                        ? "var(--color-warning)"
+                        : "var(--color-accent)",
+                }}
+              />
+            </span>
+            <span className="w-8 text-right text-[12px] text-faint tabular-nums">
+              {Math.round(limit.utilization ?? 0)}%
+            </span>
+          </>
+        )}
+      </span>
+      <span className="shrink-0 text-right text-[12px] text-faint sm:w-40">{statusText(m)}</span>
+    </button>
+  );
+}
+
+/** A machine that enrolled and shows a code, in the list with a field to approve it. */
+function PendingRow({ machine: m, canApprove }: { machine: Machine; canApprove: boolean }) {
+  return (
+    <div className={`${listItem} flex-wrap`}>
+      <StatusDot machine={m} />
+      <span className="min-w-0 flex-1 basis-48">
+        <button
+          type="button"
+          onClick={() => navigate(paths.machine(m.id))}
+          className="block max-w-full truncate font-medium hover:underline"
+        >
+          {m.name}
+        </button>
+        <span className="block text-[12px] text-faint">
+          {canApprove
+            ? "Type the 6-digit code it shows to let it run agents."
+            : "Waiting for the owner to approve it."}
+        </span>
+      </span>
+      {canApprove && <ApproveForm machine={m} />}
+    </div>
+  );
+}
+
+/** Typing in the code the machine shows lets it run agents. */
+function ApproveForm({ machine: m }: { machine: Machine }) {
+  const [code, setCode] = useState("");
+  return (
+    <form
+      className="flex gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const result = await mutate(
+          "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
+          { id: m.id, code },
+        );
+        if (result) toast(`${m.name} approved`);
+      }}
+    >
+      <input
+        aria-label="Pairing code"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        placeholder="6-digit code"
+        value={code}
+        onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+        className={`w-32 tracking-widest ${field}`}
+      />
+      <button type="submit" disabled={code.length !== 6} className={button("primary")}>
+        Approve
+      </button>
+    </form>
   );
 }
 
@@ -138,12 +298,21 @@ function SetupPanel({
       <div className="rounded-lg border border-success/40 bg-success/5 p-4">
         <p className="font-medium">{added.name} is connected.</p>
         <p className="mt-1 text-muted">
-          It runs in the background and starts again when the computer does. Give it tags below to
-          choose which agents work there.
+          It runs in the background and starts again when the computer does. Open it to give it
+          tags, which choose the agents that work there.
         </p>
-        <button type="button" onClick={onDone} className={`mt-3 ${button("primary")}`}>
-          Done
-        </button>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(paths.machine(added.id))}
+            className={button("primary")}
+          >
+            Open {added.name}
+          </button>
+          <button type="button" onClick={onDone} className={button("ghost")}>
+            Done
+          </button>
+        </div>
       </div>
     );
   return (
@@ -177,168 +346,255 @@ function SetupPanel({
   );
 }
 
-function MachineCard({ machine: m, canEdit }: { machine: Machine; canEdit: boolean }) {
-  const [code, setCode] = useState("");
+/** One machine: its name and tags, the MCP servers the hub runs there, its Claude plan and runs. */
+export function MachinePage({ id }: { id: string }) {
+  const { data, error } = useQuery<{ machines: Machine[] }>(MACHINES, undefined, 15_000);
+  const runs = useQuery<{ runs: { nodes: RunSummary[] } }>(
+    `query($filter: RunFilter) { runs(first: 20, filter: $filter) { nodes { ${RUN_SUMMARY} } } }`,
+    { filter: { machineId: id } },
+    10_000,
+  );
+  const workspace = useStore(workspaceStore);
+  const m = data?.machines.find((x) => x.id === id);
+  // A removed machine keeps its page, read-only, so runs and usage can still link to it.
+  const canEdit = workspace?.viewer.kind === "owner" && m?.status !== "revoked";
+  if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
+  if (!data || !workspace) return <PageSkeleton />;
+  if (!m)
+    return (
+      <Page>
+        <PageHeader>
+          <Breadcrumbs
+            trail={[
+              { label: "Runs", to: paths.runs(), wide: true },
+              { label: "Machines", to: paths.machines() },
+            ]}
+          >
+            Not found
+          </Breadcrumbs>
+        </PageHeader>
+        <EmptyState
+          icon="machine"
+          title="This machine isn't here"
+          description="The link may be wrong."
+          action={{ label: "See all machines", onClick: () => navigate(paths.machines()) }}
+        />
+      </Page>
+    );
+
+  async function remove() {
+    if (
+      !m ||
+      !(await confirmDialog({
+        title: `Remove ${m.name}?`,
+        body: "Its secret stops working and it can't run agents any more.",
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
+    const result = await mutate("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+      id: m.id,
+    });
+    if (result) navigate(paths.machines());
+  }
+
+  async function upgrade() {
+    if (!m) return;
+    const result = await mutate("mutation($id: String!) { machineUpgrade(id: $id) { success } }", {
+      id: m.id,
+    });
+    if (result) toast(`${m.name} updates once its runs finish`);
+  }
+
+  return (
+    <div className="flex h-full min-h-0 animate-fade-in flex-col">
+      <PageHeader
+        actions={
+          canEdit && (
+            <>
+              {m.status === "active" && (
+                <button type="button" onClick={upgrade} className={button("ghost", "sm")}>
+                  Update runner
+                </button>
+              )}
+              <button type="button" onClick={remove} className={button("danger", "sm")}>
+                Remove
+              </button>
+            </>
+          )
+        }
+      >
+        <Breadcrumbs
+          trail={[
+            { label: "Runs", to: paths.runs(), wide: true },
+            { label: "Machines", to: paths.machines() },
+          ]}
+        >
+          <span className="truncate">{m.name}</span>
+        </Breadcrumbs>
+      </PageHeader>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <DetailLayout
+          head={
+            <>
+              <div className="flex items-center gap-3">
+                <StatusDot machine={m} size="size-2.5" />
+                <NameField machine={m} canEdit={canEdit} />
+              </div>
+              {m.name !== m.originalName && (
+                <p className="mt-1 text-faint">Enrolled as {m.originalName}</p>
+              )}
+              {m.status === "pending" && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/5 px-4 py-3">
+                  <p className="min-w-0 flex-1 basis-56">
+                    <span className="text-warning">Waiting for approval.</span>{" "}
+                    {canEdit
+                      ? "Type the 6-digit code it shows to let it run agents."
+                      : "The owner approves it."}
+                  </p>
+                  {canEdit && <ApproveForm machine={m} />}
+                </div>
+              )}
+            </>
+          }
+          side={
+            <>
+              <PropertyList>
+                <Property label="Status">
+                  <StatusDot machine={m} />
+                  {m.status === "revoked"
+                    ? "Removed"
+                    : m.status === "pending"
+                      ? "Pending"
+                      : m.online
+                        ? "Online"
+                        : "Offline"}
+                </Property>
+                {m.status === "active" && (
+                  <Property label="Running">
+                    {m.runningCount} of {m.capacity}
+                  </Property>
+                )}
+                <Property label="Last seen">
+                  {m.lastSeenAt ? timeAgo(m.lastSeenAt) : <span className="text-faint">Never</span>}
+                </Property>
+                <Property label="Tags" control>
+                  <TagsField machine={m} canEdit={canEdit} />
+                </Property>
+                <Property label="Runner">
+                  {m.version ? `v${m.version}` : <span className="text-faint">Unknown</span>}
+                </Property>
+                <Property label="Added">{timeAgo(m.createdAt)}</Property>
+              </PropertyList>
+              <ClaudePlan machine={m} />
+            </>
+          }
+        >
+          <Section title="Recent runs">
+            {runs.data && runs.data.runs.nodes.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-line">
+                <RunRows runs={runs.data.runs.nodes} embedded />
+              </div>
+            ) : (
+              <p className="text-faint">{runs.data ? "No runs here yet." : "Loading…"}</p>
+            )}
+          </Section>
+          {m.status === "active" && <UpdateCommand />}
+        </DetailLayout>
+      </div>
+    </div>
+  );
+}
+
+/** The machine's name as the page's title, renamed in place; cleared, it goes back to its own. */
+function NameField({ machine: m, canEdit }: { machine: Machine; canEdit: boolean }) {
   // Empty while it goes by its original name, which shows as the placeholder to fall back to.
   const ownName = m.name === m.originalName ? "" : m.name;
   const [name, setName] = useState(ownName);
   useEffect(() => setName(ownName), [ownName]);
-  const [tags, setTags] = useState(m.tags.join(", "));
-  useEffect(() => setTags(m.tags.join(", ")), [m.tags]);
-  const update = (input: { name?: string; tags?: string[] }) =>
-    mutate(
-      "mutation($id: String!, $input: MachineUpdateInput!) { machineUpdate(id: $id, input: $input) { success } }",
-      { id: m.id, input },
-    );
-  const saveName = async () => {
+  const save = async () => {
     if (name.trim() === ownName) return;
-    if (!(await update({ name: name.trim() }))) setName(ownName);
+    if (!(await update(m.id, { name: name.trim() }))) setName(ownName);
   };
-  const saveTags = () => {
+  return (
+    <input
+      aria-label={`Name for ${m.originalName}`}
+      value={name}
+      disabled={!canEdit}
+      maxLength={60}
+      placeholder={m.originalName}
+      title={ownName ? `Clear it to go back to ${m.originalName}` : undefined}
+      onChange={(e) => setName(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-ink disabled:opacity-100 ${pageHeading}`}
+    />
+  );
+}
+
+/** Tags pick which agents may work here; typed as a comma-separated list. */
+function TagsField({ machine: m, canEdit }: { machine: Machine; canEdit: boolean }) {
+  // Keyed on the text, not the array: every refetch brings a new array, which would wipe typing.
+  const saved = m.tags.join(", ");
+  const [tags, setTags] = useState(saved);
+  useEffect(() => setTags(saved), [saved]);
+  const save = () => {
     const next = tags
       .split(",")
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
     if (next.join(",") === m.tags.join(",")) return;
-    void update({ tags: next });
+    void update(m.id, { tags: next });
   };
   return (
-    <div className="rounded-lg border border-line px-4 py-3">
-      <div className="flex items-center gap-2">
-        <span
-          className={`size-2 rounded-full ${m.status === "pending" ? "bg-warning" : m.online ? "bg-success" : "bg-faint"}`}
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate">
-          <span className="font-medium">{m.name}</span>
-          {ownName && <span className="ml-2 text-[12px] text-faint">{m.originalName}</span>}
-        </span>
-        <span className="text-[12px] text-faint">
-          {m.status === "pending"
-            ? "Waiting for approval"
-            : m.online
-              ? `Online · ${m.runningCount}/${m.capacity} running`
-              : `Offline${m.lastSeenAt ? ` · seen ${timeAgo(m.lastSeenAt)}` : ""}`}
-        </span>
-      </div>
-      {m.status === "pending" && canEdit && (
-        <form
-          className="mt-3 flex gap-2"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const result = await mutate(
-              "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
-              { id: m.id, code },
-            );
-            if (result) toast(`${m.name} approved`);
-          }}
-        >
-          <input
-            aria-label="Pairing code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            placeholder="6-digit code"
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            className={`w-32 tracking-widest ${field}`}
-          />
-          <button type="submit" disabled={code.length !== 6} className={button("primary")}>
-            Approve
-          </button>
-        </form>
-      )}
-      <dl className="mt-3 grid grid-cols-[6rem_1fr] items-center gap-y-1.5 text-[13px]">
-        <dt className="text-faint">Name</dt>
-        <dd>
-          <input
-            aria-label={`Name for ${m.originalName}`}
-            value={name}
-            disabled={!canEdit}
-            maxLength={60}
-            placeholder={m.originalName}
-            title={ownName ? `Clear it to go back to ${m.originalName}` : undefined}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={saveName}
-            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            className="w-full bg-transparent outline-none placeholder:text-faint"
-          />
-        </dd>
-        <dt className="text-faint">Tags</dt>
-        <dd>
-          <input
-            aria-label={`Tags for ${m.name}`}
-            value={tags}
-            disabled={!canEdit}
-            placeholder="none, e.g. personal, employer-a"
-            onChange={(e) => setTags(e.target.value)}
-            onBlur={saveTags}
-            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            className="w-full bg-transparent outline-none placeholder:text-faint"
-          />
-        </dd>
-        {m.claudeAccount && (
-          <>
-            <dt className="text-faint">Claude</dt>
-            <dd>
-              <button
-                type="button"
-                onClick={() => navigate(paths.usage())}
-                className="text-left text-muted hover:text-ink"
-              >
-                {planSummary(m)}
-              </button>
-            </dd>
-          </>
-        )}
-        {m.version && (
-          <>
-            <dt className="text-faint">Runner</dt>
-            <dd className="text-muted">v{m.version}</dd>
-          </>
-        )}
-      </dl>
-      {canEdit && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={async () => {
-              if (
-                await confirmDialog({
-                  title: `Remove ${m.name}?`,
-                  body: "Its secret stops working and it can't run agents any more.",
-                  confirmLabel: "Remove",
-                  destructive: true,
-                })
-              )
-                void mutate("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
-                  id: m.id,
-                });
-            }}
-            className="text-[12px] text-faint hover:text-critical"
-          >
-            Remove
-          </button>
-        </div>
-      )}
-    </div>
+    <input
+      aria-label={`Tags for ${m.name}`}
+      value={tags}
+      disabled={!canEdit}
+      placeholder={canEdit ? "Add tags" : "None"}
+      onChange={(e) => setTags(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      className={`${propertyButton} w-full bg-transparent outline-none placeholder:text-faint focus:bg-raised`}
+    />
   );
 }
 
-function planSummary(m: Machine) {
-  const parts = [m.claudeAccount?.email, m.claudeAccount?.subscriptionType].filter(Boolean);
-  const live = (kind: string) =>
-    m.planUsage?.limits.find(
-      (l) =>
-        l.kind === kind &&
-        l.utilization !== null &&
-        (!l.resetsAt || new Date(l.resetsAt).getTime() > Date.now()),
-    );
-  const session = live("five_hour");
-  const week = live("seven_day");
-  if (session) parts.push(`session ${Math.round(session.utilization ?? 0)}%`);
-  if (week) parts.push(`week ${Math.round(week.utilization ?? 0)}%`);
-  if (m.planUsage && !m.planUsage.available) parts.push("no plan limits");
-  return parts.join(" · ") || "Signed in";
+/** Who the machine is signed in to Claude as, and how full that plan's windows are. */
+function ClaudePlan({ machine: m }: { machine: Machine }) {
+  if (!m.claudeAccount) return null;
+  const plan = planName(m.claudeAccount.subscriptionType);
+  const limits = m.planUsage?.available ? m.planUsage.limits : [];
+  return (
+    <section aria-label="Claude" className="mt-4 border-t border-line pt-4">
+      <PropertyList title="Claude">
+        <Property label="Account">
+          <span className="truncate">{m.claudeAccount.email ?? "Signed in"}</span>
+        </Property>
+        {plan && <Property label="Plan">{plan}</Property>}
+      </PropertyList>
+      {m.planUsage && !m.planUsage.available && (
+        <p className="mt-2 px-2 text-[12px] text-faint">
+          An API key or cloud login, so no plan limits.
+        </p>
+      )}
+      {limits.length > 0 && (
+        <ul className="mt-3 space-y-3 px-2">
+          {limits.map((l) => (
+            <Meter key={l.kind} limit={l} />
+          ))}
+        </ul>
+      )}
+      <button
+        type="button"
+        onClick={() => navigate(paths.usage())}
+        className="mt-3 px-2 text-[12px] text-muted hover:text-ink"
+      >
+        See usage →
+      </button>
+    </section>
+  );
 }
 
 /**
@@ -348,9 +604,8 @@ function planSummary(m: Machine) {
 function UpdateCommand() {
   const command = `curl -fsSL ${location.origin}/install.sh | sh`;
   return (
-    <section className="mt-6">
-      <p className="text-[12px] text-faint">To update a machine's runner, run this on it:</p>
-      <div className="mt-1.5 flex items-center gap-3 rounded-md border border-line bg-raised px-3 py-1.5">
+    <Section title="Update the runner" description="Run this on the machine to update its runner.">
+      <div className="flex items-center gap-3 rounded-md border border-line bg-raised px-3 py-1.5">
         <code className="min-w-0 flex-1 text-[12px] [overflow-wrap:anywhere]">{command}</code>
         <button
           type="button"
@@ -360,6 +615,6 @@ function UpdateCommand() {
           Copy
         </button>
       </div>
-    </section>
+    </Section>
   );
 }

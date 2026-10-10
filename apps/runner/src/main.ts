@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import { HubClient } from "./hub.js";
 import { probePlan, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.4.0";
 
 interface Config {
   hub: string;
@@ -184,7 +184,17 @@ async function main() {
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
     console.log(`${config.name} is connected to ${config.hub}.`);
-    await runner.run();
+    if ((await runner.run()) === "upgrade") {
+      // The hub's installer replaces the runner in place; it keeps this machine's settings.
+      const install = spawnSync(
+        "sh",
+        ["-c", 'curl -fsSL "$0/install.sh" | sh -s -- --no-service', config.hub],
+        { stdio: ["ignore", "inherit", "inherit"] },
+      );
+      console.log(install.status === 0 ? "Upgraded; restarting." : "The upgrade failed.");
+      // Not a clean exit, so launchd or systemd starts the new runner.
+      process.exit(75);
+    }
     return;
   }
 

@@ -38,6 +38,8 @@ interface Active {
 export class Runner {
   private readonly active = new Map<string, Active>();
   private stopped = false;
+  /** The owner asked for the latest runner: take no more work, finish what's running. */
+  private upgrading = false;
   private waitingNoted = false;
   private readonly pollMs: number;
   private readonly heartbeatMs: number;
@@ -70,13 +72,17 @@ export class Runner {
     });
     this.plan.sent(plan);
     for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
+    if (answer?.upgrade && !this.upgrading) {
+      this.upgrading = true;
+      this.log("Upgrading once the runs in progress finish…");
+    }
     return answer?.status ?? "active";
   }
 
   /** Claims and starts runs while there is room. Returns how many started. */
   async claim() {
     let started = 0;
-    while (!this.stopped && this.active.size < this.options.capacity) {
+    while (!this.stopped && !this.upgrading && this.active.size < this.options.capacity) {
       let claim: Claim | null;
       try {
         claim = await this.options.hub.claim(this.options.token);
@@ -231,8 +237,11 @@ export class Runner {
       });
   }
 
-  /** Runs until `shutdown()`: heartbeats on a timer, claims on every poll. */
-  async run() {
+  /**
+   * Runs until `shutdown()`: heartbeats on a timer, claims on every poll. Resolves "upgrade"
+   * when the owner asked for the latest runner and nothing is running any more.
+   */
+  async run(): Promise<"upgrade" | undefined> {
     let lastBeat = 0;
     while (!this.stopped) {
       try {
@@ -244,6 +253,7 @@ export class Runner {
             break;
           }
         }
+        if (this.upgrading && this.active.size === 0) return "upgrade";
         await this.claim();
         this.readPlan();
       } catch (error) {

@@ -748,6 +748,8 @@ export async function heartbeat(
         ...(info.version ? { version: String(info.version).slice(0, 40) } : {}),
         ...(machine.status === "pending" && info.tags ? { tags: cleanTags(info.tags) } : {}),
         ...(account ? { claudeAccount: account } : {}),
+        // Said once: the runner remembers it until its runs finish.
+        ...(machine.upgradeRequestedAt != null ? { upgradeRequestedAt: null } : {}),
         // Readings can arrive out of order; keep the newest.
         ...(plan && plan.observedAt >= (machine.planUsage?.observedAt ?? 0)
           ? { planUsage: plan }
@@ -787,6 +789,7 @@ export async function heartbeat(
   return {
     /** The app shows whether a machine is online, so coming back is a change. */
     changed: !machine.lastSeenAt || machine.lastSeenAt < at - ONLINE_WINDOW,
+    upgrade: machine.upgradeRequestedAt != null,
     stop: [
       ...stopping.map((r) => ({ id: r.id, reason: r.reason })),
       ...gone.map((id) => ({ id, reason: "The hub ended this run" })),

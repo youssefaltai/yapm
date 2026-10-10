@@ -33,29 +33,30 @@
 yapm is a project manager for your life.
 You are the owner. AI agents are your team.
 
-Ask for something in plain words.
-An agent picks it up, does the work and reports back.
-Anything that spends money or acts for you waits for your OK.
+Tell the CEO what you need, in plain words.
+It plans the work, builds a team for it and reports back.
+Anything that acts for you waits for your OK, until you always allow it.
 
 It's open source, an alternative to Linear.
 You host it yourself, for free.
 
 ## How it works
 
-1. **You ask.** File an issue, or leave a comment.
-2. **It runs itself.** The CEO agent sorts it out and hires agents when needed.
-3. **You approve.** Agents ask before they spend or send. One tap on your phone.
-4. **It learns.** Your answers become lessons, so it asks less over time.
+1. **You ask.** Chat with the CEO, or file an issue.
+2. **It runs itself.** The CEO plans it, and creates teams and hires agents when needed.
+3. **You approve.** Agents ask before they act for you. Two taps on your phone.
+4. **It learns.** Your answers become feedback, lessons and grants, so it asks less over time.
 
 ## What you get
 
+- **A chat with your CEO.** Ask for anything; what matters ends up in issues and docs.
 - **Issues, projects and cycles.** Boards, filters, `⌘K` and shortcuts.
 - **A team of agents.** Each has a title, a manager and a clear job.
-- **Approvals.** Approve once, always allow, or say no with a reason.
+- **Approvals.** Approve once, always allow, or say no with a reason. Revoke what you allowed.
 - **Agents on your own computer.** They use your Claude account or an API key. Watch them work live.
 - **An inbox with push alerts.** Add it to your iPhone's Home Screen.
 - **A company that improves.** Feedback, lessons, a handbook and metrics.
-- **An API.** GraphQL and MCP, with the same names as Linear's.
+- **An API.** GraphQL with Linear's names, and an MCP server modelled on Linear's.
 
 ## Self-host
 
@@ -66,7 +67,7 @@ Pick one. Choose your final domain first: passkeys are tied to it.
 Free plan. Deploys from GitHub.
 
 1. Fork this repo.
-2. In Cloudflare, open **Workers & Pages** once.
+2. In Cloudflare, open **Workers & Pages** once, so you get a workers.dev address.
 3. Create an API token from the **Edit Cloudflare Workers** template. Add **D1 → Edit**.
 4. In your fork, add two Actions secrets:
    `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
@@ -78,6 +79,7 @@ Want your own domain? Add a `HUB_DOMAIN` variable, like `hub.example.com`, and d
 <summary>Or deploy from your machine</summary>
 
 ```sh
+pnpm install
 cd apps/hub-cloudflare
 npx wrangler login
 node scripts/ensure-d1.mjs   # creates the database
@@ -113,7 +115,7 @@ pnpm dev   # open http://localhost:5173
 |---|---|---|
 | `ORIGIN` | the request's origin | Your public URL. Set it behind a proxy. |
 | `RP_NAME` | `yapm` | The name your browser shows for the passkey. |
-| `YAPM_SECRET` | none | Encrypts agents' sign-ins to other services. Any long random string. |
+| `YAPM_SECRET` | none | Encrypts agents' sign-ins to other services; without it, none are stored. Any long random string. |
 | `PORT` (Node) | `8787` | The HTTP port. |
 | `DATABASE_URL` (Node) | `file:./data/yapm.db` | Where the database lives. |
 
@@ -123,7 +125,7 @@ pnpm dev   # open http://localhost:5173
 
 Agents run on your own Mac or Linux machine.
 
-1. In the app, open **Runs → Machines**.
+1. In the app, open **Chat**, or **Runs → Machines**.
 2. Click **Add machine**.
 3. Paste the command it shows into Terminal.
 
@@ -131,7 +133,7 @@ Agents run on your own Mac or Linux machine.
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
-It asks whether agents should use your Claude account or an Anthropic API key.
+On a new machine, it asks whether agents should use your Claude account or an Anthropic API key.
 Then it runs in the background and starts at login.
 To update, run `curl -fsSL https://your-hub.example/install.sh | sh`.
 
@@ -172,6 +174,7 @@ Changing the database? Edit `packages/schema/src/tables.ts`, then run `pnpm db:g
 | `apps/web` | The web app. |
 | `apps/runner` | Runs agents on your machines. |
 | `apps/e2e` | Browser tests. |
+| `apps/site` | The yapm.app website. |
 
 </details>
 

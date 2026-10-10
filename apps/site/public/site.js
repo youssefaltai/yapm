@@ -13,7 +13,7 @@ const SCENARIOS = [
     due: "Apr 12",
     goal: "Booking the renewal appointment",
     work: "Filled in the renewal form from your profile. Earliest morning slot is Tue 10:30 at the Baixa office; the fee is €95.",
-    request: { title: "Pay the €95 fee and book Tue 10:30", action: "spend", on: "€95" },
+    request: { title: "Pay the €95 fee and book Tue 10:30", action: "tool:payments__pay" },
     done: "Booked Tue 10:30 and paid €95. Bring your old passport and two photos; it's in your calendar.",
     lesson: "The owner only takes morning appointments.",
     reject: {
@@ -25,7 +25,7 @@ const SCENARIOS = [
     later: {
       id: "TRV-4",
       title: "Renew the EU health card",
-      text: "Travel Manager's monthly check found it expiring in June. Renewing is free, so it just did it and told you after.",
+      text: "Travel Manager's monthly check found it expiring in June. It needed nothing new from you, so it just did it and told you after.",
     },
   },
   {
@@ -42,8 +42,7 @@ const SCENARIOS = [
     work: "Gym & Tonic needs 30 days' notice, so the cancellation email is drafted. Best match: Early Bird Gym, €34 a month, opens at 6am, 900 m away.",
     request: {
       title: "Send the cancellation email to Gym & Tonic",
-      action: "send_email",
-      on: "Gym & Tonic",
+      action: "tool:gmail__send_email",
     },
     done: "Sent. Your last Gym & Tonic charge is May 1, and Early Bird Gym saves you €21 a month. The trial pass is in your inbox.",
     lesson: "The owner trains mornings; only suggest places open by 7am.",
@@ -56,7 +55,7 @@ const SCENARIOS = [
     later: {
       id: "FIN-23",
       title: "Cancel two unused subscriptions",
-      text: "Finance Manager's weekly review found two you hadn't used in three months and lined up both cancellations in one request. One tap saves €18 a month.",
+      text: "Finance Manager's weekly review found two you hadn't used in three months and asked to cancel both. Two approvals save €18 a month.",
     },
   },
   {
@@ -73,8 +72,7 @@ const SCENARIOS = [
     work: "Shortlisted 3 places with a vegetarian menu and a private room. Top pick: Casa Lentil, Sat 7:30pm, €45 a head, €120 deposit to hold it.",
     request: {
       title: "Book Casa Lentil for 12 and pay the €120 deposit",
-      action: "spend",
-      on: "€120",
+      action: "tool:payments__pay",
     },
     done: "Booked for Sat 7:30pm. Invites went to the family group with an RSVP link.",
     lesson: "Mom is vegetarian; check menus first for anything with her.",
@@ -83,7 +81,7 @@ const SCENARIOS = [
       reply: "Got it. Two closer options are on the issue; I'll hold neither until you pick.",
       lesson: "For Mom's events, stay near her place.",
     },
-    ritual: "Yearly: start every family birthday three weeks ahead",
+    ritual: "Monthly: start family birthdays three weeks ahead",
     later: {
       id: "FAM-4",
       title: "Dad's birthday gift",
@@ -129,8 +127,7 @@ const SCENARIOS = [
     request: {
       from: "Property Scout",
       title: "Pay the €3,700 deposit for the Santos flat",
-      action: "spend",
-      on: "€3,700",
+      action: "tool:payments__pay",
     },
     done: "The move is set: visa interview Jan 14, movers Feb 18, keys and utilities Feb 20. Your checklist for each date is on the issue.",
     lesson: "The owner wants quiet streets near the river.",
@@ -179,13 +176,13 @@ const SCENARIOS = [
       },
     ],
     isolation:
-      "Parsnip Engineer only runs on parsnip-macbook, Okay Labs Engineer only on okaylabs-thinkpad, each with its own sign-ins. Neither client's code reaches the other's machine.",
+      "Parsnip Engineer only runs on parsnip-macbook, Okay Labs Engineer only on okaylabs-thinkpad, each machine with its own Claude sign-in. Neither client's code reaches the other's machine.",
     work: "Found it: the pay button retries without an idempotency key, so slow networks charge twice. The fix is ready; its test needs a migration on staging.",
     request: {
       from: "Parsnip Engineer",
       title: "Run the migration on Parsnip's staging database",
       action: "tool:Bash",
-      on: "parsnip-macbook",
+      on: "pnpm db:migrate --env staging",
     },
     done: "Both done. Parsnip: PR #482 is green and ready for your review. Okay Labs: review posted, one blocking comment on retries. Nothing crossed between the two.",
     lesson: "Parsnip staging migrations are safe to run before tests.",
@@ -331,8 +328,8 @@ function reset() {
   document.querySelector(".runs-sec").classList.remove("on");
   document.querySelector(".subs-sec").classList.remove("on");
   page.dataset.stage = "ask";
-  $("crumb").textContent = "New issue";
-  $("url").textContent = "inbox";
+  $("crumb").textContent = "Chat";
+  $("url").textContent = "";
   clock = 0;
   step(-1);
 }
@@ -358,18 +355,15 @@ async function play(s) {
 
   page.dataset.stage = "issue";
   $("title").textContent = s.title;
-  $("crumb").textContent = "Triage";
-  status("Triage", "triage");
+  $("crumb").textContent = "New issue";
+  status("Todo", "todo");
   $("priority").textContent = "No priority";
   $("assignee").textContent = "Unassigned";
   $("labels").innerHTML = "";
   $("due").textContent = "";
-  event("You", "created the issue");
-  await next(1100);
-
   // It runs itself.
   step(1);
-  event("CEO", "picked it up from triage");
+  event("CEO", "filed it from your chat");
   await next(900);
   if (!s.team.exists) {
     const li = document.createElement("li");
@@ -381,7 +375,7 @@ async function play(s) {
     await next(900);
   }
   event("CEO", `hired <b>${esc(s.agent.name)}</b> to own ${esc(s.agent.charter)}`);
-  note("Standing grant", "You let managers create teams and hire without asking.");
+  note("Grant", "You always allowed every agent to create teams and hire.");
   await next(1000);
 
   document.querySelector(`[data-team="${s.team.key}"]`).classList.add("on");
@@ -458,7 +452,7 @@ async function play(s) {
     <p class="sheet-k">Request from <b>${esc(asker)}</b></p>
     <p class="sheet-t">${esc(s.request.title)}</p>
     <p class="sheet-on"><span>Permission</span><code>${s.request.action}</code></p>
-    <p class="sheet-on"><span>On</span>${esc(s.request.on)}</p>
+    ${s.request.on ? `<p class="sheet-on"><span>On</span><code>${esc(s.request.on)}</code></p>` : ""}
     <p class="sheet-on"><span>Issue</span>${s.id} ${esc(s.title)}</p>
     <div class="sheet-a">
       <button type="button" class="b b-ok" data-answer="approve">Approve</button>
@@ -488,7 +482,7 @@ async function play(s) {
     event(
       "You",
       answer === "always"
-        ? `approved, and always allowed ${esc(asker)} to <code>${s.request.action}</code>`
+        ? `approved, and always allowed ${esc(asker)} <code>${s.request.action}</code>`
         : "approved",
     );
     run(askerRun, "Running", true);
@@ -507,11 +501,14 @@ async function play(s) {
   // It learns.
   step(3);
   if (answer === "reject") {
-    note("Feedback", `Your reason is saved as feedback ${asker} reads on every run.`);
+    note(
+      "Feedback",
+      `Your reason goes straight to ${asker}, and stays as feedback until it's addressed.`,
+    );
     await next(1000);
   }
   if (answer === "always") {
-    note("Grant", `${asker} can ${s.request.action} without asking now. Revoke it anytime.`);
+    note("Grant", `${asker} can use ${s.request.action} without asking now. Revoke it anytime.`);
     await next(1000);
   }
   note("Lesson", `${asker} wrote down: “${answer === "reject" ? s.reject.lesson : s.lesson}”`);

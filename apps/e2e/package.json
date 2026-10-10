@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Browser tests against the built Node hub serving the built web app.",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "e2e": "playwright test",
     "typecheck": "tsc -p ."

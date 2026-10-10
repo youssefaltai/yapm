@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Runs the hub on Node.js with a SQLite file, for any VPS or Docker host.",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsup",

@@ -3997,5 +3997,45 @@ export function hubContract(
       expect(await list({ teamId })).toEqual([]);
       expect((await list({ teamId }, true))[0]?.revokedAt).toBeTruthy();
     });
+
+    it("adds agents to a team and removes them, owner only", async () => {
+      const ceo = await agentToken("CEO");
+      const scout = await agentToken("Scout");
+      const team = await client.graphql<{ teamCreate: { team: { id: string } } }>(
+        'mutation { teamCreate(input: { name: "Crew" }) { team { id } } }',
+      );
+      const teamId = team.data?.teamCreate.team.id;
+      const members = async () =>
+        (
+          await client.graphql<{ team: { members: { nodes: { name: string }[] } } }>(
+            "query($id: String!) { team(id: $id) { members { nodes { name } } } }",
+            { id: teamId },
+          )
+        ).data?.team.members.nodes.map((m) => m.name);
+      const add = (userId: string, token?: string) =>
+        client.graphql(
+          "mutation($t: String!, $u: String!) { teamMembershipCreate(input: { teamId: $t, userId: $u }) { success } }",
+          { t: teamId, u: userId },
+          token,
+        );
+      const remove = (userId: string) =>
+        client.graphql(
+          "mutation($t: String!, $u: String!) { teamMembershipDelete(teamId: $t, userId: $u) { success } }",
+          { t: teamId, u: userId },
+        );
+
+      expect((await add(ceo.id, scout.token)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect((await add(ceo.id)).errors).toBeUndefined();
+      expect(await members()).toContain("CEO");
+      expect((await remove(ceo.id)).errors).toBeUndefined();
+      expect(await members()).not.toContain("CEO");
+      const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
+        { id: teamId },
+      );
+      expect(log.data?.auditEntries.nodes.map((n) => n.action)).toEqual(
+        expect.arrayContaining(["teamMembership.create", "teamMembership.delete"]),
+      );
+    });
   });
 }

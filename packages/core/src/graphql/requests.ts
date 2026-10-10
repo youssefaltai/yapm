@@ -33,7 +33,7 @@ const GrantScope = builder.enumType("GrantScope", { values: GRANT_SCOPES });
 export const Request = builder.objectRef<RequestRow>("Request");
 export const Grant = builder.objectRef<GrantRow>("Grant");
 const RequestConnection = connection<RequestRow>("Request", Request);
-const GrantConnection = connection<GrantRow>("Grant", Grant);
+export const GrantConnection = connection<GrantRow>("Grant", Grant);
 
 Request.implement({
   description:

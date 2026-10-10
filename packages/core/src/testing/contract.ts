@@ -3325,6 +3325,47 @@ export function hubContract(
       }
     });
 
+    it("lists MCP servers with their status and who may use them, and reconnects a ready one", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        type Listed = {
+          id: string;
+          name: string;
+          status: string;
+          grants: { nodes: { user: { name: string } | null }[] };
+        };
+        const listed = await client.graphql<{ mcpServers: { nodes: Listed[] } }>(
+          "{ mcpServers { nodes { id name status grants { nodes { user { name } } } } } }",
+        );
+        const servers = listed.data?.mcpServers.nodes ?? [];
+        expect(servers.map((s) => s.name)).toEqual(["drive", "github", "notion", "weather"]);
+        const drive = servers.find((s) => s.name === "drive");
+        expect(drive?.status).toBe("ready");
+        expect(drive?.grants.nodes.map((g) => g.user?.name)).toEqual(["Coach"]);
+        // Approved once only, so no one may use it standing.
+        expect(servers.find((s) => s.name === "notion")?.grants.nodes).toEqual([]);
+
+        // Signing in again works on a server that is already connected, and returns where it
+        // started: only to a path on the hub, never another site.
+        const connect = (returnTo: string) =>
+          client.graphql<{ mcpServerConnect: { authorizationUrl: string } }>(
+            "mutation($id: String!, $r: String) { mcpServerConnect(id: $id, returnTo: $r) { authorizationUrl } }",
+            { id: drive?.id, r: returnTo },
+          );
+        for (const away of ["//evil.example", "https://evil.example/", "/\\evil.example"])
+          expect((await connect(away)).errors?.[0]?.message).toBe("returnTo must be a path");
+        const again = new URL(
+          (await connect("/company")).data?.mcpServerConnect.authorizationUrl ?? "",
+        );
+        const back = await client.request(
+          `/api/mcp/oauth/callback?code=good-code&state=${again.searchParams.get("state")}`,
+        );
+        expect(back.headers.get("location")).toBe("http://localhost/company");
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
     it("signs in with a provider's published client, the owner pasting the address they land on", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
       try {

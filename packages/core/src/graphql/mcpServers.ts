@@ -1,13 +1,13 @@
-import { MCP_AUTHS, MCP_SERVER_STATUSES, mcpServers, requests } from "@yapm/schema";
-import { eq } from "drizzle-orm";
+import { grants, MCP_AUTHS, MCP_SERVER_STATUSES, mcpServers, requests } from "@yapm/schema";
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import {
   connectMcpServer,
   createMcpServer,
   pastesCallback,
   requireMcpServer,
 } from "../services/mcpServers.js";
-import { act, builder, db } from "./builder.js";
-import { Request } from "./requests.js";
+import { act, builder, connection, db, pageArgs, paginate, requireViewer } from "./builder.js";
+import { GrantConnection, Request } from "./requests.js";
 
 type McpServerRow = typeof mcpServers.$inferSelect;
 
@@ -41,8 +41,47 @@ export const McpServer = builder.objectRef<McpServerRow>("McpServer").implement(
         "Whether its sign-in ends on a localhost page, whose address the owner pastes back as `callbackUrl`.",
       resolve: (s) => pastesCallback(s),
     }),
+    grants: t.field({
+      type: GrantConnection,
+      description:
+        "Who may use it without asking: standing `mcp.use` grants on it or on any server.",
+      args: pageArgs,
+      resolve: async (s, args, ctx) =>
+        paginate(
+          await db(ctx)
+            .select()
+            .from(grants)
+            .where(
+              and(
+                eq(grants.action, "mcp.use"),
+                or(eq(grants.resource, s.name), isNull(grants.resource)),
+                isNull(grants.revokedAt),
+              ),
+            )
+            .orderBy(desc(grants.createdAt))
+            .all(),
+          args,
+        ),
+    }),
   }),
 });
+
+const McpServerConnection = connection<McpServerRow>("McpServer", McpServer);
+
+builder.queryFields((t) => ({
+  mcpServers: t.field({
+    type: McpServerConnection,
+    description: "The outside MCP servers agents asked for, by name.",
+    args: pageArgs,
+    resolve: async (_root, args, ctx) => {
+      requireViewer(ctx);
+      return paginate(
+        await db(ctx).select().from(mcpServers).orderBy(asc(mcpServers.name)).all(),
+        args,
+      );
+    },
+  }),
+}));
 
 builder.objectField(Request, "mcpServer", (t) =>
   t.field({
@@ -152,6 +191,10 @@ builder.mutationFields((t) => ({
       id: t.arg.string({ required: true }),
       token: t.arg.string({ required: false }),
       callbackUrl: t.arg.string({ required: false }),
+      returnTo: t.arg.string({
+        required: false,
+        description: "A path on the hub to come back to after signing in, e.g. /company.",
+      }),
     },
     resolve: async (_root, args, ctx) => ({
       serverId: args.id,

@@ -83,10 +83,10 @@ export function createHub(deps: HubDeps) {
   /** Where providers send the owner back after signing in: back to the request, or why not. */
   app.get("/api/mcp/oauth/callback", async (c) => {
     const at = deps.now?.() ?? Date.now();
-    const { requestId, error } = await finishOAuth(deps, c.req.query(), at);
+    const { requestId, returnTo, error } = await finishOAuth(deps, c.req.query(), at);
     if (!error) await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
     const back = new URL(
-      requestId ? `/request/${requestId}` : "/approvals",
+      returnTo ?? (requestId ? `/request/${requestId}` : "/approvals"),
       relyingParty(c).origin,
     );
     if (error) back.searchParams.set("error", error);

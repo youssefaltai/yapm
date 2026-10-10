@@ -60,3 +60,17 @@ for (const path of pages.filter(Boolean)) {
     assert.ok(html.includes(`href="/${path}"`), `home links to /${path}`);
   });
 }
+
+const nav = (page) => page.match(/<header class="nav[\s\S]*?<\/header>/)[0];
+
+for (const path of pages.filter(Boolean)) {
+  test(`/${path} has the home page's nav, and it turns to glass on scroll`, () => {
+    const page = read(`${path}.html`);
+    assert.equal(nav(page), nav(html).replaceAll('href="#', 'href="/#'));
+    assert.match(page, /<script src="\/nav\.js" defer><\/script>/);
+  });
+}
+
+test("the home page loads the nav script too", () => {
+  assert.match(html, /<script src="\/nav\.js" defer><\/script>/);
+});

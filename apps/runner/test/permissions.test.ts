@@ -65,4 +65,37 @@ describe("deciding a tool call", () => {
       { action: "tool:slack__slack_send_message", resource: null },
     ]);
   });
+
+  it("lets plain read-only commands run unasked, as the Claude SDK does, and asks for the rest", async () => {
+    const asked: unknown[] = [];
+    const hub = {
+      graphql: async (_token: string, _query: string, variables: unknown) => {
+        asked.push(variables);
+        return { permissionUse: { allowed: true, pendingRequestId: null } };
+      },
+    } as unknown as HubClient;
+    const ctx = {
+      hub,
+      token: "t",
+      agent: "CEO",
+      issueId: null,
+      issue: null,
+      pollMs: 1,
+      signal: new AbortController().signal,
+      onEvent: () => {},
+    };
+    for (const command of ["ls", "ls -la src", "date", "pwd", "cat a.txt", "wc -l a.txt"])
+      expect(await decideTool(ctx, "Bash", { command })).toEqual({ behavior: "allow" });
+    expect(asked).toEqual([]);
+    for (const command of [
+      "touch x",
+      "ls > x",
+      "ls; rm x",
+      "cat $(rm x)",
+      "ls && rm x",
+      "ls\nrm x",
+    ])
+      await decideTool(ctx, "Bash", { command });
+    expect(asked).toHaveLength(6);
+  });
 });

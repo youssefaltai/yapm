@@ -13,11 +13,12 @@ let parts: Record<string, unknown>[] = [];
 let script: (push: (event: Event) => void) => void = () => {};
 let push: (event: Event) => void = () => {};
 const installs: string[][] = [];
+let authList = "";
 
 vi.mock("node:child_process", () => ({
   spawnSync: (command: string, args: string[]) => {
     installs.push([command, ...args]);
-    return { status: 0 };
+    return { status: 0, stdout: authList };
   },
   spawn: (_bin: string, args: string[], options: { env: Record<string, string> }) => {
     const proc = Object.assign(new EventEmitter(), {
@@ -65,7 +66,10 @@ vi.mock("@opencode-ai/sdk/v2", () => ({
       },
       session: {
         create: log("create", () => ({ id: "ses_1" })),
-        promptAsync: log("prompt", () => setTimeout(() => script(push))),
+        promptAsync: log("prompt", ({ sessionID }: { sessionID: string }) => {
+          if (sessionID === "ses_gone") throw new Error("Session not found");
+          setTimeout(() => script(push));
+        }),
         message: log("message", () => ({ parts })),
         abort: log("abort", () => push(idle)),
         get: log("get", () => ({
@@ -83,16 +87,20 @@ vi.mock("@opencode-ai/sdk/v2", () => ({
   },
 }));
 
-const { installOpencode, opencodeEngine } = await import("../src/opencode.js");
+const { installOpencode, opencodeEngine, opencodeSignedIn } = await import("../src/opencode.js");
 
 const idle = { type: "session.idle", properties: { sessionID: "ses_1" } };
-const part = (p: Record<string, unknown>) => ({
+const part = (p: Record<string, unknown>, sessionID = "ses_1") => ({
   type: "message.part.updated",
-  properties: { sessionID: "ses_1", part: { sessionID: "ses_1", ...p } },
+  properties: { sessionID, part: { sessionID, ...p } },
 });
-const ask = (id: string, permission: string, callID: string) => ({
+const ask = (id: string, permission: string, callID: string, sessionID = "ses_1") => ({
   type: "permission.asked",
-  properties: { id, sessionID: "ses_1", permission, tool: { messageID: "msg_1", callID } },
+  properties: { id, sessionID, permission, tool: { messageID: "msg_1", callID } },
+});
+const created = (id: string, parentID?: string) => ({
+  type: "session.created",
+  properties: { sessionID: id, info: { id, parentID } },
 });
 const structured = (output: unknown) => ({
   type: "message.updated",
@@ -340,6 +348,166 @@ describe("opencode engine", () => {
     const result = await engine()(run());
     expect(result.error).toBe("No credit");
     expect(spawned[0]?.killed).toBe(true);
+  });
+
+  it("shows each call in the transcript with Claude's input names, as soon as it runs", async () => {
+    const events: Record<string, unknown>[] = [];
+    const tool = (callID: string, name: string, state: Record<string, unknown>) =>
+      part({ id: callID, type: "tool", callID, tool: name, state });
+    start((push) => {
+      const edit = { filePath: "/tmp/a", oldString: "a", newString: "b", replaceAll: true };
+      push(tool("c1", "edit", { status: "pending", input: {} }));
+      push(tool("c1", "edit", { status: "running", input: edit }));
+      push(tool("c1", "edit", { status: "running", input: edit, title: "a" }));
+      push(tool("c1", "edit", { status: "completed", input: edit, output: "Edited" }));
+      push(
+        tool("c2", "grep", {
+          status: "error",
+          input: { pattern: "x", include: "*.ts" },
+          error: "No",
+        }),
+      );
+      push(idle);
+    });
+    await engine()(run({ onEvent: (event) => events.push(event) }));
+    expect(events.slice(0, 4)).toEqual([
+      {
+        type: "tool",
+        id: "c1",
+        name: "Edit",
+        input: '{"file_path":"/tmp/a","old_string":"a","new_string":"b","replace_all":true}',
+      },
+      { type: "tool_result", id: "c1", error: false, text: "Edited" },
+      { type: "tool", id: "c2", name: "Grep", input: '{"pattern":"x","glob":"*.ts"}' },
+      { type: "tool_result", id: "c2", error: true, text: "No" },
+    ]);
+  });
+
+  it("asks about and shows a patch as Claude's edits, one per file", async () => {
+    const seen: [string, Record<string, unknown>][] = [];
+    const events: Record<string, unknown>[] = [];
+    const patchText = [
+      "*** Begin Patch",
+      "*** Update File: a.txt",
+      "@@",
+      " keep",
+      "-hello",
+      "+bye",
+      "*** Add File: /tmp/b.txt",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+    start((push) => {
+      parts = [
+        { type: "tool", callID: "c1", tool: "apply_patch", state: { input: { patchText } } },
+      ];
+      push(ask("p1", "edit", "c1"));
+      push(
+        part({
+          id: "c1",
+          type: "tool",
+          callID: "c1",
+          tool: "apply_patch",
+          state: { status: "running", input: { patchText } },
+        }),
+      );
+      setTimeout(() => push(idle), 20);
+    });
+    await engine()(
+      run({
+        cwd: "/w",
+        onEvent: (event) => events.push(event),
+        canUseTool: async (tool, input) => {
+          seen.push([tool, input]);
+          return { behavior: "allow" };
+        },
+      }),
+    );
+    expect(seen).toEqual([
+      ["Edit", { file_path: "/w/a.txt", old_string: "keep\nhello", new_string: "keep\nbye" }],
+      ["Write", { file_path: "/tmp/b.txt", content: "new" }],
+    ]);
+    expect(events[0]).toEqual({
+      type: "tool",
+      id: "c1",
+      name: "Edit",
+      input: JSON.stringify({
+        file_path: "/w/a.txt",
+        old_string: "keep\nhello",
+        new_string: "keep\nbye",
+        files: ["/w/a.txt", "/tmp/b.txt"],
+      }),
+    });
+  });
+
+  it("answers, shows and counts its subagents' sessions, and no one else's", async () => {
+    const seen: string[] = [];
+    const events: Record<string, unknown>[] = [];
+    start((push) => {
+      parts = [
+        { type: "tool", callID: "c1", tool: "bash", state: { input: { command: "touch x" } } },
+      ];
+      push(created("ses_2", "ses_1"));
+      push(created("ses_3", "ses_2"));
+      push(created("ses_9", "ses_8"));
+      push(ask("p1", "bash", "c1", "ses_3"));
+      push(ask("p9", "bash", "c1", "ses_9"));
+      push(part({ id: "x", type: "text", text: "Sub done.", time: { start: 1, end: 2 } }, "ses_3"));
+      push(part({ id: "s", type: "step-finish" }, "ses_3"));
+      push(part({ id: "y", type: "text", text: "Not mine.", time: { start: 1, end: 2 } }, "ses_9"));
+      setTimeout(() => push(idle), 20);
+    });
+    const result = await engine()(
+      run({
+        onEvent: (event) => events.push(event),
+        canUseTool: async (tool) => {
+          seen.push(tool);
+          return { behavior: "allow" };
+        },
+      }),
+    );
+    expect(seen).toEqual(["Bash"]);
+    expect(calls.message).toEqual([{ sessionID: "ses_3", messageID: "msg_1" }]);
+    expect(calls.reply).toEqual([{ requestID: "p1", reply: "once" }]);
+    expect(events.filter((e) => e.type === "text")).toEqual([{ type: "text", text: "Sub done." }]);
+    expect(calls.get).toHaveLength(3);
+    expect(result.usage).toEqual({
+      inputTokens: 450,
+      outputTokens: 45,
+      numTurns: 0,
+      costUsd: 0.06,
+    });
+  });
+
+  it("ends the transcript with a result when the run fails", async () => {
+    const events: Record<string, unknown>[] = [];
+    start(() => {});
+    const result = await engine()(
+      run({ resume: "ses_gone", onEvent: (event) => events.push(event) }),
+    );
+    expect(result.error).toBe("Session not found");
+    expect(events).toEqual([{ type: "result", subtype: "error", turns: 0, costUsd: 0 }]);
+  });
+
+  it("tells the owner to sign in again when the provider refuses the sign-in", async () => {
+    start((push) => {
+      const data = { providerID: "openai", message: "Token expired." };
+      const error = { name: "ProviderAuthError", data };
+      push({ type: "session.error", properties: { sessionID: "ses_1", error } });
+      push(idle);
+    });
+    const result = await engine()(run());
+    expect(result.error).toBe("Token expired. Run: yapm-runner login --opencode");
+  });
+
+  it("knows whether OpenCode has a provider to run on", () => {
+    authList = "┌  Credentials ~/.local/share/opencode/auth.json\n│\n└  0 credentials\n";
+    expect(opencodeSignedIn("/opt/opencode", "/h")).toBe(false);
+    expect(installs.at(-1)).toEqual(["/opt/opencode", "auth", "list"]);
+    authList += "┌  Environment\n│\n●  OpenAI OPENAI_API_KEY\n│\n└  1 environment variable\n";
+    expect(opencodeSignedIn("/opt/opencode", "/h")).toBe(true);
+    authList = "●  OpenAI oauth\n│\n└  2 credentials\n";
+    expect(opencodeSignedIn("/opt/opencode", "/h")).toBe(true);
   });
 
   it("installs its own OpenCode only when it's missing or another version", () => {

@@ -15,6 +15,12 @@ export const SAFE_TOOLS = new Set([
 
 export const HUB_MCP = "yapm";
 
+/**
+ * Shell commands that only read, which run unasked on both engines: a few the Claude SDK already
+ * approves on its own, with no shell operators, so nothing can be chained or redirected.
+ */
+const READ_ONLY_COMMAND = /^(ls|pwd|date|cat|head|tail|wc|whoami)( [^;&|<>`$(){}\\\n]*)?$/;
+
 export type ToolDecision = { behavior: "allow" } | { behavior: "deny"; message: string };
 
 /** What a permission applies to: the command for Bash, the file for edits, else nothing. */
@@ -128,6 +134,8 @@ export async function decideTool(
   readOnly = false,
 ): Promise<ToolDecision> {
   if (SAFE_TOOLS.has(tool) || tool.startsWith(`mcp__${HUB_MCP}__`)) return { behavior: "allow" };
+  if (tool === "Bash" && READ_ONLY_COMMAND.test(String(input.command ?? "").trim()))
+    return { behavior: "allow" };
   const action = `tool:${tool.startsWith("mcp__") ? tool.slice(5) : tool}`;
   const resource = readOnly ? READ_ONLY : resourceOf(tool, input);
   const now = await use(ctx, action, resource);

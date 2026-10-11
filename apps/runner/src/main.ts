@@ -17,11 +17,11 @@ import {
 } from "./config.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
-import { installOpencode, opencodeEngine, opencodeLogin } from "./opencode.js";
+import { installOpencode, opencodeEngine, opencodeLogin, opencodeSignedIn } from "./opencode.js";
 import { probePlan, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
@@ -202,8 +202,16 @@ async function main() {
 
   if (command === "start") {
     useApiKey(config);
-    const names = engineNames(config, () => claudeReady(config.apiKey));
+    let names = engineNames(config, () => claudeReady(config.apiKey));
     const claude = names.includes("claude");
+    const opencodeBin = names.includes("opencode") ? installOpencode(home, say) : "";
+    // OpenCode's agents only get runs here once it has a provider to run them on.
+    if (opencodeBin && !opencodeSignedIn(opencodeBin, home)) {
+      say(
+        "OpenCode has no provider signed in, so its agents won't run here. Run: yapm-runner login --opencode",
+      );
+      names = names.filter((name) => name !== "opencode");
+    }
     const runner = new Runner({
       hub,
       token: config.token,
@@ -212,7 +220,7 @@ async function main() {
         ...(names.includes("opencode")
           ? {
               opencode: opencodeEngine({
-                bin: installOpencode(home, say),
+                bin: opencodeBin,
                 home,
                 models: config.opencode?.models,
               }),

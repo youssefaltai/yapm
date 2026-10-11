@@ -176,7 +176,7 @@ const SCENARIOS = [
       },
     ],
     isolation:
-      "Parsnip Engineer only runs on parsnip-macbook, Okay Labs Engineer only on okaylabs-thinkpad, each machine with its own Claude sign-in. Neither client's code reaches the other's machine.",
+      "Parsnip Engineer only runs on parsnip-macbook, Okay Labs Engineer only on okaylabs-thinkpad, each machine with its own sign-in. Neither client's code reaches the other's machine.",
     work: "Found it: the pay button retries without an idempotency key, so slow networks charge twice. The fix is ready; its test needs a migration on staging.",
     request: {
       from: "Parsnip Engineer",

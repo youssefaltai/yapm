@@ -152,7 +152,7 @@ export function AskView({ workspace }: { workspace: Workspace }) {
           <EmptyState
             icon="machine"
             title="Add your first machine"
-            description={`${name} works on your own Mac or Linux computer, signed in with your Claude account. One command sets it up.`}
+            description={`${name} works on your own Mac or Linux computer, on your own Claude, ChatGPT or Copilot plan, or an API key. One command sets it up.`}
             action={{
               label: "Add machine",
               onClick: async () => setSetup(await machineSetup(machines.data?.machines ?? [])),

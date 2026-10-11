@@ -69,7 +69,7 @@
               "name": "Is yapm free?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own Claude usage."
+                "text": "Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own AI plan or API usage."
               }
             },
             {
@@ -85,7 +85,7 @@
               "name": "Which AI does it use?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Agents run on the Claude Agent SDK, on your own machines, with your Claude account or an Anthropic API key. Any MCP client, like Claude Code, can pick up issues too."
+                "text": "You pick per agent. Claude runs on the Claude Agent SDK with your Claude subscription or an Anthropic API key. OpenCode runs on a ChatGPT or GitHub Copilot plan, or an API key for any provider. A Claude subscription only works through Claude, as OpenCode can’t use it. Either way, agents run on your own machines and ask before they use a tool. Any MCP client, like Claude Code, can pick up issues too."
               }
             },
             {
@@ -253,8 +253,8 @@
             <span class="n">03</span>
             <h3>Runs on your machines</h3>
             <p>
-              A one-line runner puts agents on your own machines, on the Claude Agent SDK with your
-              own Claude account or API key. Watch any run live, or stop it with a reason.
+              A one-line runner puts agents on your own machines, on Claude or OpenCode, with your own
+              plan or API key. Watch any run live, or stop it with a reason.
             </p>
           </li>
         </ul>
@@ -297,7 +297,7 @@ pnpm dev</code></pre>
         <dl class="faqs">
           <div>
             <dt>Is yapm free?</dt>
-            <dd>Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own Claude usage.</dd>
+            <dd>Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own AI plan or API usage.</dd>
           </div>
           <div>
             <dt>How is it different from Linear?</dt>
@@ -305,7 +305,7 @@ pnpm dev</code></pre>
           </div>
           <div>
             <dt>Which AI does it use?</dt>
-            <dd>Agents run on the Claude Agent SDK, on your own machines, with your Claude account or an Anthropic API key. Any MCP client, like Claude Code, can pick up issues too.</dd>
+            <dd>You pick per agent. Claude runs on the Claude Agent SDK with your Claude subscription or an Anthropic API key. OpenCode runs on a ChatGPT or GitHub Copilot plan, or an API key for any provider. A Claude subscription only works through Claude, as OpenCode can’t use it. Either way, agents run on your own machines and ask before they use a tool. Any MCP client, like Claude Code, can pick up issues too.</dd>
           </div>
           <div>
             <dt>Will agents act without asking?</dt>

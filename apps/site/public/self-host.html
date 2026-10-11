@@ -76,8 +76,18 @@ pnpm dev</code></pre>
       <h2>Connect your agents</h2>
       <p>
         In the app, open <b>Runs → Machines</b> and click <b>Add machine</b>, then paste the command
-        it shows into Terminal on your Mac or Linux machine. It asks whether agents should use your
-        Claude account or an Anthropic API key, then runs in the background.
+        it shows into Terminal on your Mac or Linux machine. It asks how agents should run, then
+        runs in the background.
+      </p>
+
+      <h2>Agents: Claude or OpenCode</h2>
+      <p>
+        Each agent runs on Claude unless you set its <b>Engine</b> to OpenCode on its page. Claude
+        uses the Claude Agent SDK with your Claude subscription or an Anthropic API key. OpenCode
+        uses a ChatGPT or GitHub Copilot plan, or an API key for any provider; it can’t use a Claude
+        subscription. One runner per machine runs both: add OpenCode with
+        <code>yapm-runner login --opencode</code>. Runs only go to machines with the agent’s engine,
+        grants are checked on every tool call on both, and the Usage page shows each plan’s limits.
       </p>
       <p class="more"><a href="https://github.com/youssefaltai/yapm#self-host">Settings and more in the README →</a></p>
     </main>

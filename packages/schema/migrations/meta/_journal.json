@@ -169,6 +169,13 @@
       "when": 1791759374375,
       "tag": "0023_run_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1791760628199,
+      "tag": "0024_machine_plans",
+      "breakpoints": true
     }
   ]
 }

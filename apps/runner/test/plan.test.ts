@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRateLimit, usageFrom } from "../src/plan.js";
+import { applyRateLimit, PlanTracker, planFromHeaders, usageFrom } from "../src/plan.js";
 
 describe("plan readings", () => {
   const at = Date.parse("2026-10-08T12:00:00Z");
@@ -72,5 +72,113 @@ describe("plan readings", () => {
     expect(applyRateLimit(first, { status: "rejected" }, at)).toBe(first);
     const second = applyRateLimit(first, { status: "rejected", rateLimitType: "seven_day" }, at);
     expect(second?.limits[0]).toMatchObject({ utilization: 50, status: "rejected" });
+  });
+
+  it("reads a ChatGPT plan's windows off a response's headers", () => {
+    // As a real ChatGPT Plus response sends them.
+    const plan = planFromHeaders(
+      {
+        "x-codex-plan-type": "plus",
+        "x-codex-primary-used-percent": "12",
+        "x-codex-primary-window-minutes": "300",
+        "x-codex-primary-reset-at": "1791766345",
+        "x-codex-secondary-used-percent": "3.5",
+        "x-codex-secondary-window-minutes": "10080",
+        "x-codex-secondary-reset-at": "1792353145",
+        "x-codex-credits-has-credits": "False",
+      },
+      at,
+    );
+    expect(plan).toEqual({
+      provider: "chatgpt",
+      name: "plus",
+      usage: {
+        observedAt: at,
+        source: "rate_limit",
+        available: true,
+        limits: [
+          {
+            kind: "five_hour",
+            label: "Current session (5 hours)",
+            utilization: 12,
+            resetsAt: 1_791_766_345_000,
+            status: null,
+          },
+          {
+            kind: "seven_day",
+            label: "This week",
+            utilization: 3.5,
+            resetsAt: 1_792_353_145_000,
+            status: null,
+          },
+        ],
+        extraUsage: null,
+      },
+    });
+  });
+
+  it("keeps a ChatGPT window it can't name, and leaves out what wasn't said", () => {
+    const plan = planFromHeaders(
+      { "x-codex-primary-window-minutes": "60", "x-codex-primary-reset-at": "1791766345" },
+      at,
+    );
+    expect(plan?.name).toBeNull();
+    // A missing percentage isn't 0%.
+    expect(plan?.usage.limits).toEqual([
+      {
+        kind: "window:60",
+        label: "60 minutes",
+        utilization: null,
+        resetsAt: 1_791_766_345_000,
+        status: null,
+      },
+    ]);
+  });
+
+  it("reads Copilot's premium requests for the month", () => {
+    const plan = planFromHeaders(
+      {
+        "x-quota-snapshot-chat": "ent=-1&ov=0.0&ovPerm=false&rem=100&rst=2026-11-01T00:00:00Z",
+        "x-quota-snapshot-premium_interactions":
+          "ent=300&ov=0.0&ovPerm=false&rem=72.5&rst=2026-11-01T00:00:00Z",
+      },
+      at,
+    );
+    expect(plan).toEqual({
+      provider: "copilot",
+      name: null,
+      usage: {
+        observedAt: at,
+        source: "rate_limit",
+        available: true,
+        limits: [
+          {
+            kind: "monthly",
+            label: "Premium requests this month",
+            utilization: 27.5,
+            resetsAt: Date.parse("2026-11-01T00:00:00Z"),
+            status: null,
+          },
+        ],
+        extraUsage: null,
+      },
+    });
+    // Unlimited premium requests have no window to fill.
+    expect(
+      planFromHeaders({ "x-quota-snapshot-premium_models": "ent=-1&rem=100&rst=" }, at)?.usage
+        .limits,
+    ).toEqual([]);
+    expect(planFromHeaders({ "content-type": "text/event-stream" }, at)).toBeNull();
+  });
+
+  it("sends an OpenCode plan's newest reading once", () => {
+    const tracker = new PlanTracker();
+    const chatgpt = planFromHeaders({ "x-codex-primary-used-percent": "5" }, at);
+    if (!chatgpt) throw new Error("no plan");
+    tracker.update({ plan: chatgpt }, at);
+    const report = tracker.pending();
+    expect(report).toEqual({ plans: [chatgpt] });
+    tracker.sent(report);
+    expect(tracker.pending()).toEqual({});
   });
 });

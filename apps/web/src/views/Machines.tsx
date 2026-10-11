@@ -19,7 +19,7 @@ import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { DetailLayout, Property, PropertyList, propertyButton, timeAgo, useStore } from "../ui.js";
 import { RUN_SUMMARY, RunRows, type RunSummary, RunsTabs } from "./Runs.js";
-import { Meter, type PlanLimit, planName } from "./Usage.js";
+import { type MachinePlan, Meter, type PlanLimit, PROVIDERS, planName } from "./Usage.js";
 
 interface Machine {
   id: string;
@@ -37,12 +37,18 @@ interface Machine {
   runningCount: number;
   claudeAccount: { email: string | null; subscriptionType: string | null } | null;
   planUsage: { available: boolean; limits: PlanLimit[] } | null;
+  plans: {
+    provider: MachinePlan["provider"];
+    name: string | null;
+    usage: { available: boolean; limits: PlanLimit[] } | null;
+  }[];
 }
 
 const MACHINES = `{ machines {
   id name originalName status tags capacity version online lastSeenAt createdAt runningCount
   claudeAccount { email subscriptionType }
   planUsage { available limits { kind label utilization resetsAt status } }
+  plans { provider name usage { available limits { kind label utilization resetsAt status } } }
 } }`;
 
 export interface SetupCommand {
@@ -93,8 +99,12 @@ function TagChips({ tags }: { tags: string[] }) {
 
 /** The plan window that's live and fullest, so a row can show how much room is left. */
 function busiestLimit(m: Machine) {
-  if (!m.planUsage?.available) return undefined;
-  return m.planUsage.limits
+  return m.plans
+    .flatMap((p) =>
+      p.usage?.available
+        ? p.usage.limits.map((l) => ({ ...l, label: `${PROVIDERS[p.provider]}, ${l.label}` }))
+        : [],
+    )
     .filter(
       (l) => l.utilization !== null && (!l.resetsAt || new Date(l.resetsAt).getTime() > Date.now()),
     )
@@ -493,6 +503,7 @@ export function MachinePage({ id }: { id: string }) {
                 <Property label="Added">{timeAgo(m.createdAt)}</Property>
               </PropertyList>
               <ClaudePlan machine={m} />
+              <OpencodePlans machine={m} />
             </>
           }
         >
@@ -600,6 +611,30 @@ function ClaudePlan({ machine: m }: { machine: Machine }) {
       </button>
     </section>
   );
+}
+
+/** The ChatGPT or Copilot plans OpenCode runs on here, as its last runs read them. */
+function OpencodePlans({ machine: m }: { machine: Machine }) {
+  return m.plans
+    .filter((p) => p.provider !== "claude")
+    .map((p) => (
+      <section
+        key={p.provider}
+        aria-label={PROVIDERS[p.provider]}
+        className="mt-4 border-t border-line pt-4"
+      >
+        <PropertyList title={PROVIDERS[p.provider]}>
+          <Property label="Plan">{planName(p.name) ?? "Signed in"}</Property>
+        </PropertyList>
+        {p.usage?.limits.length ? (
+          <ul className="mt-3 space-y-3 px-2">
+            {p.usage.limits.map((l) => (
+              <Meter key={l.kind} limit={l} />
+            ))}
+          </ul>
+        ) : null}
+      </section>
+    ));
 }
 
 /**

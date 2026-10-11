@@ -6,6 +6,7 @@ import { openDatabase } from "../../hub-node/src/db.js";
 import { Runner } from "../src/daemon.js";
 import type { Engine, EngineRun } from "../src/engine.js";
 import { HubClient } from "../src/hub.js";
+import { planFromHeaders } from "../src/plan.js";
 
 // The daemon against a real hub in memory; only the model is a script.
 describe("runner daemon", () => {
@@ -332,6 +333,16 @@ describe("runner daemon", () => {
           resetsAt: Math.floor(resetsAt / 1000),
         },
       });
+      // An OpenCode run's plan, from its provider's headers.
+      const chatgpt = planFromHeaders(
+        {
+          "x-codex-plan-type": "plus",
+          "x-codex-primary-used-percent": "7",
+          "x-codex-primary-window-minutes": "300",
+        },
+        Date.now(),
+      );
+      if (chatgpt) run.onPlan?.({ plan: chatgpt });
       return {
         output: { outcome: "done", summary: "Done." },
         sessionId: "session-plan",
@@ -364,6 +375,24 @@ describe("runner daemon", () => {
         ],
       },
     });
+    const machines = await gql<{
+      machines: {
+        name: string;
+        plans: {
+          provider: string;
+          name: string | null;
+          usage: { limits: { kind: string; utilization: number }[] };
+        }[];
+      }[];
+    }>("{ machines { name plans { provider name usage { limits { kind utilization } } } } }");
+    expect(machines.machines.find((m) => m.name === "Plan machine")?.plans).toEqual([
+      { provider: "claude", name: "max", usage: expect.any(Object) },
+      {
+        provider: "chatgpt",
+        name: "plus",
+        usage: { limits: [{ kind: "five_hour", utilization: 7 }] },
+      },
+    ]);
     // Nothing new: the next check-in doesn't send the reading again.
     expect(planRunner.plan.pending()).toEqual({});
   });

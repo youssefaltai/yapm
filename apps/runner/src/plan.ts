@@ -39,11 +39,20 @@ export interface PlanUsage {
   } | null;
 }
 
+/** A plan OpenCode runs on, as its provider's responses describe it. */
+export interface OpencodePlan {
+  provider: "chatgpt" | "copilot";
+  /** plus, pro…, when the provider says. */
+  name: string | null;
+  usage: PlanUsage;
+}
+
 /** Something a session or a probe learned about the plan. */
 export type PlanUpdate =
   | { account: ClaudeAccount }
   | { usage: PlanUsage }
-  | { rateLimit: SDKRateLimitInfo };
+  | { rateLimit: SDKRateLimitInfo }
+  | { plan: OpencodePlan };
 
 const LABELS: Record<string, string> = {
   five_hour: "Current session (5 hours)",
@@ -153,14 +162,83 @@ export function applyRateLimit(
   };
 }
 
+const number = (value: string | undefined) => {
+  const n = value?.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+const CHATGPT_WINDOWS: Record<number, [string, string]> = {
+  300: ["five_hour", "Current session (5 hours)"],
+  10080: ["seven_day", "This week"],
+};
+
+/**
+ * A plan from the rate-limit headers on a ChatGPT (Codex) or Copilot response; OpenCode's
+ * plugin passes them on, and nothing else, so no sign-in or extra call is involved.
+ */
+export function planFromHeaders(headers: Record<string, string>, at: number): OpencodePlan | null {
+  const usage = (limits: PlanLimit[]): PlanUsage => ({
+    observedAt: at,
+    source: "rate_limit",
+    available: true,
+    limits,
+    extraUsage: null,
+  });
+  if (Object.keys(headers).some((h) => h.startsWith("x-codex-"))) {
+    const limits: PlanLimit[] = [];
+    for (const window of ["primary", "secondary"]) {
+      const used = number(headers[`x-codex-${window}-used-percent`]);
+      const minutes = number(headers[`x-codex-${window}-window-minutes`]);
+      const reset = number(headers[`x-codex-${window}-reset-at`]);
+      if (used === null && minutes === null && reset === null) continue;
+      const [kind, label] = CHATGPT_WINDOWS[minutes ?? 0] ?? [
+        minutes === null ? window : `window:${minutes}`,
+        minutes === null ? window : `${minutes} minutes`,
+      ];
+      limits.push({
+        kind,
+        label,
+        utilization: used,
+        resetsAt: reset === null ? null : reset * 1000,
+        status: null,
+      });
+    }
+    return {
+      provider: "chatgpt",
+      name: headers["x-codex-plan-type"] ?? null,
+      usage: usage(limits),
+    };
+  }
+  // Copilot's premium requests, as `ent=300&rem=72.5&rst=<date>`; `ent=-1` is unlimited.
+  const snapshot =
+    headers["x-quota-snapshot-premium_models"] ?? headers["x-quota-snapshot-premium_interactions"];
+  if (snapshot === undefined) return null;
+  const quota = new URLSearchParams(snapshot);
+  const remaining = number(quota.get("rem") ?? undefined);
+  const limits: PlanLimit[] =
+    quota.get("ent") === "-1"
+      ? []
+      : [
+          {
+            kind: "monthly",
+            label: "Premium requests this month",
+            utilization: remaining === null ? null : 100 - remaining,
+            resetsAt: time(quota.get("rst")),
+            status: null,
+          },
+        ];
+  return { provider: "copilot", name: null, usage: usage(limits) };
+}
+
 /** The machine's latest picture of its plan, and what the hub hasn't heard yet. */
 export class PlanTracker {
   account: ClaudeAccount | null = null;
   usage: PlanUsage | null = null;
+  /** OpenCode's plans, newest reading per provider. */
+  plans = new Map<OpencodePlan["provider"], OpencodePlan>();
   /** When the last full /usage reading came in. */
   private fullAt = 0;
   private triedAt = 0;
-  private dirty = { account: false, usage: false };
+  private dirty = { account: false, usage: false, plans: false };
 
   constructor(
     /** How often to take a full reading. */
@@ -173,6 +251,9 @@ export class PlanTracker {
         this.account = update.account;
         this.dirty.account = true;
       }
+    } else if ("plan" in update) {
+      this.plans.set(update.plan.provider, update.plan);
+      this.dirty.plans = true;
     } else if ("usage" in update) {
       this.usage = update.usage;
       this.fullAt = at;
@@ -198,11 +279,13 @@ export class PlanTracker {
     return {
       ...(this.dirty.account && this.account ? { claudeAccount: this.account } : {}),
       ...(this.dirty.usage && this.usage ? { planUsage: this.usage } : {}),
+      ...(this.dirty.plans ? { plans: [...this.plans.values()] } : {}),
     };
   }
 
   sent(report: ReturnType<PlanTracker["pending"]>) {
     if (report.claudeAccount === this.account) this.dirty.account = false;
     if (report.planUsage === this.usage) this.dirty.usage = false;
+    if (report.plans?.every((p) => this.plans.get(p.provider) === p)) this.dirty.plans = false;
   }
 }

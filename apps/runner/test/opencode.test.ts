@@ -7,7 +7,12 @@ import type { EngineRun } from "../src/engine.js";
 
 // One fake `opencode serve` and its client; each test scripts what the model does.
 type Event = { type: string; properties: Record<string, unknown> };
-let spawned: { args: string[]; env: Record<string, string>; killed: boolean }[] = [];
+let spawned: {
+  args: string[];
+  env: Record<string, string>;
+  killed: boolean;
+  stderr: EventEmitter;
+}[] = [];
 let calls: Record<string, unknown[]> = {};
 let parts: Record<string, unknown>[] = [];
 let script: (push: (event: Event) => void) => void = () => {};
@@ -28,7 +33,7 @@ vi.mock("node:child_process", () => ({
         record.killed = true;
       },
     });
-    const record = { args, env: options.env, killed: false };
+    const record = { args, env: options.env, killed: false, stderr: proc.stderr };
     spawned.push(record);
     setTimeout(() =>
       proc.stdout.emit("data", "opencode server listening on http://127.0.0.1:4096\n"),
@@ -171,8 +176,26 @@ describe("opencode engine", () => {
     expect(env.XDG_CONFIG_HOME).toBe("/h/opencode/config");
     expect(env.OPENCODE_DISABLE_PROJECT_CONFIG).toBe("1");
     expect(env.OPENCODE_DISABLE_CLAUDE_CODE).toBe("1");
-    expect(env.OPENCODE_PURE).toBe("1");
+    // Pure mode would skip the runner's own plugin, the only one there is.
+    expect(env.OPENCODE_PURE).toBeUndefined();
+    expect(config().plugin).toEqual(["file:///h/opencode/plan.js"]);
     expect(env.PATH).toBe(process.env.PATH);
+  });
+
+  it("passes on the plan readings its plugin prints", async () => {
+    const onPlan = vi.fn();
+    start((push) => {
+      spawned[0]?.stderr.emit(
+        "data",
+        'INFO noise\nyapm-plan {"x-codex-plan-type":"plus","x-codex-primary-used-percent":"40"}\n',
+      );
+      push(idle);
+    });
+    await engine()(run({ onPlan }));
+    expect(onPlan).toHaveBeenCalledTimes(1);
+    expect(onPlan.mock.calls[0]?.[0]).toMatchObject({
+      plan: { provider: "chatgpt", name: "plus", usage: { limits: [{ utilization: 40 }] } },
+    });
   });
 
   it("asks the runner about each call under Claude's tool names, once per call", async () => {
@@ -550,5 +573,36 @@ describe("opencode engine", () => {
     installs.length = 0;
     expect(installOpencode(home, () => {})).toBe(bin);
     expect(installs).toEqual([]);
+  });
+
+  it("installs a plugin that prints only the plan's headers, once per response", async () => {
+    const home = mkdtempSync(join(tmpdir(), "runner-"));
+    installOpencode(home, () => {});
+    const { YapmPlan } = await import(join(home, "opencode", "plan.js"));
+    const real = globalThis.fetch;
+    const lines: string[] = [];
+    const write = vi.spyOn(process.stderr, "write").mockImplementation((line) => {
+      lines.push(String(line));
+      return true;
+    });
+    globalThis.fetch = async () =>
+      new Response("{}", {
+        headers: {
+          "x-codex-primary-used-percent": "40",
+          "x-codex-turn-state": "secret-ish",
+          "set-cookie": "a=b",
+        },
+      });
+    try {
+      // Loaded twice, it still wraps fetch once.
+      await YapmPlan();
+      await YapmPlan();
+      const response = await fetch("https://chatgpt.com/backend-api/codex/responses");
+      expect(await response.text()).toBe("{}");
+    } finally {
+      globalThis.fetch = real;
+      write.mockRestore();
+    }
+    expect(lines).toEqual(['yapm-plan {"x-codex-primary-used-percent":"40"}\n']);
   });
 });

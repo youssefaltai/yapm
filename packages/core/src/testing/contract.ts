@@ -2825,6 +2825,96 @@ export function hubContract(
       await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", { id });
     });
 
+    it("keeps each OpenCode plan a machine reports, apart from its Claude login", async () => {
+      const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+        "mutation { machineSetupTokenCreate { token } }",
+      );
+      const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+        method: "POST",
+        json: {
+          name: "OpenCode box",
+          tags: [],
+          setupToken: made.data?.machineSetupTokenCreate.token,
+        },
+      });
+      const { id, token } = joined.body;
+      const beat = (json: unknown) =>
+        client.json("/api/runner/heartbeat", { method: "POST", json, token });
+      const now = Date.now();
+      const resets = new Date(now + 3 * 3_600_000).toISOString();
+      const chatgpt = (observedAt: number, used: number) => ({
+        provider: "chatgpt",
+        name: "plus",
+        usage: {
+          observedAt,
+          source: "rate_limit",
+          available: true,
+          limits: [
+            {
+              kind: "five_hour",
+              label: "Current session (5 hours)",
+              utilization: used,
+              resetsAt: resets,
+            },
+          ],
+        },
+      });
+      await beat({
+        engines: ["opencode"],
+        plans: [
+          chatgpt(now - 60_000, 30),
+          { provider: "copilot", name: null, usage: { observedAt: now - 60_000, limits: [] } },
+          // Unknown providers and readings without a time are dropped.
+          { provider: "gemini", usage: { observedAt: now, limits: [] } },
+          { provider: "chatgpt", usage: {} },
+        ],
+      });
+      // Each provider keeps its newest reading; a late, older one doesn't replace it.
+      await beat({ plans: [chatgpt(now - 3_600_000, 99)] });
+      await beat({ plans: [chatgpt(now - 30_000, 45)] });
+      const read = await client.graphql<{
+        machines: {
+          id: string;
+          plans: {
+            provider: string;
+            name: string | null;
+            usage: { limits: { kind: string; utilization: number | null; resetsAt: string }[] };
+          }[];
+        }[];
+        claudeSubscriptions: { machines: { id: string }[] }[];
+      }>(
+        "{ machines { id plans { provider name usage { limits { kind utilization resetsAt } } } } claudeSubscriptions { machines { id } } }",
+      );
+      expect(read.data?.machines.find((m) => m.id === id)?.plans).toEqual([
+        {
+          provider: "chatgpt",
+          name: "plus",
+          usage: { limits: [{ kind: "five_hour", utilization: 45, resetsAt: resets }] },
+        },
+        { provider: "copilot", name: null, usage: { limits: [] } },
+      ]);
+      // A machine without Claude isn't a Claude login.
+      expect(read.data?.claudeSubscriptions.some((s) => s.machines.some((m) => m.id === id))).toBe(
+        false,
+      );
+
+      // Its Claude plan, once it has Claude, comes first in the list.
+      await beat({
+        engines: ["claude", "opencode"],
+        claudeAccount: { email: "box@example.com", subscriptionType: "max" },
+        planUsage: { observedAt: now, source: "usage", limits: [] },
+      });
+      const both = await client.graphql<{
+        machines: { id: string; plans: { provider: string; name: string | null }[] }[];
+      }>("{ machines { id plans { provider name } } }");
+      expect(both.data?.machines.find((m) => m.id === id)?.plans).toEqual([
+        { provider: "claude", name: "max" },
+        { provider: "chatgpt", name: "plus" },
+        { provider: "copilot", name: null },
+      ]);
+      await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", { id });
+    });
+
     it("shows each Claude login's plan limits and what runs used, per day", async () => {
       const gql = <T = Record<string, unknown>>(
         query: string,

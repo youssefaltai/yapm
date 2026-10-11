@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EngineRun } from "../src/engine.js";
 
 // One fake `opencode serve` and its client; each test scripts what the model does.
@@ -18,6 +18,29 @@ let parts: Record<string, unknown>[] = [];
 let script: (push: (event: Event) => void) => void = () => {};
 let push: (event: Event) => void = () => {};
 const installs: string[][] = [];
+// A stdio MCP server: answers JSON-RPC lines with the tools in `mcpTools`.
+let mcpTools: Record<string, unknown>[] = [];
+let mcpSpawns: { command: string[]; env: Record<string, string>; killed: boolean }[] = [];
+const stdioMcp = (bin: string, args: string[], env: Record<string, string>) => {
+  const record = { command: [bin, ...args], env, killed: false };
+  mcpSpawns.push(record);
+  const stdout = new EventEmitter();
+  const answer = (id: unknown, result: unknown) =>
+    setTimeout(() => stdout.emit("data", `${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`));
+  return Object.assign(new EventEmitter(), {
+    stdout,
+    stdin: Object.assign(new EventEmitter(), {
+      write: (line: string) => {
+        const { id, method } = JSON.parse(line);
+        if (method === "initialize") answer(id, { capabilities: {} });
+        if (method === "tools/list") answer(id, { tools: mcpTools });
+      },
+    }),
+    kill: () => {
+      record.killed = true;
+    },
+  });
+};
 let authList = "";
 
 vi.mock("node:child_process", () => ({
@@ -25,7 +48,8 @@ vi.mock("node:child_process", () => ({
     installs.push([command, ...args]);
     return { status: 0, stdout: authList };
   },
-  spawn: (_bin: string, args: string[], options: { env: Record<string, string> }) => {
+  spawn: (bin: string, args: string[], options: { env: Record<string, string> }) => {
+    if (bin !== "/opt/opencode") return stdioMcp(bin, args, options.env);
     const proc = Object.assign(new EventEmitter(), {
       stdout: new EventEmitter(),
       stderr: new EventEmitter(),
@@ -144,6 +168,14 @@ const start = (scripted: typeof script) => {
 const config = () => JSON.parse(spawned[0]?.env.OPENCODE_CONFIG_CONTENT ?? "{}");
 
 describe("opencode engine", () => {
+  // No MCP server answers unless a test says so.
+  beforeEach(() =>
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("offline");
+    }),
+  );
+  afterEach(() => vi.unstubAllGlobals());
+
   it("gives agents the hub's MCP server and the machine's, in OpenCode's shape", async () => {
     start((push) => push(idle));
     await engine()(
@@ -232,17 +264,24 @@ describe("opencode engine", () => {
         },
       }),
     );
-    expect(seen).toEqual([
-      ["mcp__yapm__create_comment", { body: "hi" }],
-      ["Write", { file_path: "/etc/x", content: "" }],
-      ["Bash", { command: "rm -rf /" }],
-    ]);
-    expect(calls.reply).toEqual([
-      { requestID: "p1", reply: "once" },
-      { requestID: "p2", reply: "once" },
-      { requestID: "p3", reply: "once" },
-      { requestID: "p4", reply: "reject", message: "Not that" },
-    ]);
+    // An MCP call first lists its server's tools, so it may be answered later.
+    expect(seen).toHaveLength(3);
+    expect(seen).toEqual(
+      expect.arrayContaining([
+        ["mcp__yapm__create_comment", { body: "hi" }],
+        ["Write", { file_path: "/etc/x", content: "" }],
+        ["Bash", { command: "rm -rf /" }],
+      ]),
+    );
+    expect(calls.reply).toHaveLength(4);
+    expect(calls.reply).toEqual(
+      expect.arrayContaining([
+        { requestID: "p1", reply: "once" },
+        { requestID: "p2", reply: "once" },
+        { requestID: "p3", reply: "once" },
+        { requestID: "p4", reply: "reject", message: "Not that" },
+      ]),
+    );
   });
 
   it("gives a decision no tools but its structured answer, and returns that answer", async () => {
@@ -266,7 +305,6 @@ describe("opencode engine", () => {
       sessionID: "ses_1",
       model: { providerID: "openai", modelID: "gpt-5" },
       variant: "high",
-      system: "Be brief.",
       format: { type: "json_schema", schema: {} },
       parts: [{ type: "text", text: "Plan my week" }],
     });
@@ -424,6 +462,125 @@ describe("opencode engine", () => {
       { type: "tool", id: "c2", name: "Grep", input: '{"pattern":"x","glob":"*.ts"}' },
       { type: "tool_result", id: "c2", error: true, text: "No" },
     ]);
+  });
+
+  it("makes the system prompt the whole of the agent's, not added to OpenCode's own", async () => {
+    start((push) => push(idle));
+    await engine()(
+      run({ input: { ...run().input, systemPrompt: "Be brief. {env:HOME} {file:~/.ssh/id}" } }),
+    );
+    expect(config().agent).toEqual({
+      build: { prompt: "Be brief. {env:HOME} {file:~/.ssh/id}" },
+    });
+    expect(calls.prompt?.[0]).not.toHaveProperty("system");
+    // OpenCode fills `{env:…}` and `{file:…}` in its config text; ours is only ever text.
+    expect(spawned[0]?.env.OPENCODE_CONFIG_CONTENT).not.toMatch(/\{(env|file):/);
+  });
+
+  it("tells the runner which MCP tools only read, listing each server once", async () => {
+    const posts: { headers: Record<string, string>; body: { id?: number; method: string } }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      async (url: string, init: { headers: Record<string, string>; body: string }) => {
+        expect(url).toBe("https://gh.example/mcp");
+        const body = JSON.parse(init.body);
+        posts.push({ headers: init.headers, body });
+        const reply = (result: unknown) => JSON.stringify({ jsonrpc: "2.0", id: body.id, result });
+        if (body.method === "initialize")
+          return new Response(reply({ capabilities: {} }), { headers: { "mcp-session-id": "s1" } });
+        if (body.method === "tools/list")
+          // Streamable HTTP may answer with an event stream.
+          return new Response(
+            `event: message\ndata: ${reply({
+              tools: [
+                { name: "search", annotations: { readOnlyHint: true } },
+                { name: "create_issue" },
+              ],
+            })}\n\n`,
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        return new Response(null, { status: 202 });
+      },
+    );
+    const seen: [string, boolean | undefined][] = [];
+    start((push) => {
+      parts = [
+        { type: "tool", callID: "c1", tool: "github_search", state: { input: { q: "a" } } },
+        { type: "tool", callID: "c2", tool: "github_search", state: { input: { q: "b" } } },
+        { type: "tool", callID: "c3", tool: "github_create_issue", state: { input: {} } },
+        { type: "tool", callID: "c4", tool: "bash", state: { input: { command: "ls -la" } } },
+      ];
+      push(ask("p1", "github_search", "c1"));
+      setTimeout(() => push(ask("p2", "github_search", "c2")), 10);
+      setTimeout(() => push(ask("p3", "github_create_issue", "c3")), 20);
+      setTimeout(() => push(ask("p4", "bash", "c4")), 30);
+      setTimeout(() => push(idle), 50);
+    });
+    await engine()(
+      run({
+        mcpServers: {
+          github: { type: "http", url: "https://gh.example/mcp", headers: { a: "b" } },
+        },
+        canUseTool: async (tool, _input, readOnly) => {
+          seen.push([tool, readOnly]);
+          return { behavior: "allow" };
+        },
+      }),
+    );
+    expect(seen).toEqual([
+      ["mcp__github__search", true],
+      ["mcp__github__search", true],
+      ["mcp__github__create_issue", false],
+      ["Bash", false],
+    ]);
+    expect(posts.map((p) => p.body.method)).toEqual([
+      "initialize",
+      "notifications/initialized",
+      "tools/list",
+    ]);
+    expect(posts[2]?.headers).toMatchObject({ a: "b", "mcp-session-id": "s1" });
+  });
+
+  it("lists a local MCP server's tools from a copy of it, and closes that copy", async () => {
+    mcpSpawns = [];
+    mcpTools = [{ name: "read_file", annotations: { readOnlyHint: true } }];
+    const seen: [string, boolean | undefined][] = [];
+    start((push) => {
+      parts = [{ type: "tool", callID: "c1", tool: "files_read_file", state: { input: {} } }];
+      push(ask("p1", "files_read_file", "c1"));
+      setTimeout(() => push(idle), 20);
+    });
+    await engine()(
+      run({
+        mcpServers: { files: { command: "npx", args: ["files-mcp"], env: { ROOT: "/" } } },
+        canUseTool: async (tool, _input, readOnly) => {
+          seen.push([tool, readOnly]);
+          return { behavior: "allow" };
+        },
+      }),
+    );
+    expect(seen).toEqual([["mcp__files__read_file", true]]);
+    expect(mcpSpawns).toMatchObject([{ command: ["npx", "files-mcp"], killed: true }]);
+    expect(mcpSpawns[0]?.env.ROOT).toBe("/");
+  });
+
+  it("treats an MCP tool as one that writes when its server can't be listed", async () => {
+    const seen: (boolean | undefined)[] = [];
+    start((push) => {
+      parts = [{ type: "tool", callID: "c1", tool: "yapm_list_issues", state: { input: {} } }];
+      push(ask("p1", "yapm_list_issues", "c1"));
+      setTimeout(() => push(idle), 20);
+    });
+    await engine()(
+      run({
+        canUseTool: async (_tool, _input, readOnly) => {
+          seen.push(readOnly);
+          return { behavior: "allow" };
+        },
+      }),
+    );
+    expect(seen).toEqual([false]);
+    expect(calls.reply).toEqual([{ requestID: "p1", reply: "once" }]);
   });
 
   it("asks about and shows a patch as Claude's edits, one per file", async () => {

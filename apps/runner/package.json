@@ -1,6 +1,6 @@
 {
   "name": "@yapm/runner",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "type": "module",
   "description": "Runs your company's agents on this machine with the Claude Agent SDK or OpenCode.",
   "license": "AGPL-3.0-only",

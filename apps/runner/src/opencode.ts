@@ -101,7 +101,8 @@ const clip = (text: string, max = 4000) => (text.length > max ? `${text.slice(0,
 export function opencodeEnv(home: string, config: Record<string, unknown> = {}) {
   return {
     ...process.env,
-    OPENCODE_CONFIG_CONTENT: JSON.stringify(config),
+    // OpenCode fills `{env:…}` and `{file:…}` in config text; escaped, ours stays text.
+    OPENCODE_CONFIG_CONTENT: JSON.stringify(config).replace(/\{(env|file):/g, "\\u007b$1:"),
     XDG_CONFIG_HOME: join(home, "opencode", "config"),
     OPENCODE_DB: join(home, "opencode", "opencode.db"),
     // Flags take 1 or 0: an empty value crashes the server.
@@ -125,6 +126,111 @@ function mcpConfig(servers: NonNullable<EngineRun["mcpServers"]>) {
         : { type: "local", command: [s.command, ...(s.args ?? [])], environment: s.env ?? {} };
   }
   return mcp;
+}
+
+type McpServer = Exclude<NonNullable<EngineRun["mcpServers"]>[string], { type: "sdk" }>;
+type Rpc = (message: { id?: number; method: string; params?: unknown }) => Promise<unknown>;
+
+const LIST_TIMEOUT = 10_000;
+
+/** JSON-RPC over MCP's Streamable HTTP: a JSON answer, or an event stream that carries it. */
+function httpRpc(server: Extract<McpServer, { url: string }>): Rpc {
+  let session: string | null = null;
+  return async (message) => {
+    const response = await fetch(server.url, {
+      method: "POST",
+      headers: {
+        ...server.headers,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        ...(session ? { "mcp-session-id": session } : {}),
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", ...message }),
+      signal: AbortSignal.timeout(LIST_TIMEOUT),
+    });
+    session = response.headers.get("mcp-session-id") ?? session;
+    const text = await response.text();
+    const lines = text.trimStart().startsWith("{")
+      ? [text]
+      : text.split("\n").flatMap((line) => (line.startsWith("data:") ? [line.slice(5)] : []));
+    return lines.map((line) => JSON.parse(line)).find((m) => m.id === message.id);
+  };
+}
+
+/** JSON-RPC over a stdio server's lines. */
+function stdioRpc(
+  server: Exclude<McpServer, { url: string }>,
+  cwd: string,
+  close: AbortSignal,
+): Rpc {
+  const proc = spawn(server.command, server.args ?? [], {
+    cwd,
+    env: { ...process.env, ...server.env },
+    stdio: ["pipe", "pipe", "ignore"],
+  });
+  close.addEventListener("abort", () => proc.kill());
+  const waiting = new Map<unknown, (message: unknown) => void>();
+  let rest = "";
+  proc.stdout?.on("data", (chunk: unknown) => {
+    const lines = (rest + String(chunk)).split("\n");
+    rest = lines.pop() ?? "";
+    for (const line of lines)
+      try {
+        const message = JSON.parse(line);
+        waiting.get(message.id)?.(message);
+      } catch {}
+  });
+  const ended = new Promise<never>((_, reject) => {
+    proc.on("error", reject);
+    proc.stdin?.on("error", reject);
+    proc.on("exit", () => reject(new Error("The MCP server exited")));
+    AbortSignal.timeout(LIST_TIMEOUT).addEventListener("abort", () =>
+      reject(new Error("Timed out")),
+    );
+  });
+  ended.catch(() => {});
+  return (message) => {
+    proc.stdin?.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
+    if (message.id === undefined) return Promise.resolve();
+    return Promise.race([new Promise((resolve) => waiting.set(message.id, resolve)), ended]);
+  };
+}
+
+/**
+ * The names of an MCP server's tools that say they only read (`readOnlyHint`). OpenCode drops
+ * MCP annotations, so the runner asks the server itself; a local server is a copy, then closed.
+ */
+async function readOnlyTools(server: McpServer, cwd: string): Promise<Set<string>> {
+  const close = new AbortController();
+  const rpc = "url" in server ? httpRpc(server) : stdioRpc(server, cwd, close.signal);
+  let id = 0;
+  const call = async (method: string, params: unknown) => {
+    const answer = (await rpc({ id: ++id, method, params })) as { result?: unknown } | undefined;
+    if (!answer?.result) throw new Error(`MCP ${method} failed`);
+    return answer.result as {
+      tools?: { name: string; annotations?: { readOnlyHint?: boolean } }[];
+      nextCursor?: string;
+    };
+  };
+  try {
+    await call("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "yapm-runner", version: "1" },
+    });
+    await rpc({ method: "notifications/initialized" });
+    const names = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = await call("tools/list", cursor ? { cursor } : {});
+      for (const tool of page.tools ?? [])
+        if (tool.annotations?.readOnlyHint === true) names.add(tool.name);
+      cursor = page.nextCursor;
+    } while (cursor);
+    return names;
+  } finally {
+    close.abort();
+  }
 }
 
 const TOOLS: Record<string, string> = {
@@ -229,7 +335,7 @@ function serve(bin: string, cwd: string, env: NodeJS.ProcessEnv, onPlan: (line: 
 /** Runs a session on OpenCode, with whatever provider the owner signed in to. */
 export function opencodeEngine(options: OpencodeOptions): Engine {
   return async (run) => {
-    const servers = run.input.tools
+    const servers: NonNullable<EngineRun["mcpServers"]> = run.input.tools
       ? {
           ...run.mcpServers,
           [HUB_MCP]: {
@@ -243,6 +349,8 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
     const names = Object.keys(servers).sort((a, b) => b.length - a.length);
     const config = {
       permission: { "*": "ask", question: "deny" },
+      // An agent's prompt replaces OpenCode's own coding prompt, as Claude's `systemPrompt` does.
+      agent: { build: { prompt: run.input.systemPrompt } },
       plugin: [pathToFileURL(planPlugin(options.home)).href],
       ...(run.input.tools ? { mcp: mcpConfig(servers) } : {}),
     };
@@ -284,6 +392,20 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
         run.onSession(sessionID);
       }
 
+      // Each server's read-only tools, listed on its first ask; unlisted, a tool may write.
+      const lists = new Map<string, Promise<Set<string>>>();
+      const readOnly = async (tool: string) => {
+        const name = names.find((s) => tool.startsWith(`mcp__${s}__`));
+        const server = name ? servers[name] : undefined;
+        if (!name || !server || server.type === "sdk") return false;
+        if (!lists.has(name))
+          lists.set(
+            name,
+            readOnlyTools(server, run.cwd).catch(() => new Set<string>()),
+          );
+        return (await lists.get(name))?.has(tool.slice(`mcp__${name}__`.length)) ?? false;
+      };
+
       // One decision per call: a path outside the folder asks twice for the same call.
       const decisions = new Map<string, Promise<ToolDecision>>();
       const decide = async (ask: PermissionRequest): Promise<ToolDecision> => {
@@ -300,7 +422,7 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
         }
         // Every file a patch changes needs its own yes.
         for (const call of claudeCalls(tool, input, names, run.cwd)) {
-          const decision = await run.canUseTool(call.name, call.input);
+          const decision = await run.canUseTool(call.name, call.input, await readOnly(call.name));
           if (decision.behavior !== "allow") return decision;
         }
         return { behavior: "allow" };
@@ -334,8 +456,6 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
         sessionID,
         ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
         ...(run.effort && variants?.[run.effort] ? { variant: run.effort } : {}),
-        // OpenCode doesn't keep it, so every prompt carries it.
-        system: run.input.systemPrompt,
         format: { type: "json_schema", schema: run.input.outputSchema },
         parts: [{ type: "text", text: run.input.prompt }],
       });

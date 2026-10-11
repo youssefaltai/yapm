@@ -66,6 +66,10 @@ A small OpenCode plugin the runner installs reads the rate-limit headers on the 
 responses (ChatGPT's 5-hour and weekly windows, Copilot's monthly premium requests); it reads no
 sign-in and makes no calls of its own.
 
+OpenCode doesn't pass on MCP tools' read-only hints, so on a run's first ask about a server's
+tool the runner lists that server's tools itself (briefly starting a copy of a local one), so
+"read-only tools" grants work as on Claude.
+
 The runner also tells the hub which Claude login it uses and how full your plan's usage windows
 are (the same numbers as Claude Code's `/usage`), for the Usage page. It reads them when a run
 ends and, while idle, every 10 minutes by opening Claude Code without a prompt, which calls no

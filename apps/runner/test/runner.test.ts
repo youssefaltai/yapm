@@ -124,6 +124,7 @@ describe("runner daemon", () => {
     const decide = sessions[0];
     expect(decide?.model).toBe("claude-sonnet-5-5");
     expect(decide?.effort).toBe("medium");
+    expect(decide?.modelTier).toBe("small");
     expect(decide?.input.tools).toBe(false);
     expect(decide?.input.prompt).toContain("Plan my training");
 

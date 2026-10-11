@@ -163,6 +163,7 @@ export class Runner {
       const result = await this.options.engine({
         input: claim.input,
         model: claim.run.model ?? MODELS[claim.run.modelTier] ?? MODELS.standard,
+        modelTier: claim.run.modelTier,
         ...(claim.run.effort ? { effort: claim.run.effort } : {}),
         hubMcp: { url: claim.mcpUrl, token: claim.token },
         mcpServers: { ...this.options.mcpServers, ...claim.mcpServers },

@@ -5,7 +5,8 @@ describe("Claude setup", () => {
   it("reads the owner's choice of how agents use Claude", () => {
     expect(authChoice("1")).toBe("account");
     expect(authChoice(" 2\n")).toBe("key");
-    expect(authChoice("3")).toBeNull();
+    expect(authChoice("3")).toBe("opencode");
+    expect(authChoice("4")).toBeNull();
     expect(authChoice("")).toBeNull();
   });
 

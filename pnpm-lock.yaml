@@ -102,13 +102,16 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.11
-        version: 4.1.11(@types/node@22.20.5)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.15))
+        version: 4.1.11(@types/node@22.20.5)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
   apps/runner:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.293
         version: 0.3.293(@anthropic-ai/sdk@0.132.1(zod@4.4.3))(@modelcontextprotocol/sdk@1.32.1(zod@4.4.3))(zod@4.4.3)
+      '@opencode-ai/sdk':
+        specifier: 1.19.0
+        version: 1.19.0
     devDependencies:
       '@types/node':
         specifier: 22.20.5
@@ -130,7 +133,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.11
-        version: 4.1.11(@types/node@22.20.5)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+        version: 4.1.11(@types/node@22.20.5)(vite@8.3.3(@types/node@22.20.5)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.15))
 
   apps/site:
     devDependencies:
@@ -1551,6 +1554,9 @@ packages:
 
   '@neon-rs/load@0.0.4':
     resolution: {integrity: sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw==}
+
+  '@opencode-ai/sdk@1.19.0':
+    resolution: {integrity: sha512-lDFYTD6qxzq1mfwxF6Kq1DAs6rEwF4xoZ2I3G1sB7hAZ8Yb28JurtSmmcK7ZzZ8Z4qBUYbZimHJ6DM4JFq5amw==}
 
   '@oxc-project/types@0.153.0':
     resolution: {integrity: sha512-jSNrRIyvPVLL5E1z/tS5zLAprosGz/FuI1PWwEOz59j3E4TTTzSpqKb/RDGqJhhW0QHYISGXxq582wGx6T11Tw==}
@@ -4419,6 +4425,10 @@ snapshots:
     optional: true
 
   '@neon-rs/load@0.0.4': {}
+
+  '@opencode-ai/sdk@1.19.0':
+    dependencies:
+      cross-spawn: 7.0.6
 
   '@oxc-project/types@0.153.0': {}
 

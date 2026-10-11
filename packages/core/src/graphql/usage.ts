@@ -1,4 +1,10 @@
-import type { ClaudeAccount, PlanLimit, PlanUsage } from "@yapm/schema";
+import {
+  type ClaudeAccount,
+  type OpencodePlan,
+  PLAN_PROVIDERS,
+  type PlanLimit,
+  type PlanUsage,
+} from "@yapm/schema";
 import {
   claudeSubscriptions,
   type Subscription,
@@ -32,7 +38,8 @@ const PlanLimitRef = builder.objectRef<PlanLimit>("PlanLimit").implement({
     "One of the plan's usage windows, such as the 5-hour session or the week. Plans publish how full a window is, not its size in tokens.",
   fields: (t) => ({
     kind: t.exposeString("kind", {
-      description: "five_hour, seven_day, seven_day_opus, seven_day_sonnet or model:<name>.",
+      description:
+        "five_hour, seven_day, seven_day_opus, seven_day_sonnet, model:<name>, or monthly (Copilot).",
     }),
     label: t.exposeString("label"),
     utilization: t.exposeFloat("utilization", {
@@ -64,7 +71,7 @@ const ExtraUsageRef = builder
   });
 
 const PlanUsageRef = builder.objectRef<PlanUsage>("PlanUsage").implement({
-  description: "The subscription's limits as a machine last read them from Claude Code.",
+  description: "The subscription's limits as a machine last read them.",
   fields: (t) => ({
     observedAt: t.field({ type: "DateTime", resolve: (p) => p.observedAt }),
     source: t.exposeString("source", {
@@ -79,7 +86,49 @@ const PlanUsageRef = builder.objectRef<PlanUsage>("PlanUsage").implement({
   }),
 });
 
+type MachinePlan = Omit<OpencodePlan, "provider" | "usage"> & {
+  provider: (typeof PLAN_PROVIDERS)[number];
+  usage: PlanUsage | null;
+};
+
+const MachinePlanRef = builder.objectRef<MachinePlan>("MachinePlan").implement({
+  description:
+    "A plan a machine's agents run on: its Claude login's, or OpenCode's ChatGPT or Copilot plan.",
+  fields: (t) => ({
+    provider: t.field({
+      type: builder.enumType("PlanProvider", { values: PLAN_PROVIDERS }),
+      resolve: (p) => p.provider,
+    }),
+    name: t.exposeString("name", {
+      nullable: true,
+      description: "max, plus…, when the provider says.",
+    }),
+    usage: t.field({
+      type: PlanUsageRef,
+      nullable: true,
+      description: "Its limits as the machine last read them; OpenCode's after a run on the plan.",
+      resolve: (p) => p.usage,
+    }),
+  }),
+});
+
 builder.objectFields(Machine, (t) => ({
+  plans: t.field({
+    type: [MachinePlanRef],
+    description: "Every plan the machine reports, Claude's first.",
+    resolve: (m) => [
+      ...(m.claudeAccount || m.planUsage
+        ? [
+            {
+              provider: "claude" as const,
+              name: m.claudeAccount?.subscriptionType ?? null,
+              usage: m.planUsage,
+            },
+          ]
+        : []),
+      ...(m.plans ?? []),
+    ],
+  }),
   claudeAccount: t.field({
     type: ClaudeAccountRef,
     nullable: true,

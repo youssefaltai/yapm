@@ -561,6 +561,18 @@ export interface PlanUsage {
   } | null;
 }
 
+/** Where a machine's plan comes from: Claude's own login, or what OpenCode runs on. */
+export const PLAN_PROVIDERS = ["claude", "chatgpt", "copilot"] as const;
+export type PlanProvider = (typeof PLAN_PROVIDERS)[number];
+
+/** A ChatGPT or Copilot plan OpenCode runs on, read off its provider's response headers. */
+export interface OpencodePlan {
+  provider: Exclude<PlanProvider, "claude">;
+  /** plus, pro…, when the provider says. */
+  name: string | null;
+  usage: PlanUsage;
+}
+
 export interface ReportedUsage {
   inputTokens?: number;
   outputTokens?: number;
@@ -592,6 +604,8 @@ export const machines = sqliteTable(
     claudeAccount: text("claude_account", { mode: "json" }).$type<ClaudeAccount>(),
     /** The subscription's limits as this machine last saw them; see `PlanUsage`. */
     planUsage: text("plan_usage", { mode: "json" }).$type<PlanUsage>(),
+    /** OpenCode's plans, the newest reading per provider; Claude's is in the two above. */
+    plans: text("plans", { mode: "json" }).$type<OpencodePlan[]>(),
     /** The owner asked the runner to upgrade itself; it hears this on its next check-in. */
     upgradeRequestedAt: integer("upgrade_requested_at", { mode: "number" }),
     ...timestamps,

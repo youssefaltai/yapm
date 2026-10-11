@@ -1,6 +1,7 @@
 import {
   type ClaudeAccount,
   machines,
+  type OpencodePlan,
   type PlanLimit,
   type PlanUsage,
   type ReportedUsage,
@@ -84,6 +85,36 @@ export function cleanPlanUsage(value: unknown, at: number): PlanUsage | null {
           }
         : null,
   };
+}
+
+const OPENCODE_PROVIDERS = ["chatgpt", "copilot"] as const;
+
+/**
+ * The OpenCode plans a runner reports, merged into what the machine had: each provider keeps
+ * its newest reading. Null when nothing changed.
+ */
+export function mergePlans(
+  current: OpencodePlan[] | null,
+  value: unknown,
+  at: number,
+): OpencodePlan[] | null {
+  if (!Array.isArray(value)) return null;
+  const plans = [...(current ?? [])];
+  let changed = false;
+  for (const raw of value.slice(0, 10)) {
+    if (!raw || typeof raw !== "object") continue;
+    const v = raw as Record<string, unknown>;
+    const provider = OPENCODE_PROVIDERS.find((p) => p === v.provider);
+    const usage = cleanPlanUsage(v.usage, at);
+    if (!provider || !usage) continue;
+    const index = plans.findIndex((p) => p.provider === provider);
+    if (index >= 0 && (plans[index]?.usage.observedAt ?? 0) > usage.observedAt) continue;
+    const plan = { provider, name: text(v.name, 40), usage };
+    if (index >= 0) plans[index] = plan;
+    else plans.push(plan);
+    changed = true;
+  }
+  return changed ? plans.sort((a, b) => a.provider.localeCompare(b.provider)) : null;
 }
 
 /** The usage totals a runner reported, without anything that isn't a sane number. */
@@ -179,6 +210,8 @@ export async function claudeSubscriptions(db: HubDb): Promise<Subscription[]> {
     .all();
   const groups = new Map<string, Subscription>();
   for (const machine of rows) {
+    // Older runners don't say, and only ran Claude.
+    if (machine.engines && !machine.engines.includes("claude")) continue;
     const email = machine.claudeAccount?.email?.toLowerCase();
     const id = email ?? machine.id;
     let group = groups.get(id);

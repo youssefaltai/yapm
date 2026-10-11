@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   createOpencodeClient,
   type Event,
@@ -9,6 +10,7 @@ import {
 } from "@opencode-ai/sdk/v2";
 import type { Engine, EngineResult, EngineRun } from "./engine.js";
 import { HUB_MCP, type ToolDecision } from "./permissions.js";
+import { planFromHeaders } from "./plan.js";
 
 type Tier = NonNullable<EngineRun["modelTier"]>;
 
@@ -25,11 +27,39 @@ export interface OpencodeOptions {
 const VERSION = "1.19.0";
 
 /**
+ * An OpenCode plugin that prints a provider response's plan headers (ChatGPT's `x-codex-*`,
+ * Copilot's `x-quota-snapshot-*`) for the runner. OpenCode surfaces neither, and has no hook
+ * for response headers, so it wraps `fetch`; it reads no sign-in and makes no calls of its own.
+ */
+const PLAN_PLUGIN = `const PLAN = /^x-(codex-(primary|secondary)-|codex-plan-type$|quota-snapshot-)/;
+export const YapmPlan = async () => {
+  const fetch = globalThis.fetch;
+  if (!fetch.yapmPlan) {
+    globalThis.fetch = Object.assign(async (...args) => {
+      const response = await fetch(...args);
+      try {
+        const plan = {};
+        response.headers.forEach((value, name) => {
+          if (PLAN.test(name)) plan[name] = value;
+        });
+        if (Object.keys(plan).length) process.stderr.write("yapm-plan " + JSON.stringify(plan) + "\\n");
+      } catch {}
+      return response;
+    }, { yapmPlan: true });
+  }
+  return {};
+};
+`;
+const planPlugin = (home: string) => join(home, "opencode", "plan.js");
+
+/**
  * Installs OpenCode into the runner's home unless that version is there, and returns its binary.
  * It's ~145 MB, so only machines that use it get it.
  */
 export function installOpencode(home: string, log: (line: string) => void): string {
   const prefix = join(home, "opencode");
+  mkdirSync(prefix, { recursive: true });
+  writeFileSync(planPlugin(home), PLAN_PLUGIN);
   const bin = join(prefix, "node_modules", ".bin", "opencode");
   try {
     const pkg = join(prefix, "node_modules", "opencode-ai", "package.json");
@@ -79,7 +109,8 @@ export function opencodeEnv(home: string, config: Record<string, unknown> = {}) 
     OPENCODE_DISABLE_CLAUDE_CODE: "1",
     OPENCODE_DISABLE_EXTERNAL_SKILLS: "1",
     OPENCODE_DISABLE_AUTOUPDATE: "1",
-    OPENCODE_PURE: "1",
+    // Not OPENCODE_PURE: it skips the runner's plan plugin, and the owner's plugins stay out
+    // anyway with their config folder.
   };
 }
 
@@ -166,9 +197,18 @@ function transcriptCall(calls: Call[]): Call {
   return { ...first, input: { ...first.input, files: calls.map((c) => c.input.file_path) } };
 }
 
-/** Starts `opencode serve` for one run; resolves once it listens. */
-function serve(bin: string, cwd: string, env: NodeJS.ProcessEnv) {
+/**
+ * Starts `opencode serve` for one run; resolves once it listens. Hands on each line the plan
+ * plugin prints.
+ */
+function serve(bin: string, cwd: string, env: NodeJS.ProcessEnv, onPlan: (line: string) => void) {
   const proc = spawn(bin, ["serve", "--hostname=127.0.0.1", "--port=0"], { cwd, env });
+  let errors = "";
+  proc.stderr?.on("data", (chunk: unknown) => {
+    const lines = (errors + String(chunk)).split("\n");
+    errors = lines.pop() ?? "";
+    for (const line of lines) if (line.startsWith("yapm-plan ")) onPlan(line.slice(10));
+  });
   const url = new Promise<string>((resolve, reject) => {
     let out = "";
     const read = (chunk: unknown) => {
@@ -203,9 +243,15 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
     const names = Object.keys(servers).sort((a, b) => b.length - a.length);
     const config = {
       permission: { "*": "ask", question: "deny" },
+      plugin: [pathToFileURL(planPlugin(options.home)).href],
       ...(run.input.tools ? { mcp: mcpConfig(servers) } : {}),
     };
-    const server = serve(options.bin, run.cwd, opencodeEnv(options.home, config));
+    const server = serve(options.bin, run.cwd, opencodeEnv(options.home, config), (line) => {
+      try {
+        const plan = planFromHeaders(JSON.parse(line), Date.now());
+        if (plan) run.onPlan?.({ plan });
+      } catch {}
+    });
     const result: EngineResult = { output: null, sessionId: run.resume, usage: {} };
     let sessionID = "";
     let steps = 0;

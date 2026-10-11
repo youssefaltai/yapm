@@ -21,7 +21,7 @@ import { installOpencode, opencodeEngine, opencodeLogin, opencodeSignedIn } from
 import { probePlan, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
-const VERSION = "0.6.2";
+const VERSION = "0.6.3";
 
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");

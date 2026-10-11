@@ -848,6 +848,52 @@ test.describe
       );
     });
 
+    test("shows the ChatGPT plan OpenCode runs on next to the Claude plan", async () => {
+      const resetsAt = Date.now() + 2 * 3_600_000;
+      await page.request.post("/api/runner/heartbeat", {
+        headers: { authorization: `Bearer ${machineToken}` },
+        data: {
+          runIds: [],
+          engines: ["claude", "opencode"],
+          plans: [
+            {
+              provider: "chatgpt",
+              name: "plus",
+              usage: {
+                observedAt: Date.now(),
+                source: "rate_limit",
+                limits: [
+                  {
+                    kind: "five_hour",
+                    label: "Current session (5 hours)",
+                    utilization: 12,
+                    resetsAt,
+                  },
+                  { kind: "seven_day", label: "This week", utilization: 40, resetsAt },
+                ],
+              },
+            },
+          ],
+        },
+      });
+      await page.getByRole("link", { name: "Usage" }).click();
+      const chatgpt = page.getByRole("region", { name: "ChatGPT on MacBook" });
+      await expect(chatgpt.getByText("Plus plan")).toBeVisible();
+      await expect(chatgpt.getByRole("meter", { name: "This week" })).toHaveAttribute(
+        "aria-valuenow",
+        "40",
+      );
+      await expect(page.getByRole("region", { name: "owner@example.com" })).toBeVisible();
+      await page.goto("/machines");
+      await page.getByRole("button", { name: /MacBook/ }).click();
+      const plan = page.getByRole("region", { name: "ChatGPT" });
+      await expect(plan.getByText("Plus plan")).toBeVisible();
+      await expect(plan.getByRole("meter", { name: "Current session (5 hours)" })).toHaveAttribute(
+        "aria-valuenow",
+        "12",
+      );
+    });
+
     test("adds a machine by pasting one command", async () => {
       await page.goto("/machines");
       await page.getByRole("button", { name: "Add machine" }).click();

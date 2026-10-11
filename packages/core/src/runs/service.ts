@@ -26,7 +26,7 @@ import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
 import { cleanTags, waitingFor } from "../services/machines.js";
 import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
-import { cleanAccount, cleanPlanUsage, runUsageSet } from "../services/usage.js";
+import { cleanAccount, cleanPlanUsage, mergePlans, runUsageSet } from "../services/usage.js";
 import { isAbove } from "../services/users.js";
 import {
   type Decision,
@@ -759,6 +759,8 @@ export async function heartbeat(
     claudeAccount?: unknown;
     /** The plan's limits as the machine last read them. */
     planUsage?: unknown;
+    /** OpenCode's ChatGPT or Copilot plans, as their responses last said. */
+    plans?: unknown;
   },
   at: number,
 ) {
@@ -766,6 +768,7 @@ export async function heartbeat(
   const ops: WriteOp[] = [];
   const account = cleanAccount(info.claudeAccount);
   const plan = cleanPlanUsage(info.planUsage, at);
+  const plans = mergePlans(machine.plans, info.plans, at);
   // Owners set tags in the app once approved; until then the machine's own list counts.
   ops.push(
     db
@@ -787,6 +790,7 @@ export async function heartbeat(
         ...(plan && plan.observedAt >= (machine.planUsage?.observedAt ?? 0)
           ? { planUsage: plan }
           : {}),
+        ...(plans ? { plans } : {}),
       })
       .where(eq(machines.id, machine.id)),
   );

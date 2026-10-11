@@ -40,6 +40,20 @@ interface Subscription {
   planUsage: PlanUsage | null;
 }
 
+export interface MachinePlan {
+  provider: "claude" | "chatgpt" | "copilot";
+  name: string | null;
+  usage: PlanUsage | null;
+}
+
+interface UsageMachine {
+  id: string;
+  name: string;
+  status: string;
+  engines: string[];
+  plans: MachinePlan[];
+}
+
 interface Point {
   date: string;
   key: string;
@@ -63,6 +77,13 @@ const QUERY = `query($days: Int, $groupBy: UsageGroupBy!) {
       observedAt source available
       limits { kind label utilization resetsAt status }
       extraUsage { enabled monthlyLimit usedCredits utilization currency }
+    }
+  }
+  machines {
+    id name status engines
+    plans {
+      provider name
+      usage { observedAt source available limits { kind label utilization resetsAt status } }
     }
   }
   usageHistory(days: $days, groupBy: $groupBy) { date key label runs inputTokens outputTokens costUsd }
@@ -114,17 +135,26 @@ function untilLabel(iso: string) {
 export const planName = (type: string | null) =>
   !type ? null : type.length <= 12 ? `${type[0]?.toUpperCase()}${type.slice(1)} plan` : type;
 
-/** The Claude subscription: how close each login is to its limits, and what agents used. */
+export const PROVIDERS: Record<MachinePlan["provider"], string> = {
+  claude: "Claude",
+  chatgpt: "ChatGPT",
+  copilot: "GitHub Copilot",
+};
+
+/** The plans agents run on: how close each is to its limits, and what agents used. */
 export function UsageView() {
   const [days, setDays] = useState<number>(30);
   const [groupBy, setGroupBy] = useState<GroupBy>("agent");
   const [measure, setMeasure] = useState<Measure>("costUsd");
-  const { data, error } = useQuery<{ claudeSubscriptions: Subscription[]; usageHistory: Point[] }>(
-    QUERY,
-    { days, groupBy },
-    60_000,
-  );
+  const { data, error } = useQuery<{
+    claudeSubscriptions: Subscription[];
+    machines: UsageMachine[];
+    usageHistory: Point[];
+  }>(QUERY, { days, groupBy }, 60_000);
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
+  const opencode = (data?.machines ?? []).filter(
+    (m) => m.status !== "revoked" && m.engines.includes("opencode"),
+  );
   return (
     <Page>
       <PageHeader
@@ -157,7 +187,7 @@ export function UsageView() {
       {data && (
         <PageBody width="wide">
           <Section title="Plan limits">
-            {data.claudeSubscriptions.length === 0 ? (
+            {data.claudeSubscriptions.length === 0 && opencode.length === 0 ? (
               <p className="text-muted">
                 No machines yet.{" "}
                 <button
@@ -167,12 +197,15 @@ export function UsageView() {
                 >
                   Add one
                 </button>{" "}
-                and it reports its Claude plan here.
+                and it reports its plan here.
               </p>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 {data.claudeSubscriptions.map((s) => (
                   <SubscriptionCard key={s.id} subscription={s} />
+                ))}
+                {opencode.map((m) => (
+                  <OpencodeCards key={m.id} machine={m} />
                 ))}
               </div>
             )}
@@ -203,10 +236,10 @@ export function UsageView() {
           </Section>
 
           <p className="mt-6 max-w-3xl text-[12px] text-faint">
-            Claude plans don't publish their limits in tokens or dollars, only how full each window
-            is, so limits show as percentages. Cost is what the same tokens would cost at API prices
-            for Claude runs, and what OpenCode reports for OpenCode runs (0 on a subscription); the
-            subscription doesn't charge it. Your own use of Claude Code and claude.ai counts toward
+            Plans don't publish their limits in tokens or dollars, only how full each window is, so
+            limits show as percentages. Cost is what the same tokens would cost at API prices for
+            Claude runs, and what OpenCode reports for OpenCode runs (0 on a subscription); the
+            subscription doesn't charge it. Your own use of Claude, ChatGPT or Copilot counts toward
             the limits above but isn't among the runs below.
           </p>
         </PageBody>
@@ -270,6 +303,52 @@ function SubscriptionCard({ subscription: s }: { subscription: Subscription }) {
       )}
     </section>
   );
+}
+
+/** OpenCode's plans on one machine; a machine has its own, as they don't say whose they are. */
+function OpencodeCards({ machine: m }: { machine: UsageMachine }) {
+  const plans = m.plans.filter((p) => p.provider !== "claude");
+  if (plans.length === 0)
+    return (
+      <section
+        aria-label={`OpenCode on ${m.name}`}
+        className="rounded-lg border border-line px-4 py-3"
+      >
+        <span className="font-medium">OpenCode</span>
+        <p className="text-[12px] text-faint">On {m.name}</p>
+        <p className="mt-3 text-muted">
+          A ChatGPT or Copilot plan's limits are shown after the first run on one. An API key has no
+          plan limits.
+        </p>
+      </section>
+    );
+  return plans.map((p) => (
+    <section
+      key={p.provider}
+      aria-label={`${PROVIDERS[p.provider]} on ${m.name}`}
+      className="rounded-lg border border-line px-4 py-3"
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate font-medium">{PROVIDERS[p.provider]}</span>
+        {planName(p.name) && <span className="text-[12px] text-muted">{planName(p.name)}</span>}
+      </div>
+      <p className="text-[12px] text-faint">Used by {m.name}, through OpenCode</p>
+      {p.usage?.limits.length ? (
+        <ul className="mt-3 space-y-3">
+          {p.usage.limits.map((l) => (
+            <Meter key={l.kind} limit={l} />
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-muted">No limit windows: the plan reported none.</p>
+      )}
+      {p.usage && (
+        <p className="mt-3 text-[12px] text-faint">
+          Read {timeAgo(p.usage.observedAt)}, from a run
+        </p>
+      )}
+    </section>
+  ));
 }
 
 export function Meter({ limit: l }: { limit: PlanLimit }) {

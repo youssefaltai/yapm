@@ -60,7 +60,10 @@ tier in `config.json` (left out, OpenCode's default):
 "opencode": { "models": { "small": "openai/gpt-5-mini", "standard": "openai/gpt-5", "top": "openai/gpt-5" } }
 ```
 
-Usage windows on the Usage page are Claude's only.
+On a ChatGPT or Copilot plan, the Usage page shows its windows too, after the first run on it.
+A small OpenCode plugin the runner installs reads the rate-limit headers on the provider's own
+responses (ChatGPT's 5-hour and weekly windows, Copilot's monthly premium requests); it reads no
+sign-in and makes no calls of its own.
 
 The runner also tells the hub which Claude login it uses and how full your plan's usage windows
 are (the same numbers as Claude Code's `/usage`), for the Usage page. It reads them when a run

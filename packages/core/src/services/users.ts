@@ -1,4 +1,12 @@
-import { apiTokens, MODEL_TIERS, type ModelTier, teamMemberships, users } from "@yapm/schema";
+import {
+  apiTokens,
+  ENGINES,
+  type Engine,
+  MODEL_TIERS,
+  type ModelTier,
+  teamMemberships,
+  users,
+} from "@yapm/schema";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
@@ -25,6 +33,8 @@ export interface UserUpdateInput {
   lessons?: string | null;
   managerId?: string | null;
   runnerTags?: string[] | null;
+  /** Owner only: what runs the agent, claude or opencode. */
+  engine?: string | null;
   /** Owner only: the cheapest and dearest tiers the agent's work may run on. */
   modelFloor?: string | null;
   modelCeiling?: string | null;
@@ -144,6 +154,14 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
       throw forbidden("Only the owner decides where agents run");
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on machines");
     next.runnerTags = cleanTags(input.runnerTags, "Runner tags");
+  }
+  if (input.engine != null) {
+    if ((await actor(ctx)).kind !== "owner")
+      throw forbidden("Only the owner decides what runs agents");
+    if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on engines");
+    if (!ENGINES.includes(input.engine as Engine))
+      throw new ServiceError("BAD_REQUEST", "The engine is claude or opencode");
+    next.engine = input.engine as Engine;
   }
   if (input.modelFloor != null || input.modelCeiling != null || input.topRunsPerWeek != null) {
     if ((await actor(ctx)).kind !== "owner")

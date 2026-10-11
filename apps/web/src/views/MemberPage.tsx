@@ -50,6 +50,12 @@ const TIERS: { value: Tier; label: string }[] = [
   { value: "top", label: "Top" },
 ];
 
+type Engine = "claude" | "opencode";
+const ENGINES: { value: Engine; label: string }[] = [
+  { value: "claude", label: "Claude" },
+  { value: "opencode", label: "OpenCode" },
+];
+
 interface MemberDetail {
   id: string;
   name: string;
@@ -66,6 +72,7 @@ interface MemberDetail {
   };
   apiTokens: Token[];
   runnerTags: string[];
+  engine: Engine;
   modelFloor: Tier;
   modelCeiling: Tier;
   topRunsPerWeek: number;
@@ -73,7 +80,7 @@ interface MemberDetail {
 }
 
 const MEMBER_QUERY = `query($id: String!) { user(id: $id) {
-  id name kind title charter lessons active isMe createdAt runnerTags
+  id name kind title charter lessons active isMe createdAt runnerTags engine
   modelFloor modelCeiling topRunsPerWeek
   manager { id name }
   directReports { nodes { id name kind title } }
@@ -250,6 +257,19 @@ export function MemberPage({ id }: { id: string }) {
                       }
                       className={lineField}
                     />
+                  </Property>
+                  <Property label="Engine" control={editable}>
+                    {editable ? (
+                      <Select
+                        aria-label="Engine"
+                        value={member.engine}
+                        options={ENGINES}
+                        onChange={(engine) => update({ engine })}
+                        className={`${propertyButton} w-full`}
+                      />
+                    ) : (
+                      ENGINES.find((e) => e.value === member.engine)?.label
+                    )}
                   </Property>
                   <Property label="Cheapest tier" control={editable}>
                     {editable ? (

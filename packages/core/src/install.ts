@@ -109,8 +109,7 @@ exec "$NODE" "$HOME_DIR/app/node_modules/@yapm/runner/dist/main.js" "\\$@"
 EOF
 chmod 755 "$BIN"
 LINK_DIR="$HOME/.local/bin"
-# Only the default home goes on PATH; another one is run by its own launcher.
-[ "$HOME_DIR" != "$HOME/.yapm-runner" ] || { mkdir -p "$LINK_DIR" && ln -sf "$BIN" "$LINK_DIR/yapm-runner"; }
+mkdir -p "$LINK_DIR" && ln -sf "$BIN" "$LINK_DIR/yapm-runner"
 
 if [ -n "$TOKEN" ] && grep -qF "\\"hub\\": \\"$HUB\\"" "$HOME_DIR/config.json" 2>/dev/null &&
   "$BIN" status >/dev/null 2>&1; then

@@ -273,6 +273,10 @@ const UserUpdateInput = builder.inputType("UserUpdateInput", {
       required: false,
       description: "Owner only: machines need all these tags to run this agent.",
     }),
+    engine: t.string({
+      required: false,
+      description: "Owner only: what runs this agent (claude, opencode).",
+    }),
     modelFloor: t.string({
       required: false,
       description:

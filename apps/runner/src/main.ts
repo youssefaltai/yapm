@@ -6,14 +6,22 @@ import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { apiKeyLooksRight, authChoice, claudeLogin, claudeReady } from "./claude.js";
-import { configPath, home, loadConfig, saveConfig, useApiKey } from "./config.js";
+import {
+  configPath,
+  engineNames,
+  home,
+  loadConfig,
+  saveConfig,
+  useApiKey,
+  withOpencode,
+} from "./config.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
 import { installOpencode, opencodeEngine, opencodeLogin } from "./opencode.js";
 import { probePlan, sdkEngine } from "./sdk.js";
-import { followLogs, installService, serviceNames, uninstallService } from "./service.js";
+import { followLogs, installService, uninstallService } from "./service.js";
 
-const VERSION = "0.5.1";
+const VERSION = "0.6.0";
 
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
@@ -37,7 +45,7 @@ async function ask(question: string, hidden = false) {
 const CHOICE = `How should agents on this machine run?
   1) Sign in with your Claude account (opens Claude's own sign-in)
   2) Use an Anthropic API key (billed to your key)
-  3) Use OpenCode: a ChatGPT or Copilot plan, or any provider's API key
+  3) Add OpenCode, for agents you set to it: a ChatGPT or Copilot plan, or any provider's key
 > `;
 
 /** The name people know the machine by: "Youssef's MacBook Pro" rather than a host name. */
@@ -60,7 +68,7 @@ const USAGE = `yapm-runner: runs your company's agents on this machine.
         at once; without one, approve the code it shows in the app.
   login [--claude | --api-key <key> | --opencode]
         Sets up how agents run, if this machine isn't already: your own Claude account or
-        API key, or OpenCode with any provider. The flags skip the question.
+        API key. --opencode adds OpenCode with any provider, for agents set to it in the app.
   start Runs agents until stopped (Ctrl-C finishes cleanly).
   service install | uninstall
         Runs agents in the background and at login (launchd on macOS, systemd on Linux).
@@ -128,10 +136,10 @@ async function main() {
     let apiKey = values["api-key"];
     let opencode = values.opencode;
     if (apiKey === undefined && !values.claude && !opencode) {
-      if (saved?.engine === "opencode")
-        return say("OpenCode: agents use it. Another provider: yapm-runner login --opencode");
       if (claudeReady(saved?.apiKey))
         return say(saved?.apiKey ? "Claude: agents use your API key." : "Claude: signed in.");
+      if (saved && engineNames(saved, () => false).includes("opencode"))
+        return say("OpenCode: set up. Claude: yapm-runner login --claude");
       // Without a terminal to ask on, sign in as before.
       if (process.stdin.isTTY) {
         let choice = null;
@@ -141,18 +149,17 @@ async function main() {
       }
     }
     if (opencode) {
-      await saveConfig({ ...(await loadConfig()), engine: "opencode" });
+      await saveConfig(withOpencode(await loadConfig()));
       if (!opencodeLogin(home, say)) process.exitCode = 1;
       return;
     }
     if (apiKey !== undefined) {
       if (!apiKeyLooksRight(apiKey)) throw new Error("That isn't an API key: they start sk-ant-.");
-      await saveConfig({ ...(await loadConfig()), apiKey, engine: undefined });
+      await saveConfig({ ...(await loadConfig()), apiKey });
       return say("Claude: agents use your API key.");
     }
-    if (saved?.apiKey || saved?.engine) {
+    if (saved?.apiKey) {
       delete saved.apiKey;
-      delete saved.engine;
       await saveConfig(saved);
     }
     if (!claudeLogin(say)) process.exitCode = 1;
@@ -169,20 +176,19 @@ async function main() {
           env: { YAPM_RUNNER_HOME: home, PATH: process.env.PATH ?? "/usr/bin:/bin" },
           logFile,
         },
-        serviceNames(home),
         say,
       );
       return;
     }
     if (action === "uninstall") {
-      await uninstallService(serviceNames(home), say);
+      await uninstallService(say);
       return;
     }
     throw new Error("Say what to do: yapm-runner service install, or service uninstall");
   }
 
   if (command === "logs") {
-    followLogs(logFile, serviceNames(home));
+    followLogs(logFile);
     return;
   }
 
@@ -196,16 +202,26 @@ async function main() {
 
   if (command === "start") {
     useApiKey(config);
-    const opencode = config.engine === "opencode";
+    const names = engineNames(config, () => claudeReady(config.apiKey));
+    const claude = names.includes("claude");
     const runner = new Runner({
       hub,
       token: config.token,
-      engine: opencode
-        ? opencodeEngine({ bin: installOpencode(home, say), home, models: config.opencode?.models })
-        : sdkEngine,
+      engines: {
+        ...(claude ? { claude: sdkEngine } : {}),
+        ...(names.includes("opencode")
+          ? {
+              opencode: opencodeEngine({
+                bin: installOpencode(home, say),
+                home,
+                models: config.opencode?.models,
+              }),
+            }
+          : {}),
+      },
       mcpServers: config.mcpServers,
       // Plan readings are Claude's.
-      ...(opencode ? {} : { probe: probePlan }),
+      ...(claude ? { probe: probePlan } : {}),
       capacity: config.capacity,
       version: VERSION,
       cwd: homedir(),
@@ -220,7 +236,7 @@ async function main() {
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
-    console.log(`${config.name} is connected to ${config.hub}.`);
+    console.log(`${config.name} is connected to ${config.hub}, running ${names.join(" and ")}.`);
     if ((await runner.run()) === "upgrade") {
       // The hub's installer replaces the runner in place; it keeps this machine's settings.
       const install = spawnSync(

@@ -1,5 +1,12 @@
 import { type Engine, type EngineRun, MODELS, type PlanProbe } from "./engine.js";
-import { type Claim, type Completion, type HubClient, HubError, type Usage } from "./hub.js";
+import {
+  type Claim,
+  type Completion,
+  type EngineName,
+  type HubClient,
+  HubError,
+  type Usage,
+} from "./hub.js";
 import { decideTool } from "./permissions.js";
 import { PlanTracker } from "./plan.js";
 
@@ -7,7 +14,8 @@ export interface RunnerOptions {
   hub: HubClient;
   /** The machine's secret (`lrn_…`). */
   token: string;
-  engine: Engine;
+  /** The engines this machine has; each run goes to its agent's. */
+  engines: Partial<Record<EngineName, Engine>>;
   capacity: number;
   version: string;
   /** The machine's own MCP servers, from its config; the hub's for the run come on top. */
@@ -68,6 +76,7 @@ export class Runner {
       capacity: this.options.capacity,
       version: this.options.version,
       runIds: this.running,
+      engines: Object.keys(this.options.engines) as EngineName[],
       ...plan,
     });
     this.plan.sent(plan);
@@ -160,7 +169,9 @@ export class Runner {
 
     let completion: Completion;
     try {
-      const result = await this.options.engine({
+      const engine = this.options.engines[claim.run.engine ?? "claude"];
+      if (!engine) throw new Error(`This machine has no ${claim.run.engine} engine`);
+      const result = await engine({
         input: claim.input,
         model: claim.run.model ?? MODELS[claim.run.modelTier] ?? MODELS.standard,
         modelTier: claim.run.modelTier,

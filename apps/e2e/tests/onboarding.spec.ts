@@ -298,6 +298,14 @@ test.describe
       await expect(page.getByLabel("Charter")).toHaveText(
         "Owns the household budget and the bills.",
       );
+      // Agents run on Claude unless the owner picks OpenCode.
+      const engine = page.getByLabel("Engine");
+      await expect(engine).toContainText("Claude");
+      await choose(page, engine, "OpenCode");
+      await page.reload();
+      await expect(engine).toContainText("OpenCode");
+      await choose(page, engine, "Claude");
+      await expect(engine).toContainText("Claude");
 
       await page.getByRole("button", { name: "+ New token" }).click();
       const tokenDialog = page.getByRole("dialog", { name: "New API token" });

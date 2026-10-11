@@ -1,6 +1,8 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudeAccount, PlanUsage } from "./plan.js";
 
+export type EngineName = "claude" | "opencode";
+
 /** Talks to the hub: the runner protocol with the machine's secret, GraphQL with a run's token. */
 export class HubError extends Error {
   constructor(
@@ -27,6 +29,8 @@ export interface Claim {
     /** The pinned model id and effort the hub chose; older hubs send neither. */
     model?: string;
     effort?: "low" | "medium" | "high" | "xhigh" | "max";
+    /** What runs the agent; older hubs send nothing, meaning Claude. */
+    engine?: EngineName;
     sessionId: string | null;
     issue: string | null;
     issueId: string | null;
@@ -122,6 +126,7 @@ export class HubClient {
       version: string;
       runIds: string[];
       tags?: string[];
+      engines?: EngineName[];
       claudeAccount?: ClaudeAccount;
       planUsage?: PlanUsage;
     },

@@ -4065,5 +4065,93 @@ export function hubContract(
         expect.arrayContaining(["teamMembership.create", "teamMembership.delete"]),
       );
     });
+
+    it("runs an agent only on a machine with its engine, Claude unless the owner picks", async () => {
+      const ceo = await agentToken("CEO");
+      const scout = await agentToken("Scout");
+      const queued = await client.graphql<{ runs: { nodes: { id: string }[] } }>(
+        "{ runs(filter: { status: [queued, running] }) { nodes { id } } }",
+      );
+      for (const run of queued.data?.runs.nodes ?? [])
+        await client.graphql(
+          'mutation($id: String!) { runStop(id: $id, reason: "Clearing") { success } }',
+          { id: run.id },
+        );
+      const engineOf = async () =>
+        (
+          await client.graphql<{ user: { engine: string } }>(
+            "query($id: String!) { user(id: $id) { engine } }",
+            { id: scout.id },
+          )
+        ).data?.user.engine;
+      const pick = (engine: string, token?: string) =>
+        client.graphql(
+          "mutation($id: String!, $e: String!) { userUpdate(id: $id, input: { engine: $e }) { success } }",
+          { id: scout.id, e: engine },
+          token,
+        );
+      const enrol = async (engines?: string[]) => {
+        const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+          "mutation { machineSetupTokenCreate { token } }",
+        );
+        const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+          method: "POST",
+          json: { name: "Box", setupToken: made.data?.machineSetupTokenCreate.token },
+        });
+        // Older runners don't say: they run Claude.
+        if (engines)
+          await client.json("/api/runner/heartbeat", {
+            method: "POST",
+            json: { engines },
+            token: joined.body.token,
+          });
+        return joined.body;
+      };
+      const claim = (token: string) =>
+        client.json<{ run: { engine: string }; agent: { name: string } }>("/api/runner/claim", {
+          method: "POST",
+          json: {},
+          token,
+        });
+
+      expect(await engineOf()).toBe("claude");
+      expect((await pick("opencode", ceo.token)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect((await pick("gpt")).errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      expect((await pick("opencode")).errors).toBeUndefined();
+      expect(await engineOf()).toBe("opencode");
+
+      const claudeOnly = await enrol();
+      const both = await enrol(["claude", "opencode"]);
+      await client.graphql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+        { input: { agentId: scout.id, goal: "Scout on OpenCode" } },
+      );
+      const none = await client.request("/api/runner/claim", {
+        method: "POST",
+        json: {},
+        token: claudeOnly.token,
+      });
+      expect(none.status).toBe(204);
+      const taken = await claim(both.token);
+      expect(taken.body.agent.name).toBe("Scout");
+      expect(taken.body.run.engine).toBe("opencode");
+
+      await pick("claude");
+      await client.graphql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+        { input: { agentId: scout.id, goal: "Scout on Claude" } },
+      );
+      expect((await claim(claudeOnly.token)).body.run.engine).toBe("claude");
+
+      const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
+        "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
+        { id: scout.id },
+      );
+      expect(log.data?.auditEntries.nodes.map((n) => n.action)).toContain("user.update");
+      for (const { id } of [claudeOnly, both])
+        await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+          id,
+        });
+    });
   });
 }

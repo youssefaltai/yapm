@@ -294,6 +294,9 @@ builder.objectField(User, "runnerTags", (t) =>
 );
 
 builder.objectFields(User, (t) => ({
+  engine: t.exposeString("engine", {
+    description: "What runs this agent: claude or opencode. Only machines that have it run it.",
+  }),
   modelFloor: t.exposeString("modelFloor", {
     description: "The cheapest tier this agent's work runs on.",
   }),

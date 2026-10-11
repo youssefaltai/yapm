@@ -43,6 +43,10 @@ export interface ModelRouting {
   labels: Record<string, ModelTier>;
 }
 
+/** What runs an agent on its machine: the Claude Agent SDK or OpenCode. */
+export const ENGINES = ["claude", "opencode"] as const;
+export type Engine = (typeof ENGINES)[number];
+
 export const USER_KINDS = ["owner", "agent"] as const;
 export type UserKind = (typeof USER_KINDS)[number];
 
@@ -64,6 +68,8 @@ export const users = sqliteTable(
     lessons: text("lessons"),
     /** Machines must have all of these tags to run this agent, e.g. `["employer-a"]`. */
     runnerTags: text("runner_tags", { mode: "json" }).$type<string[]>(),
+    /** What runs this agent; only machines that have it take its runs. */
+    engine: text("engine", { enum: ENGINES }).notNull().default("claude"),
     /** The cheapest and dearest tiers this agent's work runs may use. */
     modelFloor: text("model_floor", { enum: MODEL_TIERS }).notNull().default("small"),
     modelCeiling: text("model_ceiling", { enum: MODEL_TIERS }).notNull().default("top"),
@@ -575,6 +581,8 @@ export const machines = sqliteTable(
     /** SHA-256 of the machine's secret (`lrn_…`), which only the runner knows. */
     tokenHash: text("token_hash").notNull(),
     tags: text("tags", { mode: "json" }).$type<string[]>().notNull(),
+    /** The engines its runner has; older runners don't say, and run Claude only. */
+    engines: text("engines", { mode: "json" }).$type<Engine[]>(),
     /** How many runs it takes at once. */
     capacity: integer("capacity").notNull().default(2),
     version: text("version"),

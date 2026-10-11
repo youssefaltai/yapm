@@ -2,6 +2,8 @@ import {
   apiTokens,
   auditEvents,
   comments,
+  ENGINES,
+  type Engine,
   machines,
   notifications,
   requests,
@@ -238,6 +240,8 @@ export interface ClaimedRun {
     /** The pinned model id and effort to run with. */
     model: string;
     effort: string;
+    /** What runs the agent on the machine. */
+    engine: Engine;
     /** Resume this Agent SDK session (needs-input runs continue where they paused). */
     sessionId: string | null;
     issue: string | null;
@@ -275,7 +279,12 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
     .get();
   if ((busy?.n ?? 0) >= machine.capacity) return null;
   const candidates = await db
-    .select({ run: runs, agentTags: users.runnerTags, agentActive: users.active })
+    .select({
+      run: runs,
+      agentTags: users.runnerTags,
+      agentEngine: users.engine,
+      agentActive: users.active,
+    })
     .from(runs)
     .innerJoin(users, eq(users.id, runs.agentId))
     .where(
@@ -288,9 +297,10 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
     .orderBy(asc(runs.createdAt))
     .limit(25)
     .all();
-  for (const { run, agentTags, agentActive } of candidates) {
+  for (const { run, agentTags, agentEngine, agentActive } of candidates) {
     if (!agentActive) continue;
     if (!(agentTags ?? []).every((tag) => machine.tags.includes(tag))) continue;
+    if (!(machine.engines ?? ["claude"]).includes(agentEngine)) continue;
     const won = await db
       .update(runs)
       .set({
@@ -340,6 +350,7 @@ async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedR
       kind: run.kind,
       modelTier: run.modelTier as ModelTier,
       ...(await modelOf(db, run)),
+      engine: agent.engine,
       sessionId: run.resumeOfRunId ? run.sessionId : null,
       issue: issue ? await identifierOf(db, issue) : null,
       issueId: issue?.id ?? null,
@@ -722,6 +733,8 @@ export async function heartbeat(
   machine: Machine,
   info: {
     tags?: string[];
+    /** The engines the runner has; older runners don't say. */
+    engines?: unknown;
     capacity?: number;
     version?: string;
     runIds?: string[];
@@ -747,6 +760,9 @@ export async function heartbeat(
           : {}),
         ...(info.version ? { version: String(info.version).slice(0, 40) } : {}),
         ...(machine.status === "pending" && info.tags ? { tags: cleanTags(info.tags) } : {}),
+        ...(Array.isArray(info.engines)
+          ? { engines: ENGINES.filter((e) => (info.engines as unknown[]).includes(e)) }
+          : {}),
         ...(account ? { claudeAccount: account } : {}),
         // Said once: the runner remembers it until its runs finish.
         ...(machine.upgradeRequestedAt != null ? { upgradeRequestedAt: null } : {}),

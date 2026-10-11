@@ -76,7 +76,7 @@ describe("runner daemon", () => {
     runner = new Runner({
       hub,
       token: enrolment.token,
-      engine,
+      engines: { claude: engine },
       capacity: 2,
       version: "test",
       mcpServers: { notes: { type: "stdio", command: "notes-mcp" } },
@@ -260,7 +260,7 @@ describe("runner daemon", () => {
     const planRunner = new Runner({
       hub,
       token: enrolment.token,
-      engine,
+      engines: { claude: engine },
       capacity: 1,
       version: "test",
       cwd: tmpdir(),
@@ -346,6 +346,53 @@ describe("runner daemon", () => {
     expect(planRunner.plan.pending()).toEqual({});
   });
 
+  it("runs each agent on its own engine, and tells the hub which engines it has", async () => {
+    const enrolment = await hub.enrol({ name: "Both", tags: [], capacity: 1, version: "test" });
+    await gql(
+      "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
+      { id: enrolment.id, code: enrolment.pairingCode },
+    );
+    const ran: string[] = [];
+    const done =
+      (name: string): Engine =>
+      async () => {
+        ran.push(name);
+        return { output: { outcome: "done", summary: "Done." }, sessionId: null, usage: {} };
+      };
+    const both = new Runner({
+      hub,
+      token: enrolment.token,
+      engines: { claude: done("claude"), opencode: done("opencode") },
+      capacity: 1,
+      version: "test",
+      cwd: tmpdir(),
+      pollMs: 10,
+      log: (line) => lines.push(line),
+    });
+    const pick = (engine: string) =>
+      gql(
+        "mutation($id: String!, $e: String!) { userUpdate(id: $id, input: { engine: $e }) { success } }",
+        {
+          id: agentId,
+          e: engine,
+        },
+      );
+    const work = async () => {
+      await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }", {
+        input: { agentId, goal: "Work on whichever engine" },
+      });
+      expect(await both.claim()).toBe(1);
+      await both.idle();
+    };
+    // Until it says it has OpenCode, the hub gives it only Claude agents' runs.
+    await both.heartbeat();
+    await pick("opencode");
+    await work();
+    await pick("claude");
+    await work();
+    expect(ran).toEqual(["opencode", "claude"]);
+  });
+
   it("upgrades when the owner asks, once its runs finish", async () => {
     const enrolment = await hub.enrol({
       name: "Old machine",
@@ -360,7 +407,7 @@ describe("runner daemon", () => {
     const old = new Runner({
       hub,
       token: enrolment.token,
-      engine,
+      engines: { claude: engine },
       capacity: 1,
       version: "test",
       cwd: tmpdir(),

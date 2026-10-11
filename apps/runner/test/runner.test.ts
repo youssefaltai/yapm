@@ -131,12 +131,15 @@ describe("runner daemon", () => {
     // The decision queued a work session; it asks to run a command, and waits for the owner.
     script = async (run) => {
       run.onSession("session-work");
-      run.onEvent({ type: "tool", name: "Bash", input: '{"command":"ls"}' });
+      run.onEvent({ type: "tool", name: "Bash", input: '{"command":"touch notes.md"}' });
       const hubTool = await run.canUseTool("mcp__yapm__create_comment", {});
       expect(hubTool.behavior).toBe("allow");
       const read = await run.canUseTool("Read", { file_path: "/etc/hosts" });
       expect(read.behavior).toBe("allow");
-      const bash = await run.canUseTool("Bash", { command: "ls", description: "See my files" });
+      const bash = await run.canUseTool("Bash", {
+        command: "touch notes.md",
+        description: "Start notes",
+      });
       expect(bash.behavior).toBe("allow");
       const again = await run.canUseTool("Bash", { command: "rm -rf /", description: "Tidy up" });
       return {
@@ -172,7 +175,7 @@ describe("runner daemon", () => {
       ).requests.nodes;
     await until(async () => (await pending()).length === 1, "the first request");
     const [first] = await pending();
-    expect(first?.title).toBe("Coach wants to use Bash: ls");
+    expect(first?.title).toBe("Coach wants to use Bash: touch notes.md");
     expect(first?.issue?.id).toBe(issueId);
     await gql("mutation($id: String!) { requestApprove(id: $id) { success } }", { id: first?.id });
     await until(

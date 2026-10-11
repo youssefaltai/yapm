@@ -13,6 +13,10 @@ export interface Config {
   mcpServers?: Options["mcpServers"];
   /** An Anthropic API key agents use instead of a Claude sign-in. */
   apiKey?: string;
+  /** What runs agents: the Claude Agent SDK (the default) or OpenCode. */
+  engine?: "claude" | "opencode";
+  /** OpenCode's `provider/model` per tier; left out, OpenCode's default model. */
+  opencode?: { models?: { small?: string; standard?: string; top?: string } };
 }
 
 export const home = process.env.YAPM_RUNNER_HOME ?? join(homedir(), ".yapm-runner");

@@ -8,6 +8,8 @@ export interface EngineRun {
   input: RunInput;
   /** A model id the hub chose, or an alias from an older hub. */
   model: string;
+  /** The tier the hub chose the model from, for engines that pick their own models. */
+  modelTier?: "small" | "standard" | "top";
   /** How hard the model works; left out, the model's default applies. */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   /** The hub's MCP server, reached with the run's token. */

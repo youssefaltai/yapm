@@ -9,10 +9,11 @@ import { apiKeyLooksRight, authChoice, claudeLogin, claudeReady } from "./claude
 import { configPath, home, loadConfig, saveConfig, useApiKey } from "./config.js";
 import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
+import { installOpencode, opencodeEngine, opencodeLogin } from "./opencode.js";
 import { probePlan, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
@@ -33,9 +34,10 @@ async function ask(question: string, hidden = false) {
   return answer.trim();
 }
 
-const CHOICE = `How should agents on this machine use Claude?
+const CHOICE = `How should agents on this machine run?
   1) Sign in with your Claude account (opens Claude's own sign-in)
   2) Use an Anthropic API key (billed to your key)
+  3) Use OpenCode: a ChatGPT or Copilot plan, or any provider's API key
 > `;
 
 /** The name people know the machine by: "Youssef's MacBook Pro" rather than a host name. */
@@ -56,9 +58,9 @@ const USAGE = `yapm-runner: runs your company's agents on this machine.
   enrol --hub <url> [--token <setup token>] [--name <name>] [--tags a,b] [--capacity 2]
         Connects this machine to the hub. With a setup token from Machines it is approved
         at once; without one, approve the code it shows in the app.
-  login [--claude | --api-key <key>]
-        Sets up how agents use Claude, if this machine isn't already: your own Claude
-        account or API key. The flags skip the question.
+  login [--claude | --api-key <key> | --opencode]
+        Sets up how agents run, if this machine isn't already: your own Claude account or
+        API key, or OpenCode with any provider. The flags skip the question.
   start Runs agents until stopped (Ctrl-C finishes cleanly).
   service install | uninstall
         Runs agents in the background and at login (launchd on macOS, systemd on Linux).
@@ -80,6 +82,7 @@ async function main() {
       capacity: { type: "string" },
       "api-key": { type: "string" },
       claude: { type: "boolean" },
+      opencode: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -123,7 +126,10 @@ async function main() {
   if (command === "login") {
     const saved = await loadConfig().catch(() => undefined);
     let apiKey = values["api-key"];
-    if (apiKey === undefined && !values.claude) {
+    let opencode = values.opencode;
+    if (apiKey === undefined && !values.claude && !opencode) {
+      if (saved?.engine === "opencode")
+        return say("OpenCode: agents use it. Another provider: yapm-runner login --opencode");
       if (claudeReady(saved?.apiKey))
         return say(saved?.apiKey ? "Claude: agents use your API key." : "Claude: signed in.");
       // Without a terminal to ask on, sign in as before.
@@ -131,15 +137,22 @@ async function main() {
         let choice = null;
         while (!choice) choice = authChoice(await ask(CHOICE));
         if (choice === "key") apiKey = await ask("Anthropic API key (hidden): ", true);
+        if (choice === "opencode") opencode = true;
       }
+    }
+    if (opencode) {
+      await saveConfig({ ...(await loadConfig()), engine: "opencode" });
+      if (!opencodeLogin(home, say)) process.exitCode = 1;
+      return;
     }
     if (apiKey !== undefined) {
       if (!apiKeyLooksRight(apiKey)) throw new Error("That isn't an API key: they start sk-ant-.");
-      await saveConfig({ ...(await loadConfig()), apiKey });
+      await saveConfig({ ...(await loadConfig()), apiKey, engine: undefined });
       return say("Claude: agents use your API key.");
     }
-    if (saved?.apiKey) {
+    if (saved?.apiKey || saved?.engine) {
       delete saved.apiKey;
+      delete saved.engine;
       await saveConfig(saved);
     }
     if (!claudeLogin(say)) process.exitCode = 1;
@@ -182,12 +195,16 @@ async function main() {
 
   if (command === "start") {
     useApiKey(config);
+    const opencode = config.engine === "opencode";
     const runner = new Runner({
       hub,
       token: config.token,
-      engine: sdkEngine,
+      engine: opencode
+        ? opencodeEngine({ bin: installOpencode(home, say), home, models: config.opencode?.models })
+        : sdkEngine,
       mcpServers: config.mcpServers,
-      probe: probePlan,
+      // Plan readings are Claude's.
+      ...(opencode ? {} : { probe: probePlan }),
       capacity: config.capacity,
       version: VERSION,
       cwd: homedir(),

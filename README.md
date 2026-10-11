@@ -53,7 +53,7 @@ You host it yourself, for free.
 - **Issues, projects and cycles.** Boards, filters, `⌘K` and shortcuts.
 - **A team of agents.** Each has a title, a manager and a clear job.
 - **Approvals.** Approve once, always allow, or say no with a reason. Revoke what you allowed.
-- **Agents on your own computer.** They use your Claude account or an API key. Watch them work live.
+- **Agents on your own computer.** Each runs on Claude or OpenCode, with your own plan or API key. Watch them work live.
 - **An inbox with push alerts.** Add it to your iPhone's Home Screen.
 - **A company that improves.** Feedback, lessons, a handbook and metrics.
 - **An API.** GraphQL with Linear's names, and an MCP server modelled on Linear's.
@@ -133,9 +133,19 @@ Agents run on your own Mac or Linux machine.
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
-On a new machine, it asks whether agents should use your Claude account or an Anthropic API key.
-Then it runs in the background and starts at login.
+On a new machine, it asks how agents should run. Then it runs in the background and starts at login.
 To update, run `curl -fsSL https://your-hub.example/install.sh | sh`.
+
+### Claude or OpenCode
+
+Each agent runs on Claude unless you set its **Engine** to OpenCode on its page.
+
+- **Claude**: the Claude Agent SDK, with your Claude subscription or an Anthropic API key.
+- **OpenCode**: a ChatGPT or GitHub Copilot plan, or an API key for any provider. It can't use a Claude subscription.
+
+One runner per machine runs both; add OpenCode with `yapm-runner login --opencode`.
+Runs go only to machines with the agent's engine. Grants are checked on every tool call on both,
+and Usage shows each plan's limits.
 
 You can also use Claude Code as an agent.
 Make a token on the agent's page, then:

@@ -82,6 +82,6 @@ test("no page offers a chat: you ask the CEO, and it files an issue", () => {
     "llms.txt",
     ...pages.filter(Boolean).map((p) => `${p}.html`),
   ];
-  for (const file of files) assert.doesNotMatch(read(file), /\bchat/i, file);
+  for (const file of files) assert.doesNotMatch(read(file), /\bchat(?!gpt)/i, file);
   assert.match(html, /What can I take off your plate\?/);
 });

@@ -160,7 +160,7 @@ export function MachinesView() {
             title="No machines yet"
             description={
               isOwner
-                ? "Agents work on your own Mac or Linux computers, signed in with your Claude subscription. Add one with a single command."
+                ? "Agents work on your own Mac or Linux computers, on your own Claude, ChatGPT or Copilot plan, or an API key. Add one with a single command."
                 : "Agents work on the owner's own computers. Once the owner adds one, agents can run on it."
             }
             action={isOwner ? { label: "Add machine", onClick: addMachine } : undefined}
@@ -337,7 +337,7 @@ export function SetupPanel({
         {setup.command}
       </code>
       <p className="mt-2 text-muted">
-        It installs the runner, asks you to sign in to Claude if the computer isn't already, and
+        It installs the runner, asks how agents should run if the computer isn't set up yet, and
         keeps it running in the background. Works on macOS and Linux, once, until{" "}
         {new Date(setup.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
       </p>

@@ -116,13 +116,16 @@ const UsagePointRef = builder.objectRef<UsagePoint>("UsagePoint").implement({
   description: "What runs used on one day, for one agent, model or machine.",
   fields: (t) => ({
     date: t.exposeString("date", { description: "YYYY-MM-DD in the company's time zone." }),
-    key: t.exposeString("key", { description: "The agent id, model id or machine id." }),
+    key: t.exposeString("key", {
+      description: "The agent id, model id (OpenCode's start with `opencode:`) or machine id.",
+    }),
     label: t.exposeString("label"),
     runs: t.exposeInt("runs"),
     inputTokens: t.exposeFloat("inputTokens"),
     outputTokens: t.exposeFloat("outputTokens"),
     costUsd: t.exposeFloat("costUsd", {
-      description: "What the runs would cost at API prices, not what the plan charges.",
+      description:
+        "What the runs cost as their engines report it: at API prices from Claude, OpenCode's own figure (0 on a subscription) from OpenCode. Not what a plan charges.",
     }),
   }),
 });

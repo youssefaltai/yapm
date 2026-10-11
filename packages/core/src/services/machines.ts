@@ -1,4 +1,4 @@
-import { machineSetupTokens, machines, users } from "@yapm/schema";
+import { type Engine, machineSetupTokens, machines, users } from "@yapm/schema";
 import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId, randomToken, sha256Hex } from "../crypto.js";
@@ -23,6 +23,25 @@ type MachineRow = typeof machines.$inferSelect;
 /** The name people see: the owner's, or what the machine called itself when it enrolled. */
 export function machineName(m: Pick<MachineRow, "name" | "displayName">) {
   return m.displayName ?? m.name;
+}
+
+const ENGINE_NAMES: Record<Engine, string> = { claude: "Claude", opencode: "OpenCode" };
+
+/**
+ * Why an agent's run waits for these machines, or null when one of them may run it: it needs
+ * all the agent's tags and the agent's engine. Runners that don't list engines run Claude.
+ */
+export function waitingFor(
+  agent: { engine: Engine; runnerTags: string[] | null },
+  online: Pick<MachineRow, "tags" | "engines">[],
+) {
+  if (!online.length) return "Waiting for a machine to come online";
+  const tags = agent.runnerTags ?? [];
+  const tagged = online.filter((m) => tags.every((tag) => m.tags.includes(tag)));
+  if (!tagged.length) return `Waiting for a machine tagged ${tags.join(", ")}`;
+  if (!tagged.some((m) => (m.engines ?? ["claude"]).includes(agent.engine)))
+    return `Waiting for a machine that runs ${ENGINE_NAMES[agent.engine]}`;
+  return null;
 }
 
 export function cleanTags(tags: unknown, label = "Tags"): string[] {

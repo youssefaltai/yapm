@@ -4153,5 +4153,148 @@ export function hubContract(
           id,
         });
     });
+
+    it("records the engine and model each run ran on, and says why a run waits", async () => {
+      const scout = await agentToken("Scout");
+      const update = (input: Record<string, unknown>) =>
+        client.graphql(
+          "mutation($id: String!, $input: UserUpdateInput!) { userUpdate(id: $id, input: $input) { success } }",
+          { id: scout.id, input },
+        );
+      const runOf = async (id: string) =>
+        (
+          await client.graphql<{
+            run: {
+              engine: string | null;
+              model: string | null;
+              effort: string | null;
+              queuedReason: string | null;
+            };
+          }>("query($id: String!) { run(id: $id) { engine model effort queuedReason } }", { id })
+        ).data?.run;
+      const enrol = async (engines: string[]) => {
+        const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+          "mutation { machineSetupTokenCreate { token } }",
+        );
+        const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+          method: "POST",
+          json: { name: "Box", setupToken: made.data?.machineSetupTokenCreate.token },
+        });
+        await client.json("/api/runner/heartbeat", {
+          method: "POST",
+          json: { engines },
+          token: joined.body.token,
+        });
+        return joined.body;
+      };
+      const runner = <T>(path: string, token: string, json: unknown) =>
+        client.json<T>(`/api/runner${path}`, { method: "POST", json, token });
+
+      await update({ engine: "opencode" });
+      const claudeOnly = await enrol(["claude"]);
+      const machines = await client.graphql<{ machines: { id: string; engines: string[] }[] }>(
+        "{ machines { id engines } }",
+      );
+      expect(machines.data?.machines.find((m) => m.id === claudeOnly.id)?.engines).toEqual([
+        "claude",
+      ]);
+      const work = await client.graphql<{
+        issueCreate: { issue: { id: string } };
+      }>("mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }", {
+        input: { teamId, title: "Scout the trail" },
+      });
+      const issueId = work.data?.issueCreate.issue.id;
+      // Clear what else is queued (the new issue wakes the CEO), so the machine gets Scout's run.
+      const queued = await client.graphql<{ runs: { nodes: { id: string }[] } }>(
+        "{ runs(filter: { status: [queued, running] }) { nodes { id } } }",
+      );
+      for (const run of queued.data?.runs.nodes ?? [])
+        await client.graphql(
+          'mutation($id: String!) { runStop(id: $id, reason: "Clearing") { success } }',
+          { id: run.id },
+        );
+      const created = await client.graphql<{ runCreate: { run: { id: string } } }>(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
+        { input: { agentId: scout.id, issueId, goal: "Scout the trail" } },
+      );
+      const runId = created.data?.runCreate.run.id ?? "";
+      // Nothing online runs the agent's engine, or has its tags: the run says so.
+      expect((await runOf(runId))?.queuedReason).toBe("Waiting for a machine that runs OpenCode");
+      await update({ runnerTags: ["nowhere"] });
+      expect((await runOf(runId))?.queuedReason).toBe("Waiting for a machine tagged nowhere");
+      await update({ runnerTags: [] });
+
+      // The run records the engine it was claimed for, and the model that actually ran.
+      const both = await enrol(["claude", "opencode"]);
+      expect((await runOf(runId))?.queuedReason).toBeNull();
+      const claimed = await runner<{ run: { id: string } }>("/claim", both.token, {});
+      expect(claimed.body.run.id).toBe(runId);
+      expect((await runOf(runId))?.engine).toBe("opencode");
+      await runner(`/runs/${runId}/complete`, both.token, {
+        status: "completed",
+        result: { outcome: "needs_input", question: "Which trail?" },
+        sessionId: "ses_opencode",
+        model: "openai/gpt-6-sol",
+        effort: null,
+      });
+      expect(await runOf(runId)).toMatchObject({
+        engine: "opencode",
+        model: "openai/gpt-6-sol",
+        effort: null,
+      });
+      // Insights and Usage keep each engine's models apart, so costs don't mix.
+      const spent = await client.graphql<{
+        insights: { routes: { engine: string | null; model: string | null }[] };
+        usageHistory: { key: string; label: string }[];
+      }>(
+        "{ insights(days: 1) { routes { engine model } } usageHistory(groupBy: model, days: 1) { key label } }",
+      );
+      expect(spent.data?.insights.routes).toContainEqual({
+        engine: "opencode",
+        model: "openai/gpt-6-sol",
+      });
+      expect(spent.data?.usageHistory).toContainEqual({
+        key: "opencode:openai/gpt-6-sol",
+        label: "openai/gpt-6-sol · OpenCode",
+      });
+
+      // The agent moved to Claude since it paused: the answer starts a fresh session, with the
+      // issue in the prompt, rather than handing Claude an OpenCode session.
+      await update({ engine: "claude" });
+      await client.graphql(
+        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "The north one" }) { success } }',
+        { id: issueId },
+      );
+      type Claim = {
+        run: { id: string; kind: string; engine: string; model: string; sessionId: string | null };
+        agent: { name: string };
+        input: { prompt: string };
+      };
+      let fresh = await runner<Claim>("/claim", claudeOnly.token, {});
+      // The CEO hears about the comment too; it lets it be.
+      while (fresh.body.agent.name === "CEO") {
+        await runner(`/runs/${fresh.body.run.id}/complete`, claudeOnly.token, {
+          status: "completed",
+          result: { action: "ignore", reason: "Not mine" },
+        });
+        fresh = await runner<Claim>("/claim", claudeOnly.token, {});
+      }
+      expect(fresh.body.agent.name).toBe("Scout");
+      expect(fresh.body.run).toMatchObject({ kind: "work", engine: "claude", sessionId: null });
+      expect(fresh.body.run.model).toMatch(/^claude-/);
+      expect(fresh.body.input.prompt).toContain("Your goal: Scout the trail");
+      // An older runner doesn't say what ran: the hub's choice stays.
+      const chosen = (await runOf(fresh.body.run.id))?.model;
+      await runner(`/runs/${fresh.body.run.id}/complete`, claudeOnly.token, {
+        status: "completed",
+        result: { outcome: "done", summary: "North trail it is." },
+      });
+      expect(await runOf(fresh.body.run.id)).toMatchObject({ engine: "claude", model: chosen });
+
+      for (const { id } of [claudeOnly, both])
+        await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+          id,
+        });
+    });
   });
 }

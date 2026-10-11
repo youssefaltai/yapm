@@ -312,6 +312,26 @@ describe("opencode engine", () => {
     expect(result.error).toBe("The session ended early (error max turns)");
   });
 
+  it("reports the model and variant the session ran with", async () => {
+    const assistant = (variant?: string) => ({
+      type: "message.updated",
+      properties: {
+        sessionID: "ses_1",
+        info: { role: "assistant", providerID: "openai", modelID: "gpt-6-sol", variant },
+      },
+    });
+    start((push) => {
+      push(assistant("high"));
+      push(idle);
+    });
+    expect(await engine()(run())).toMatchObject({ model: "openai/gpt-6-sol", effort: "high" });
+    start((push) => {
+      push(assistant());
+      push(idle);
+    });
+    expect(await engine()(run())).toMatchObject({ model: "openai/gpt-6-sol", effort: null });
+  });
+
   it("lets a session answer on its last turn", async () => {
     start((push) => {
       for (const id of ["s1", "s2"]) push(part({ id, type: "step-finish" }));

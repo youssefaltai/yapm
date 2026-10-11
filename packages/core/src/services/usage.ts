@@ -234,7 +234,8 @@ export async function usageHistory(
       ? runs.agentId
       : groupBy === "machine"
         ? runs.machineId
-        : sql<string>`coalesce(${runs.model}, ${runs.modelTier})`;
+        : // OpenCode's models apart from Claude's, so their costs don't mix.
+          sql<string>`case when ${runs.engine} = 'opencode' then 'opencode:' else '' end || coalesce(${runs.model}, ${runs.modelTier})`;
   const [timeZone, rows] = await Promise.all([
     companyTimeZone(db),
     db
@@ -267,6 +268,9 @@ export async function usageHistory(
       .where(inArray(machines.id, keys.slice(0, 90)))
       .all())
       labels.set(m.id, machineName(m));
+  if (groupBy === "model")
+    for (const key of keys)
+      if (key.startsWith("opencode:")) labels.set(key, `${key.slice(9)} · OpenCode`);
   const points = new Map<string, UsagePoint>();
   for (const r of rows) {
     const date = localDate(Number(r.hour) * HOUR, timeZone);

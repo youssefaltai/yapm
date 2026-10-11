@@ -27,6 +27,7 @@ import {
   revokeMachine,
   updateMachine,
   upgradeMachine,
+  waitingFor,
 } from "../services/machines.js";
 import {
   act,
@@ -74,9 +75,14 @@ Run.implement({
     status: t.field({ type: RunStatus, resolve: (r) => r.status }),
     goal: t.exposeString("goal", { nullable: true }),
     modelTier: t.exposeString("modelTier"),
+    engine: t.exposeString("engine", {
+      nullable: true,
+      description: "What ran it: claude or opencode. Null until a machine picks it up.",
+    }),
     model: t.exposeString("model", {
       nullable: true,
-      description: "The pinned model id the hub chose, e.g. claude-opus-5-5.",
+      description:
+        "The model that ran, e.g. claude-opus-5-5 or openai/gpt-6-sol; until it ends (or from older runners), the one the hub chose.",
     }),
     effort: t.exposeString("effort", { nullable: true, description: "low to max." }),
     routeRule: t.exposeString("routeRule", {
@@ -85,7 +91,8 @@ Run.implement({
         "The routing rule that chose the model, e.g. `label:research` or `requested+budget`.",
     }),
     costUsd: t.exposeFloat("costUsd", {
-      description: "What the session would cost at API prices, as the Agent SDK reports it.",
+      description:
+        "What the session cost as its engine reports it: at API prices from Claude, OpenCode's own figure (0 on a subscription) from OpenCode.",
     }),
     trigger: t.field({ type: "JSONObject", nullable: true, resolve: (r) => r.trigger ?? null }),
     result: t.field({ type: "JSONObject", nullable: true, resolve: (r) => r.result ?? null }),
@@ -96,6 +103,24 @@ Run.implement({
     numTurns: t.exposeInt("numTurns"),
     logCount: t.exposeInt("logCount"),
     notBefore: t.field({ type: "DateTime", nullable: true, resolve: (r) => r.notBefore }),
+    queuedReason: t.string({
+      nullable: true,
+      description:
+        "Why a queued run hasn't started: no machine online, or none with the agent's tags or engine. Null otherwise.",
+      resolve: async (r, _args, ctx) => {
+        if (r.status !== "queued" || (r.notBefore ?? 0) > now(ctx)) return null;
+        const agent = await ctx.loaders.user.load(r.agentId);
+        if (!agent) return null;
+        const online = (await listMachines(db(ctx))).filter(
+          (m) =>
+            m.status === "active" &&
+            !!m.lastSeenAt &&
+            now(ctx) - m.lastSeenAt < ONLINE_WINDOW &&
+            (!r.machineId || m.id === r.machineId),
+        );
+        return waitingFor(agent, online);
+      },
+    }),
     createdAt: t.field({ type: "DateTime", resolve: (r) => r.createdAt }),
     startedAt: t.field({ type: "DateTime", nullable: true, resolve: (r) => r.startedAt }),
     endedAt: t.field({ type: "DateTime", nullable: true, resolve: (r) => r.endedAt }),
@@ -170,6 +195,10 @@ Machine.implement({
     }),
     status: t.field({ type: MachineStatus, resolve: (m) => m.status }),
     tags: t.exposeStringList("tags"),
+    engines: t.stringList({
+      description: "The engines its runner has: claude, opencode. Older runners run Claude only.",
+      resolve: (m) => m.engines ?? ["claude"],
+    }),
     capacity: t.exposeInt("capacity"),
     version: t.exposeString("version", { nullable: true }),
     online: t.boolean({

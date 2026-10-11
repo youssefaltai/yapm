@@ -349,11 +349,13 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
         } else if (!own) continue;
         else if (event.type === "session.idle") break;
         else if (event.type === "message.updated") {
-          if (
-            event.properties.info.role === "assistant" &&
-            event.properties.info.structured !== undefined
-          )
-            result.output = event.properties.info.structured;
+          const info = event.properties.info;
+          if (info.role === "assistant") {
+            // What actually ran, which may be OpenCode's default model.
+            result.model = `${info.providerID}/${info.modelID}`;
+            result.effort = info.variant ?? null;
+            if (info.structured !== undefined) result.output = info.structured;
+          }
         } else if (event.type === "session.error") {
           const error = event.properties.error;
           if (!run.signal.aborted && !result.error && error) {

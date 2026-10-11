@@ -204,9 +204,10 @@ export function UsageView() {
 
           <p className="mt-6 max-w-3xl text-[12px] text-faint">
             Claude plans don't publish their limits in tokens or dollars, only how full each window
-            is, so limits show as percentages. Cost is what the same tokens would cost at API
-            prices; the subscription doesn't charge it. Your own use of Claude Code and claude.ai
-            counts toward the limits above but isn't among the runs below.
+            is, so limits show as percentages. Cost is what the same tokens would cost at API prices
+            for Claude runs, and what OpenCode reports for OpenCode runs (0 on a subscription); the
+            subscription doesn't charge it. Your own use of Claude Code and claude.ai counts toward
+            the limits above but isn't among the runs below.
           </p>
         </PageBody>
       )}

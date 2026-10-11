@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 import { SoftwareAuthenticator, TestClient } from "@yapm/core/testing";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createNodeApp } from "../../hub-node/src/app.js";
 import { openDatabase } from "../../hub-node/src/db.js";
 import { Runner } from "../src/daemon.js";
@@ -245,6 +245,25 @@ describe("runner daemon", () => {
     );
     expect(run.run).toEqual({ status: "stopped", stopReason: "Not now" });
     expect(lines.some((l) => l.includes("Not now"))).toBe(true);
+  });
+
+  it("tells the hub which model ran", async () => {
+    const complete = vi.spyOn(hub, "complete");
+    script = async () => ({
+      output: { summary: "ok" },
+      sessionId: "session-model",
+      usage: {},
+      model: "claude-opus-5-5",
+      effort: "high",
+    });
+    await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }", {
+      input: { agentId, goal: "Check the model" },
+    });
+    expect(await runner.claim()).toBe(1);
+    await runner.idle();
+    const sent = complete.mock.calls.at(-1)?.[2];
+    complete.mockRestore();
+    expect(sent).toMatchObject({ model: "claude-opus-5-5", effort: "high" });
   });
 
   it("reports the plan's limits from sessions, and reads them while idle", async () => {

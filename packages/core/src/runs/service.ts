@@ -24,7 +24,7 @@ import type { Ctx } from "../services/common.js";
 import { event } from "../services/common.js";
 import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
-import { cleanTags } from "../services/machines.js";
+import { cleanTags, waitingFor } from "../services/machines.js";
 import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
 import { cleanAccount, cleanPlanUsage, runUsageSet } from "../services/usage.js";
 import { isAbove } from "../services/users.js";
@@ -162,9 +162,16 @@ async function wake(
   if (onIssue.some((r) => r.kind === "work" && r.status === "running")) return false;
 
   if (paused && answers) {
+    // A session only resumes on the engine that started it; on another, the run starts afresh.
+    const agent = await db
+      .select({ engine: users.engine })
+      .from(users)
+      .where(eq(users.id, agentId))
+      .get();
+    const same = (paused.engine ?? "claude") === agent?.engine;
     const routed = await routeRun(
       db,
-      { kind: "work", agentId, issueId: paused.issueId, resumes: paused },
+      { kind: "work", agentId, issueId: paused.issueId, resumes: same ? paused : null },
       at,
     );
     await commit(db, [
@@ -181,9 +188,8 @@ async function wake(
         ...routed,
         trigger: { notes: [trigger] },
         resumeOfRunId: paused.id,
-        sessionId: paused.sessionId,
         // The session lives on the machine that ran it.
-        machineId: paused.machineId,
+        ...(same ? { sessionId: paused.sessionId, machineId: paused.machineId } : {}),
         createdAt: at,
         updatedAt: at,
       }),
@@ -299,12 +305,12 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
     .all();
   for (const { run, agentTags, agentEngine, agentActive } of candidates) {
     if (!agentActive) continue;
-    if (!(agentTags ?? []).every((tag) => machine.tags.includes(tag))) continue;
-    if (!(machine.engines ?? ["claude"]).includes(agentEngine)) continue;
+    if (waitingFor({ engine: agentEngine, runnerTags: agentTags }, [machine])) continue;
     const won = await db
       .update(runs)
       .set({
         status: "running",
+        engine: agentEngine,
         machineId: machine.id,
         startedAt: at,
         heartbeatAt: at,
@@ -326,10 +332,12 @@ async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedR
   if (!agent) throw notFound("Agent");
   const issue = run.issueId ? await findIssue(db, run.issueId) : null;
   const notes = (run.trigger?.notes as TriggerNote[] | undefined) ?? [];
+  // A fresh session gets the whole issue, even when it answers a paused one.
+  const sessionId = run.resumeOfRunId ? run.sessionId : null;
   const input =
     run.kind === "decision"
       ? await decisionInput(db, agent, issue, notes)
-      : await workInput(db, agent, issue, run.goal ?? "", notes, !!run.resumeOfRunId);
+      : await workInput(db, agent, issue, run.goal ?? "", notes, !!sessionId);
   const token = randomToken(API_TOKEN_PREFIX);
   await db
     .insert(apiTokens)
@@ -351,7 +359,7 @@ async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedR
       modelTier: run.modelTier as ModelTier,
       ...(await modelOf(db, run)),
       engine: agent.engine,
-      sessionId: run.resumeOfRunId ? run.sessionId : null,
+      sessionId,
       issue: issue ? await identifierOf(db, issue) : null,
       issueId: issue?.id ?? null,
     },
@@ -434,6 +442,9 @@ export interface RunCompletion {
   error?: string;
   sessionId?: string | null;
   usage?: LogUpload["usage"];
+  /** What actually ran; older runners send neither and the hub's choice stays. */
+  model?: string;
+  effort?: string | null;
 }
 
 /**
@@ -490,6 +501,12 @@ export async function completeRun(
         endedAt: at,
         updatedAt: at,
         ...(body.sessionId ? { sessionId: body.sessionId } : {}),
+        ...(typeof body.model === "string" && body.model
+          ? {
+              model: body.model.slice(0, 120),
+              effort: typeof body.effort === "string" ? body.effort.slice(0, 40) : null,
+            }
+          : {}),
         ...(await runUsageSet(db, run, body.usage, body.sessionId)),
       })
       .where(eq(runs.id, runId)),

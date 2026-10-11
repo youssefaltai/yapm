@@ -67,6 +67,9 @@ export interface Completion {
   error?: string;
   sessionId?: string | null;
   usage?: Usage;
+  /** What actually ran; older runners send neither and the hub keeps its choice. */
+  model?: string;
+  effort?: string | null;
 }
 
 export class HubClient {

@@ -51,12 +51,16 @@ export interface RunSummary {
   agent: { id: string; name: string; kind: "owner" | "agent" };
   issue: { identifier: string; title: string } | null;
   waitingOnRequest: { id: string; title: string; status: string } | null;
+  /** Why a queued run hasn't started, e.g. no machine runs its agent's engine. */
+  queuedReason: string | null;
 }
 
-export const RUN_SUMMARY = `id kind status goal modelTier createdAt startedAt endedAt inputTokens outputTokens
+export const RUN_SUMMARY = `id kind status goal modelTier createdAt startedAt endedAt inputTokens outputTokens queuedReason
   agent { id name kind } issue { identifier title } waitingOnRequest { id title status }`;
 
 const ACTIVE: RunStatus[] = ["queued", "running", "needs_input"];
+
+export const ENGINES: Record<string, string> = { claude: "Claude", opencode: "OpenCode" };
 export const isActive = (status: RunStatus) => ACTIVE.includes(status);
 
 const STATUS: Record<RunStatus, { label: string; className: string }> = {
@@ -128,7 +132,7 @@ export function RunRows({
                 {showAgent && <span className="font-medium">{run.agent.name} </span>}
                 <span className={showAgent ? "text-muted" : ""}>{describeRun(run)}</span>
               </p>
-              {(showIssue && run.issue) || run.waitingOnRequest ? (
+              {(showIssue && run.issue) || run.waitingOnRequest || run.queuedReason ? (
                 <p className="truncate text-[12px] text-faint">
                   {showIssue && run.issue && (
                     <>
@@ -139,6 +143,12 @@ export function RunRows({
                     <span className="text-warning">
                       {showIssue && run.issue ? " · " : ""}Waiting for your approval
                     </span>
+                  )}
+                  {run.queuedReason && (
+                    <>
+                      {showIssue && run.issue ? " · " : ""}
+                      {run.queuedReason}
+                    </>
                   )}
                 </p>
               ) : null}
@@ -238,6 +248,7 @@ interface RunDetail extends RunSummary {
   error: string | null;
   stopReason: string | null;
   numTurns: number;
+  engine: string | null;
   model: string | null;
   effort: string | null;
   routeRule: string | null;
@@ -247,7 +258,7 @@ interface RunDetail extends RunSummary {
 }
 
 const RUN_DETAIL = `query($id: String!) { run(id: $id) {
-  ${RUN_SUMMARY} trigger result error stopReason numTurns model effort routeRule costUsd
+  ${RUN_SUMMARY} trigger result error stopReason numTurns engine model effort routeRule costUsd
   machine { id name } stoppedBy { name }
 } }`;
 
@@ -468,13 +479,18 @@ export function RunPage({ id }: { id: string }) {
                   {run.startedAt ? (
                     timeAgo(run.startedAt)
                   ) : (
-                    <span className="text-faint">Not yet, queued {timeAgo(run.createdAt)}</span>
+                    <span className="text-faint">
+                      {run.queuedReason ?? "Not yet"}, queued {timeAgo(run.createdAt)}
+                    </span>
                   )}
                 </Property>
               </PropertyList>
               <PropertyList title="Model and usage">
                 <Property label="Model">
                   <span className="truncate">{run.model ?? run.modelTier}</span>
+                  {run.engine && (
+                    <span className="text-faint">{ENGINES[run.engine] ?? run.engine}</span>
+                  )}
                 </Property>
                 <Property label="Effort">{run.effort ?? "Default"}</Property>
                 {run.routeRule && <Property label="Route">{run.routeRule}</Property>}
@@ -485,7 +501,9 @@ export function RunPage({ id }: { id: string }) {
                 {run.costUsd ? (
                   <Property label="Cost">
                     ${run.costUsd.toFixed(3)}
-                    <span className="text-faint">at API prices</span>
+                    <span className="text-faint">
+                      {run.engine === "opencode" ? "as OpenCode reports" : "at API prices"}
+                    </span>
                   </Property>
                 ) : null}
               </PropertyList>

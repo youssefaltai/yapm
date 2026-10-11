@@ -649,11 +649,16 @@ export const runs = sqliteTable(
     goal: text("goal"),
     /** small, standard or top. */
     modelTier: text("model_tier").notNull().default("standard"),
-    /** The pinned model id and effort the hub chose, and the routing rule that chose them. */
+    /**
+     * The model id and effort the hub chose, and the routing rule that chose them. Runners that
+     * report what actually ran overwrite the model and effort when the run ends.
+     */
     model: text("model"),
     effort: text("effort"),
     routeRule: text("route_rule"),
-    /** What the session would cost at API prices, as the Agent SDK reports it. */
+    /** What ran it, set when a machine claims it; null while queued. */
+    engine: text("engine", { enum: ENGINES }),
+    /** What the session would cost: at API prices from Claude, as OpenCode reports from OpenCode. */
     costUsd: real("cost_usd").notNull().default(0),
     /**
      * The usage totals exactly as the SDK reported them. A resumed session reports totals that

@@ -3,21 +3,27 @@ import { describe, expect, it, vi } from "vitest";
 import type { EngineRun } from "../src/engine.js";
 
 const calls: Options[] = [];
+let messages: unknown[] = [];
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: ({ options }: { options: Options }) => {
     calls.push(options);
-    return Object.assign((async function* () {})(), {
-      mcpServerStatus: async () => [
-        {
-          name: "slack",
-          status: "connected",
-          tools: [
-            { name: "slack_read_channel", annotations: { readOnly: true } },
-            { name: "slack_send_message", annotations: {} },
-          ],
-        },
-      ],
-    });
+    return Object.assign(
+      (async function* () {
+        yield* messages;
+      })(),
+      {
+        mcpServerStatus: async () => [
+          {
+            name: "slack",
+            status: "connected",
+            tools: [
+              { name: "slack_read_channel", annotations: { readOnly: true } },
+              { name: "slack_send_message", annotations: {} },
+            ],
+          },
+        ],
+      },
+    );
   },
 }));
 
@@ -51,6 +57,15 @@ describe("sdk engine", () => {
     const servers = calls[0]?.mcpServers as Record<string, { url: string }>;
     expect(servers.github?.url).toBe("https://api.githubcopilot.com/mcp/");
     expect(servers["yapm"]?.url).toBe("http://localhost/mcp");
+  });
+
+  it("reports the model the session ran on and the effort it asked for", async () => {
+    messages = [{ type: "system", subtype: "init", model: "claude-opus-5-5" }];
+    const ran = await sdkEngine(run({ effort: "high" }));
+    const unset = await sdkEngine(run());
+    messages = [];
+    expect(ran).toMatchObject({ model: "claude-opus-5-5", effort: "high" });
+    expect(unset.effort).toBeNull();
   });
 
   it("keeps the owner's claude.ai connectors out of agent sessions", async () => {

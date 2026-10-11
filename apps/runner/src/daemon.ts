@@ -144,6 +144,7 @@ export class Runner {
     const buffer: Record<string, unknown>[] = [];
     let sessionId = claim.run.sessionId;
     let usage: Usage = {};
+    let ran: Pick<Completion, "model" | "effort"> = {};
     let flushing: Promise<void> = Promise.resolve();
     const flush = () => {
       flushing = flushing.then(async () => {
@@ -206,6 +207,7 @@ export class Runner {
       });
       sessionId = result.sessionId ?? sessionId;
       usage = result.usage;
+      if (result.model) ran = { model: result.model, effort: result.effort ?? null };
       if (abort.signal.aborted) {
         completion = { status: "stopped", error: entry.stopReason ?? "Stopped" };
       } else if (result.error || result.output == null) {
@@ -225,7 +227,12 @@ export class Runner {
     clearInterval(timer);
     await flush();
     await flush();
-    const answer = await hub.complete(token, claim.run.id, { ...completion, sessionId, usage });
+    const answer = await hub.complete(token, claim.run.id, {
+      ...completion,
+      sessionId,
+      usage,
+      ...ran,
+    });
     const status = answer?.status ?? completion.status;
     this.log(
       `Finished ${label}: ${status}${completion.error && status !== "completed" ? ` (${completion.error})` : ""}`,

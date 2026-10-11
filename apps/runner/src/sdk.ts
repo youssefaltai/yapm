@@ -117,6 +117,10 @@ export const sdkEngine: Engine = async (run) => {
         const onPlan = run.onPlan;
         void readAccount(session).then((update) => update && onPlan(update));
       }
+      if (message.type === "system" && message.subtype === "init") {
+        result.model = message.model;
+        result.effort = run.effort ?? null;
+      }
       if (message.type === "rate_limit_event") run.onPlan?.({ rateLimit: message.rate_limit_info });
       if (
         "session_id" in message &&

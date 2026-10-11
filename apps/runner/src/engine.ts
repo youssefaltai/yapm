@@ -41,6 +41,10 @@ export interface EngineResult {
   sessionId: string | null;
   usage: Usage;
   error?: string;
+  /** The model that ran, e.g. `claude-opus-5-5` or `openai/gpt-6-sol`; left out when unknown. */
+  model?: string;
+  /** The effort (an OpenCode variant) it ran with; null when none applied. */
+  effort?: string | null;
 }
 
 export type Engine = (run: EngineRun) => Promise<EngineResult>;

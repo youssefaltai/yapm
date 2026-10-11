@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installScript } from "@yapm/core";
@@ -8,7 +16,7 @@ import { describe, expect, it } from "vitest";
 const HUB = "https://hub.example";
 
 /** Runs the installer with stub node, npm and curl; returns what the runner was asked to do. */
-function install(connectedTo?: string, token = "lms_x") {
+function install(connectedTo?: string, token = "lms_x", runnerHome?: string) {
   const home = mkdtempSync(join(tmpdir(), "install-"));
   const bin = join(home, "stubs");
   mkdirSync(bin);
@@ -35,11 +43,15 @@ shift; echo "$*" >> "$HOME/runner.log"
     ["-s", "--", ...(token ? ["--token", token] : []), "--no-service"],
     {
       input: installScript(HUB),
-      env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` },
+      env: {
+        HOME: home,
+        PATH: `${bin}:/usr/bin:/bin`,
+        ...(runnerHome ? { YAPM_RUNNER_HOME: join(home, runnerHome) } : {}),
+      },
       encoding: "utf8",
     },
   );
-  return { ran: readFileSync(join(home, "runner.log"), "utf8"), said };
+  return { ran: readFileSync(join(home, "runner.log"), "utf8"), said, home };
 }
 
 describe("install.sh", () => {
@@ -57,5 +69,18 @@ describe("install.sh", () => {
 
   it("doesn't ask to start a runner it's updating, which restarts by itself", () => {
     expect(install(HUB, "").said).not.toContain("yapm-runner start");
+  });
+
+  it("links yapm-runner on PATH to the default home", () => {
+    const { home } = install();
+    expect(readlinkSync(join(home, ".local/bin/yapm-runner"))).toBe(
+      join(home, ".yapm-runner/bin/yapm-runner"),
+    );
+  });
+
+  it("leaves the link alone for another home", () => {
+    const { home } = install(undefined, "lms_x", ".yapm-runner-opencode");
+    expect(existsSync(join(home, ".yapm-runner-opencode/bin/yapm-runner"))).toBe(true);
+    expect(existsSync(join(home, ".local/bin/yapm-runner"))).toBe(false);
   });
 });

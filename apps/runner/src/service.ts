@@ -1,14 +1,25 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 /**
  * Keeps the runner going in the background and starts it at login, the way the platform
  * expects: a launchd agent on macOS, a systemd user service on Linux.
  */
-export const LAUNCHD_LABEL = "com.yapm.runner";
-export const SYSTEMD_UNIT = "yapm-runner.service";
+export interface ServiceNames {
+  label: string;
+  unit: string;
+}
+
+/** The default home keeps the plain names; another home gets its own, named after its folder. */
+export function serviceNames(home: string, userHome = homedir()): ServiceNames {
+  const name =
+    resolve(home) === join(userHome, ".yapm-runner") ? "" : basename(home).replace(/^\.+/, "");
+  return name
+    ? { label: `com.yapm.runner.${name}`, unit: `yapm-runner-${name}.service` }
+    : { label: "com.yapm.runner", unit: "yapm-runner.service" };
+}
 
 export interface ServiceSpec {
   /** The program and its arguments, e.g. node, main.js, start. */
@@ -21,7 +32,7 @@ export interface ServiceSpec {
 const xml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-export function launchdPlist(spec: ServiceSpec): string {
+export function launchdPlist(spec: ServiceSpec, label: string): string {
   const strings = (values: string[]) =>
     values.map((v) => `    <string>${xml(v)}</string>`).join("\n");
   const env = Object.entries(spec.env)
@@ -32,7 +43,7 @@ export function launchdPlist(spec: ServiceSpec): string {
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>${LAUNCHD_LABEL}</string>
+  <string>${xml(label)}</string>
   <key>ProgramArguments</key>
   <array>
 ${strings(spec.command)}
@@ -86,22 +97,23 @@ WantedBy=default.target
 const run = (command: string, args: string[]) =>
   spawnSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
-const launchdPath = () => join(homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
-const systemdPath = () => join(homedir(), ".config", "systemd", "user", SYSTEMD_UNIT);
+const launchdPath = (label: string) => join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
+const systemdPath = (unit: string) => join(homedir(), ".config", "systemd", "user", unit);
 const hasUserSystemd = () =>
   process.platform === "linux" && run("systemctl", ["--user", "show-environment"]).status === 0;
 
 /** Installs (or refreshes) the service and starts it. False when this system has neither. */
 export async function installService(
   spec: ServiceSpec,
+  { label, unit }: ServiceNames,
   log: (line: string) => void,
 ): Promise<boolean> {
   if (process.platform === "darwin") {
-    const path = launchdPath();
+    const path = launchdPath(label);
     const domain = `gui/${userInfo().uid}`;
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, launchdPlist(spec));
-    run("launchctl", ["bootout", `${domain}/${LAUNCHD_LABEL}`]);
+    await writeFile(path, launchdPlist(spec, label));
+    run("launchctl", ["bootout", `${domain}/${label}`]);
     // Right after a bootout, launchd can still be tearing the old one down (error 5); retry.
     let loaded = run("launchctl", ["bootstrap", domain, path]);
     for (let tries = 0; loaded.status !== 0 && tries < 5; tries++) {
@@ -114,12 +126,12 @@ export async function installService(
     return true;
   }
   if (hasUserSystemd()) {
-    const path = systemdPath();
+    const path = systemdPath(unit);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, systemdUnit(spec));
     run("systemctl", ["--user", "daemon-reload"]);
-    run("systemctl", ["--user", "enable", SYSTEMD_UNIT]);
-    const started = run("systemctl", ["--user", "restart", SYSTEMD_UNIT]);
+    run("systemctl", ["--user", "enable", unit]);
+    const started = run("systemctl", ["--user", "restart", unit]);
     if (started.status !== 0)
       throw new Error(`systemd couldn't start the runner: ${started.stderr}`);
     // Without lingering, user services stop at logout; most systems let users turn it on.
@@ -135,23 +147,23 @@ export async function installService(
   return false;
 }
 
-export async function uninstallService(log: (line: string) => void) {
+export async function uninstallService({ label, unit }: ServiceNames, log: (line: string) => void) {
   if (process.platform === "darwin") {
-    run("launchctl", ["bootout", `gui/${userInfo().uid}/${LAUNCHD_LABEL}`]);
-    await rm(launchdPath(), { force: true });
+    run("launchctl", ["bootout", `gui/${userInfo().uid}/${label}`]);
+    await rm(launchdPath(label), { force: true });
   } else if (hasUserSystemd()) {
-    run("systemctl", ["--user", "disable", "--now", SYSTEMD_UNIT]);
-    await rm(systemdPath(), { force: true });
+    run("systemctl", ["--user", "disable", "--now", unit]);
+    await rm(systemdPath(unit), { force: true });
     run("systemctl", ["--user", "daemon-reload"]);
   }
   log("The runner no longer runs in the background.");
 }
 
 /** Follows the runner's output. */
-export function followLogs(logFile: string) {
+export function followLogs(logFile: string, { unit }: ServiceNames) {
   const [command, args] =
     process.platform === "darwin" || !hasUserSystemd()
       ? ["tail", ["-n", "100", "-F", logFile]]
-      : ["journalctl", ["--user", "-u", SYSTEMD_UNIT, "-n", "100", "-f"]];
+      : ["journalctl", ["--user", "-u", unit, "-n", "100", "-f"]];
   spawnSync(command as string, args as string[], { stdio: "inherit" });
 }

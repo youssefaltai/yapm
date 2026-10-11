@@ -11,9 +11,9 @@ import { Runner } from "./daemon.js";
 import { HubClient } from "./hub.js";
 import { installOpencode, opencodeEngine, opencodeLogin } from "./opencode.js";
 import { probePlan, sdkEngine } from "./sdk.js";
-import { followLogs, installService, uninstallService } from "./service.js";
+import { followLogs, installService, serviceNames, uninstallService } from "./service.js";
 
-const VERSION = "0.5.0";
+const VERSION = "0.5.1";
 
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
@@ -169,19 +169,20 @@ async function main() {
           env: { YAPM_RUNNER_HOME: home, PATH: process.env.PATH ?? "/usr/bin:/bin" },
           logFile,
         },
+        serviceNames(home),
         say,
       );
       return;
     }
     if (action === "uninstall") {
-      await uninstallService(say);
+      await uninstallService(serviceNames(home), say);
       return;
     }
     throw new Error("Say what to do: yapm-runner service install, or service uninstall");
   }
 
   if (command === "logs") {
-    followLogs(logFile);
+    followLogs(logFile, serviceNames(home));
     return;
   }
 

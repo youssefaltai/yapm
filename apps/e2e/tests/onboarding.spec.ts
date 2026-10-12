@@ -466,10 +466,18 @@ test.describe
 
       await page.goto("/company");
       await page.getByRole("button", { name: /Ada/ }).first().click();
-      await page.getByRole("button", { name: "Give Ada work" }).click();
-      await page.getByLabel("Goal").fill("Reconcile last month's statements");
-      await page.getByRole("textbox", { name: "On issue" }).fill("PF-1");
-      await page.getByRole("button", { name: "Start" }).click();
+      // Work reaches an agent through issues, so every run stays traceable.
+      await expect(page.getByText("The agent's job", { exact: false })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Give Ada work" })).toHaveCount(0);
+      const gql = async (query: string, variables?: unknown) =>
+        (await (await page.request.post("/graphql", { data: { query, variables } })).json()).data;
+      const { users } = await gql("{ users { nodes { id name } } }");
+      const adaId = users.nodes.find((u: { name: string }) => u.name === "Ada").id;
+      const { runCreate } = await gql(
+        "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
+        { input: { agentId: adaId, goal: "Reconcile last month's statements", issueId: "PF-1" } },
+      );
+      await page.goto(`/run/${runCreate.run.id}`);
       await expect(
         page.getByRole("heading", { name: "Reconcile last month's statements" }),
       ).toBeVisible();

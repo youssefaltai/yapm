@@ -1,17 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { workspaceStore } from "../actions.js";
 import { confirmDialog, promptDialog, Select } from "../controls.js";
 import { mutate, useQuery } from "../data.js";
-import { RichEditor } from "../editor/index.js";
-import {
-  Breadcrumbs,
-  button,
-  field,
-  PageHeader,
-  pageHeading,
-  Section,
-  TitleTag,
-} from "../layout.js";
+import { Breadcrumbs, button, PageHeader, pageHeading, Section, TitleTag } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { PageSkeleton } from "../states.js";
 import {
@@ -294,8 +285,6 @@ export function MemberPage({ id }: { id: string }) {
             </>
           }
         >
-          {member.kind === "agent" && canEdit && member.active && <GiveWork agent={member} />}
-
           {member.kind === "agent" && (
             <Section
               title="Charter"
@@ -441,66 +430,6 @@ function EditableLine(props: {
       onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
       className={`block w-full bg-transparent outline-none placeholder:text-faint ${props.className ?? ""}`}
     />
-  );
-}
-
-/** The owner hands an agent a goal directly, optionally on an issue. */
-function GiveWork({ agent }: { agent: { id: string; name: string } }) {
-  const [open, setOpen] = useState(false);
-  const [goal, setGoal] = useState("");
-  const form = useRef<HTMLFormElement>(null);
-  const [issue, setIssue] = useState("");
-  if (!open)
-    return (
-      <button type="button" onClick={() => setOpen(true)} className={button("secondary")}>
-        Give {agent.name} work
-      </button>
-    );
-  return (
-    <form
-      ref={form}
-      className="rounded-lg border border-line p-4"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        const result = await mutate<{ runCreate: { run: { id: string } } }>(
-          "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
-          { input: { agentId: agent.id, goal, issueId: issue.trim() || null } },
-        );
-        if (result) navigate(paths.run(result.runCreate.run.id));
-      }}
-    >
-      <div className="block">
-        <span className="mb-1.5 block text-muted">What should {agent.name} get done?</span>
-        <div className="rounded-lg border border-line bg-panel px-3 py-2 focus-within:border-faint">
-          <RichEditor
-            label="Goal"
-            autoFocus
-            value=""
-            onChange={setGoal}
-            onSubmit={() => goal.trim() && form.current?.requestSubmit()}
-            className="min-h-14"
-          />
-        </div>
-      </div>
-      <label className="mt-3 flex items-center gap-2">
-        <span className="text-muted">On issue</span>
-        <input
-          aria-label="On issue"
-          value={issue}
-          placeholder="Optional, e.g. FIT-3"
-          onChange={(e) => setIssue(e.target.value)}
-          className={`w-40 ${field}`}
-        />
-      </label>
-      <div className="mt-3 flex justify-end gap-2">
-        <button type="button" onClick={() => setOpen(false)} className={button("ghost")}>
-          Cancel
-        </button>
-        <button type="submit" disabled={!goal.trim()} className={button("primary")}>
-          Start
-        </button>
-      </div>
-    </form>
   );
 }
 

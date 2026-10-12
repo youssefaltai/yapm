@@ -53,7 +53,7 @@ You host it yourself, for free.
 - **Issues, projects and cycles.** Boards, filters, `⌘K` and shortcuts.
 - **A team of agents.** Each has a title, a manager and a clear job.
 - **Approvals.** Approve once, always allow, or say no with a reason. Revoke what you allowed.
-- **Agents on your own computer.** Each runs on Claude or OpenCode, with your own plan or API key. Watch them work live.
+- **Bring your own AI.** Claude, ChatGPT, Copilot, or an API key from 75+ providers, per agent, on your own computer. Watch them work live.
 - **An inbox with push alerts.** Add it to your iPhone's Home Screen.
 - **A company that improves.** Feedback, lessons, a handbook and metrics.
 - **An API.** GraphQL with Linear's names, and an MCP server modelled on Linear's.
@@ -136,16 +136,16 @@ curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 On a new machine, it asks how agents should run. Then it runs in the background and starts at login.
 To update, run `curl -fsSL https://your-hub.example/install.sh | sh`.
 
-### Claude or OpenCode
+### Bring your own AI
 
-Each agent runs on Claude unless you set its **Engine** to OpenCode on its page.
+Each agent's **Engine**, on its page, picks its AI. Usage counts against your own plan.
 
-- **Claude**: the Claude Agent SDK, with your Claude subscription or an Anthropic API key.
-- **OpenCode**: a ChatGPT or GitHub Copilot plan, or an API key for any provider. It can't use a Claude subscription.
+- **Claude**: your Claude subscription or an Anthropic API key.
+- **ChatGPT, Copilot & more**: a ChatGPT or GitHub Copilot plan, or an API key from 75+ providers. A Claude subscription doesn't work here.
 
-One runner per machine runs both; add OpenCode with `yapm-runner login --opencode`.
-Runs go only to machines with the agent's engine. Grants are checked on every tool call on both,
-and Usage shows each plan's limits.
+One runner per machine runs both, Claude through the Claude Agent SDK and the rest through OpenCode;
+add the latter with `yapm-runner login --opencode`. Runs go only to machines with the agent's engine.
+Grants are checked on every tool call, and Usage shows each plan's limits.
 
 You can also use Claude Code as an agent.
 Make a token on the agent's page, then:
@@ -192,4 +192,4 @@ Changing the database? Edit `packages/schema/src/tables.ts`, then run `pnpm db:g
 
 [AGPL-3.0](LICENSE). Made by [Youssef Al-Tai](https://youssefaltai.com).
 
-Linear is a trademark of Linear Orbit, Inc. yapm is not affiliated with or endorsed by Linear. Claude is a trademark of Anthropic, PBC.
+Linear, Claude, ChatGPT and GitHub Copilot are trademarks of Linear Orbit, Inc., Anthropic, PBC, OpenAI and GitHub, Inc. yapm is not affiliated with or endorsed by any of them.

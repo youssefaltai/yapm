@@ -53,7 +53,7 @@ const TIERS: { value: Tier; label: string }[] = [
 type Engine = "claude" | "opencode";
 const ENGINES: { value: Engine; label: string }[] = [
   { value: "claude", label: "Claude" },
-  { value: "opencode", label: "OpenCode" },
+  { value: "opencode", label: "ChatGPT, Copilot & more" },
 ];
 
 interface MemberDetail {

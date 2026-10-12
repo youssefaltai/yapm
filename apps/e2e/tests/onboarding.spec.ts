@@ -298,12 +298,12 @@ test.describe
       await expect(page.getByLabel("Charter")).toHaveText(
         "Owns the household budget and the bills.",
       );
-      // Agents run on Claude unless the owner picks OpenCode.
+      // Agents run on Claude unless the owner picks ChatGPT, Copilot or another provider.
       const engine = page.getByLabel("Engine");
       await expect(engine).toContainText("Claude");
-      await choose(page, engine, "OpenCode");
+      await choose(page, engine, "ChatGPT, Copilot & more");
       await page.reload();
-      await expect(engine).toContainText("OpenCode");
+      await expect(engine).toContainText("ChatGPT, Copilot & more");
       await choose(page, engine, "Claude");
       await expect(engine).toContainText("Claude");
 

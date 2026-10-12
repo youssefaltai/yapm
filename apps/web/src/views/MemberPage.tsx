@@ -176,128 +176,45 @@ export function MemberPage({ id }: { id: string }) {
             </div>
           }
           side={
-            <>
-              <PropertyList>
-                <Property label="Reports to" control={member.kind !== "owner"}>
-                  {member.kind === "owner" ? (
-                    "No one"
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!editable}
-                      onClick={() =>
-                        openMenu({
-                          placeholder: `Who does ${member.name} report to?`,
-                          items: workspace.users.nodes
-                            .filter((u) => u.id !== member.id)
-                            .map((u) => ({
-                              id: u.id,
-                              label: u.name,
-                              hint: u.title ?? undefined,
-                              icon: <Avatar name={u.name} kind={u.kind} size={16} />,
-                              checked: u.id === member.manager?.id,
-                              onSelect: () => void update({ managerId: u.id }),
-                            })),
-                        })
-                      }
-                      className={propertyButton}
-                    >
-                      {member.manager ? (
-                        <>
-                          <Avatar name={member.manager.name} size={16} />
-                          {member.manager.name}
-                        </>
-                      ) : (
-                        <span className="text-faint">No one</span>
-                      )}
-                    </button>
-                  )}
-                </Property>
-                <Property label="Direct reports">
-                  {member.directReports.nodes.length === 0 ? (
-                    <span className="text-faint">None</span>
-                  ) : (
-                    <span className="flex flex-wrap gap-x-2 gap-y-1">
-                      {member.directReports.nodes.map((r) => (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => navigate(paths.member(r.id))}
-                          className="flex items-center gap-1.5 text-ink hover:underline"
-                        >
-                          <Avatar name={r.name} kind={r.kind} size={16} />
-                          {r.name}
-                        </button>
-                      ))}
-                    </span>
-                  )}
-                </Property>
-                <Property label="Open issues">{member.assignedIssues.nodes.length}</Property>
-                <Property label="Joined">{timeAgo(member.createdAt)}</Property>
-              </PropertyList>
-              {member.kind === "agent" && (
-                <PropertyList title="How it runs">
-                  <Property label="Runs on" control>
-                    <EditableLine
-                      label="Runner tags"
-                      value={member.runnerTags.join(", ")}
-                      placeholder="Any machine"
-                      disabled={!editable}
-                      allowEmpty
-                      onSave={(value) =>
-                        update({
-                          runnerTags: value
-                            .split(",")
-                            .map((t) => t.trim().toLowerCase())
-                            .filter(Boolean),
-                        })
-                      }
-                      className={lineField}
-                    />
-                  </Property>
-                  <Property label="Top runs/week" control>
-                    <EditableLine
-                      label="Top runs a week"
-                      value={String(member.topRunsPerWeek)}
-                      disabled={!editable}
-                      onSave={(value) => {
-                        const n = Number(value);
-                        if (Number.isInteger(n) && n >= 0) update({ topRunsPerWeek: n });
-                      }}
-                      className={lineField}
-                    />
-                  </Property>
-                  <Property label="Models" control={editable}>
-                    {editable ? (
-                      <Select
-                        aria-label="Models"
-                        value={member.models ? "custom" : "company"}
-                        options={MODELS}
-                        onChange={(choice) =>
-                          update({ models: choice === "custom" ? company.tiers : null })
-                        }
-                        className={`${propertyButton} w-full`}
-                      />
-                    ) : member.models ? (
-                      "Custom"
-                    ) : (
-                      "Company default"
-                    )}
-                  </Property>
-                </PropertyList>
-              )}
-              {member.kind === "agent" && (
-                <div className="mt-2">
-                  <TierTable
-                    tiers={member.models ?? company.tiers}
-                    providers={data.organization.aiProviders}
-                    onChange={
-                      editable && member.models ? (models) => update({ models }) : undefined
+            <PropertyList>
+              <Property label="Reports to" control={member.kind !== "owner"}>
+                {member.kind === "owner" ? (
+                  "No one"
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!editable}
+                    onClick={() =>
+                      openMenu({
+                        placeholder: `Who does ${member.name} report to?`,
+                        items: workspace.users.nodes
+                          .filter((u) => u.id !== member.id)
+                          .map((u) => ({
+                            id: u.id,
+                            label: u.name,
+                            hint: u.title ?? undefined,
+                            icon: <Avatar name={u.name} kind={u.kind} size={16} />,
+                            checked: u.id === member.manager?.id,
+                            onSelect: () => void update({ managerId: u.id }),
+                          })),
+                      })
                     }
-                  />
-                </div>
-              )}
-            </>
+                    className={propertyButton}
+                  >
+                    {member.manager ? (
+                      <>
+                        <Avatar name={member.manager.name} size={16} />
+                        {member.manager.name}
+                      </>
+                    ) : (
+                      <span className="text-faint">No one</span>
+                    )}
+                  </button>
+                )}
+              </Property>
+              <Property label="Open issues">{member.assignedIssues.nodes.length}</Property>
+              <Property label="Joined">{timeAgo(member.createdAt)}</Property>
+            </PropertyList>
           }
         >
           {member.kind === "agent" && canEdit && member.active && <GiveWork agent={member} />}
@@ -341,6 +258,91 @@ export function MemberPage({ id }: { id: string }) {
           )}
 
           {member.kind === "agent" && <RunsSection runs={runRows} showAgent={false} />}
+
+          {member.directReports.nodes.length > 0 && (
+            <Section title="Direct reports" count={member.directReports.nodes.length}>
+              <ul className="divide-y divide-line rounded-lg border border-line">
+                {member.directReports.nodes.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(paths.member(r.id))}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-raised"
+                    >
+                      <Avatar name={r.name} kind={r.kind} size={20} />
+                      <span className="truncate">{r.name}</span>
+                      {r.title && <span className="truncate text-faint">{r.title}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
+
+          {member.kind === "agent" && (
+            <Section
+              id="how-it-runs"
+              title="How it runs"
+              description="Which machines may run it, how often at most, and on which models."
+            >
+              <dl className="-mx-2 grid gap-3 sm:grid-cols-3">
+                <Property label="Runs on" control>
+                  <EditableLine
+                    label="Runner tags"
+                    value={member.runnerTags.join(", ")}
+                    placeholder="Any machine"
+                    disabled={!editable}
+                    allowEmpty
+                    onSave={(value) =>
+                      update({
+                        runnerTags: value
+                          .split(",")
+                          .map((t) => t.trim().toLowerCase())
+                          .filter(Boolean),
+                      })
+                    }
+                    className={lineField}
+                  />
+                </Property>
+                <Property label="Top runs/week" control>
+                  <EditableLine
+                    label="Top runs a week"
+                    value={String(member.topRunsPerWeek)}
+                    disabled={!editable}
+                    onSave={(value) => {
+                      const n = Number(value);
+                      if (Number.isInteger(n) && n >= 0) update({ topRunsPerWeek: n });
+                    }}
+                    className={lineField}
+                  />
+                </Property>
+                <Property label="Models" control={editable}>
+                  {editable ? (
+                    <Select
+                      aria-label="Models"
+                      value={member.models ? "custom" : "company"}
+                      options={MODELS}
+                      onChange={(choice) =>
+                        update({ models: choice === "custom" ? company.tiers : null })
+                      }
+                      className={`${propertyButton} w-full`}
+                    />
+                  ) : member.models ? (
+                    "Custom"
+                  ) : (
+                    "Company default"
+                  )}
+                </Property>
+              </dl>
+              <div className="mt-3">
+                <TierTable
+                  tiers={member.models ?? company.tiers}
+                  providers={data.organization.aiProviders}
+                  onChange={editable && member.models ? (models) => update({ models }) : undefined}
+                />
+              </div>
+            </Section>
+          )}
 
           {member.kind === "agent" && (
             <Section

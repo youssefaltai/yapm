@@ -1,6 +1,6 @@
 import { cycleName, workspaceStore } from "../actions.js";
 import { type Team, useQuery } from "../data.js";
-import { Breadcrumbs, eyebrow, listRow, PageHeader, PageTitle } from "../layout.js";
+import { Breadcrumbs, listRow, PageHeader, PageTitle } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { shortDate, useStore } from "../ui.js";
@@ -113,69 +113,12 @@ export function CyclePage({ id }: { id: string }) {
         </Breadcrumbs>
       }
       tabs={
-        <span className="text-[12px] text-faint max-sm:hidden xl:hidden">
+        <span className="text-[12px] text-faint max-sm:hidden">
           {shortDate(cycle.startsAt)} – {shortDate(cycle.endsAt)}
         </span>
       }
-      banner={
-        <div className="xl:hidden">
-          <BurnUp cycle={cycle} />
-        </div>
-      }
-      aside={<CycleSidebar cycle={cycle} />}
+      banner={<BurnUp cycle={cycle} />}
     />
-  );
-}
-
-/** Linear's cycle sidebar: when it runs, how much is done, and the graph, beside the issues. */
-function CycleSidebar({ cycle }: { cycle: CycleDetail }) {
-  const scope = cycle.scopeHistory.at(-1) ?? 0;
-  const done = cycle.completedScopeHistory.at(-1) ?? 0;
-  const daysLeft = Math.ceil((Date.parse(cycle.endsAt) - Date.now()) / 86_400_000);
-  return (
-    <div className="space-y-5 px-5 py-6">
-      <div>
-        <div className="flex items-center gap-2">
-          <h2 className="font-medium">{cycleName(cycle)}</h2>
-          <CycleStatus cycle={cycle} />
-        </div>
-        <p className="mt-0.5 text-[13px] text-faint">
-          {shortDate(cycle.startsAt)} – {shortDate(cycle.endsAt)}
-          {cycle.isActive &&
-            daysLeft > 0 &&
-            ` · ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}
-        </p>
-      </div>
-      <dl className="grid grid-cols-2 overflow-hidden rounded-lg border border-line">
-        <div className="px-3 py-2.5">
-          <dt className="flex items-center gap-1.5 text-[12px] text-muted">
-            <span className="size-2 rounded-full bg-faint" aria-hidden /> Scope
-          </dt>
-          <dd className="mt-0.5 text-lg font-medium">{scope}</dd>
-        </div>
-        <div className="border-l border-line px-3 py-2.5">
-          <dt className="flex items-center gap-1.5 text-[12px] text-muted">
-            <span className="size-2 rounded-full bg-accent" aria-hidden /> Completed
-          </dt>
-          <dd className="mt-0.5 text-lg font-medium">
-            {done}{" "}
-            <span className="text-[12px] font-normal text-faint">
-              {Math.round(cycle.progress * 100)}%
-            </span>
-          </dd>
-        </div>
-      </dl>
-      <div>
-        <h3 className={`mb-2 ${eyebrow}`}>Progress</h3>
-        {cycle.scopeHistory.length > 0 ? (
-          <BurnUpChart cycle={cycle} className="h-36 w-full" />
-        ) : (
-          <p className="text-[12px] text-faint">
-            The graph fills in day by day once the cycle starts.
-          </p>
-        )}
-      </div>
-    </div>
   );
 }
 

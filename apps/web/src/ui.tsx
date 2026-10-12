@@ -635,12 +635,16 @@ export function DetailLayout({
   );
 }
 
-/** A group of label and value rows in a properties sidebar, with an optional heading. */
+/**
+ * A group of properties in a properties sidebar, with an optional heading. Each label sits above
+ * its value, so the value gets the sidebar's whole width; where the sidebar runs across the page,
+ * above the content, they sit side by side.
+ */
 export function PropertyList({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <section className="not-first:mt-4 not-first:border-t not-first:border-line not-first:pt-4">
-      {title && <h2 className={`mb-2 ${eyebrow}`}>{title}</h2>}
-      <dl className="grid grid-cols-[6rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+      {title && <h2 className={`mb-2 px-2 ${eyebrow}`}>{title}</h2>}
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2 @xl:grid-cols-3 @4xl:grid-cols-1">
         {children}
       </dl>
     </section>
@@ -648,8 +652,8 @@ export function PropertyList({ title, children }: { title?: string; children: Re
 }
 
 /**
- * One row of a PropertyList: a quiet label and its value. Plain values get a property button's
- * padding so they line up with the controls; a `control` value brings its own.
+ * One property: a quiet label over its value. Plain values get a property button's padding so
+ * they line up with the controls; a `control` value brings its own.
  */
 export function Property({
   label,
@@ -661,14 +665,14 @@ export function Property({
   children: ReactNode;
 }) {
   return (
-    <>
-      <dt className="text-faint">{label}</dt>
+    <div className="min-w-0">
+      <dt className="px-2 text-[12px] text-faint">{label}</dt>
       <dd
         className={`flex min-h-7 min-w-0 items-center gap-2 text-muted ${control ? "" : "px-2 py-1"}`}
       >
         {children}
       </dd>
-    </>
+    </div>
   );
 }
 

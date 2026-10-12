@@ -12,6 +12,22 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
         yield* messages;
       })(),
       {
+        close: () => {},
+        supportedModels: async () => [
+          {
+            value: "default",
+            resolvedModel: "claude-opus-5-5",
+            displayName: "Default (recommended)",
+            supportedEffortLevels: ["low", "high"],
+          },
+          {
+            value: "opus",
+            resolvedModel: "claude-opus-5-5",
+            displayName: "Opus 5.5",
+            supportedEffortLevels: ["low", "high"],
+          },
+          { value: "claude-haiku-4-5", displayName: "Haiku 4.5" },
+        ],
         mcpServerStatus: async () => [
           {
             name: "slack",
@@ -27,7 +43,20 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   },
 }));
 
-const { sdkEngine, transcriptEvents } = await import("../src/sdk.js");
+const { claudeModels, sdkEngine, transcriptEvents } = await import("../src/sdk.js");
+
+describe("Claude's models", () => {
+  it("lists each model once by its id, with the efforts it supports", async () => {
+    expect(await claudeModels()).toEqual({
+      id: "anthropic",
+      name: "Claude",
+      models: [
+        { id: "claude-opus-5-5", name: "Opus 5.5", efforts: ["low", "high"] },
+        { id: "claude-haiku-4-5", name: "Haiku 4.5", efforts: [] },
+      ],
+    });
+  });
+});
 
 const run = (extra: Partial<EngineRun> = {}) =>
   ({

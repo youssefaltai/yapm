@@ -138,13 +138,15 @@ To update, run `curl -fsSL https://your-hub.example/install.sh | sh`.
 
 ### Bring your own AI
 
-Each agent's **Engine**, on its page, picks its AI. Usage counts against your own plan.
+Sign machines in to the AI you have, then pick in **Settings** the model each size of task runs on
+(small, standard, top): providers mix freely, and an agent's page can set its own. Usage counts
+against your own plan.
 
 - **Claude**: your Claude subscription or an Anthropic API key.
 - **ChatGPT, Copilot & more**: a ChatGPT or GitHub Copilot plan, or an API key from 75+ providers. A Claude subscription doesn't work here.
 
 Add another on a machine with `yapm-runner login`. One runner per machine runs both, Claude through
-the Claude Agent SDK and the rest through OpenCode. Runs go only to machines with the agent's engine.
+the Claude Agent SDK and the rest through OpenCode. Runs go only to machines signed in to the model's provider.
 Grants are checked on every tool call, and Usage shows each plan's limits.
 
 You can also use Claude Code as an agent.

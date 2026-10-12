@@ -4,7 +4,6 @@ import { Page, PageHeader, PageTitle, Section, Tabs } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { Bone, EmptyState } from "../states.js";
 import { Avatar } from "../ui.js";
-import { ENGINES } from "./Runs.js";
 
 interface Metrics {
   created: number;
@@ -25,7 +24,8 @@ interface Metrics {
 interface RouteMetrics {
   kind: string;
   modelTier: string;
-  engine: string | null;
+  provider: string | null;
+  providerName: string | null;
   model: string | null;
   effort: string | null;
   routeRule: string | null;
@@ -44,7 +44,7 @@ const QUERY = `query($days: Int) {
     company { ${FIELDS} }
     teams { team { id key name } metrics { ${FIELDS} } }
     users { user { id name kind title } metrics { ${FIELDS} } }
-    routes { kind modelTier engine model effort routeRule runs completed successRate costUsd costPerCompletedRun }
+    routes { kind modelTier provider providerName model effort routeRule runs completed successRate costUsd costPerCompletedRun }
     metrics { metric { id name unit target } value previousValue }
   }
   metricHistory(days: $days) { date metrics { completed created } }
@@ -152,7 +152,7 @@ export function Insights() {
                 value={compact(company.tokensPerCompletedIssue)}
                 hint="per completed issue"
               />
-              <Stat label="Cost" value={usd(company.costUsd)} hint="as each engine reports" />
+              <Stat label="Cost" value={usd(company.costUsd)} hint="as each provider reports" />
               <Stat
                 label="Cost per issue"
                 value={usd(company.costPerCompletedIssue)}
@@ -273,7 +273,7 @@ function Daily({ rows }: { rows: InsightsData["metricHistory"] }) {
   );
 }
 
-/** Which engine, model, effort and rule each run used, and what it bought: the evidence for routing. */
+/** Which provider, model, effort and rule each run used, and what it bought: the evidence for routing. */
 function Routes({ rows }: { rows: RouteMetrics[] }) {
   const head = ["Rule", "Runs", "Success", "Cost", "Per completed run"];
   return (
@@ -298,15 +298,13 @@ function Routes({ rows }: { rows: RouteMetrics[] }) {
               usd(r.costUsd),
               usd(r.costPerCompletedRun),
             ];
-            const key = [r.kind, r.modelTier, r.engine, r.model, r.effort, r.routeRule].join("|");
+            const key = [r.kind, r.modelTier, r.provider, r.model, r.effort, r.routeRule].join("|");
             return (
               <tr key={key}>
                 <td className="px-4 py-2 whitespace-nowrap">
                   {r.kind} · {r.model ?? r.modelTier}
                   {r.effort && <span className="text-muted"> · {r.effort}</span>}
-                  {r.engine && (
-                    <span className="text-faint"> · {ENGINES[r.engine] ?? r.engine}</span>
-                  )}
+                  {r.providerName && <span className="text-faint"> · {r.providerName}</span>}
                 </td>
                 {cells.map((c, i) => (
                   <td key={head[i]} className="px-3 py-2 text-right text-muted tabular-nums">

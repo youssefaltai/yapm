@@ -6,12 +6,12 @@ import type { PlanUpdate } from "./plan.js";
 /** One agent session, as the daemon asks for it. */
 export interface EngineRun {
   input: RunInput;
+  /** The model's provider, e.g. anthropic or openai; older hubs don't say. */
+  provider?: string;
   /** A model id the hub chose, or an alias from an older hub. */
   model: string;
-  /** The tier the hub chose the model from, for engines that pick their own models. */
-  modelTier?: "small" | "standard" | "top";
-  /** How hard the model works; left out, the model's default applies. */
-  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  /** How hard the model works, a level it supports; left out, the model's default applies. */
+  effort?: string;
   /** The hub's MCP server, reached with the run's token. */
   hubMcp: { url: string; token: string };
   /** Outside MCP servers, the machine's own and the hub's, in Claude Code's `mcpServers` shape. */

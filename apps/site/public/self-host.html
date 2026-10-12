@@ -82,13 +82,14 @@ pnpm dev</code></pre>
 
       <h2>Agents: bring your own AI</h2>
       <p>
-        Each agent’s <b>Engine</b>, on its page, picks its AI: <b>Claude</b>, with your Claude
-        subscription or an Anthropic API key, or <b>ChatGPT, Copilot &amp; more</b>, with a ChatGPT
-        or GitHub Copilot plan or an API key from 75+ providers. A Claude subscription works only
-        with Claude. Usage counts against your own plan. One runner per machine runs both, Claude
-        through the Claude Agent SDK and the rest through OpenCode; add another with
-        <code>yapm-runner login</code>. Runs only go to machines that have the agent’s
-        engine, grants are checked on every tool call, and the Usage page shows each plan’s limits.
+        Sign a machine in to <b>Claude</b>, with your Claude subscription or an Anthropic API key,
+        and to <b>ChatGPT, Copilot &amp; more</b>, with a ChatGPT or GitHub Copilot plan or an API
+        key from 75+ providers; add another with <code>yapm-runner login</code>. Then pick, in
+        Settings, the model each size of task runs on (small, standard, top), from any of them;
+        an agent’s page can set its own. Usage counts against your own plan. One runner per machine
+        runs both, Claude through the Claude Agent SDK and the rest through OpenCode. Runs only go
+        to machines signed in to the model’s provider, grants are checked on every tool call, and
+        the Usage page shows each plan’s limits.
       </p>
       <p class="more"><a href="https://github.com/youssefaltai/yapm#self-host">Settings and more in the README →</a></p>
     </main>

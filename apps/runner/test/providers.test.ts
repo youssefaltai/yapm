@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  authChoice,
-  CHOICE,
-  keySignIn,
-  loginChoice,
-  oauthSignIn,
-  pickModels,
-  suggestModels,
-} from "../src/providers.js";
+import { authChoice, CHOICE, keySignIn, loginChoice, oauthSignIn } from "../src/providers.js";
 
 // OpenCode's server, as the SDK's client answers; each test records what was asked of it.
 function fakeClient(options: { callback?: () => Promise<unknown> } = {}) {
@@ -180,71 +172,5 @@ describe("another provider's API key", () => {
     await expect(keySignIn(client, out, "nope", "k")).rejects.toThrow(
       'There\'s no provider "nope".',
     );
-  });
-});
-
-describe("models per tier", () => {
-  it("suggests the newest small model, and the newest larger ones", () => {
-    const { model } = fakeClient();
-    const chatgpt = {
-      "gpt-6.1-sol": model("gpt-6.1-sol", "2026-09-29"),
-      "gpt-6.1-sol-fast": model("gpt-6.1-sol-fast", "2026-09-29"),
-      "gpt-6-luna": model("gpt-6-luna", "2026-09-22"),
-      "gpt-6-sol": model("gpt-6-sol", "2026-09-22"),
-      "gpt-6-astra": model("gpt-6-astra", "2026-09-04"),
-      "gpt-4": { ...model("gpt-4", "2023-11-06"), status: "deprecated" },
-    };
-    expect(suggestModels(chatgpt)).toEqual({
-      small: "gpt-6-luna",
-      standard: "gpt-6-sol",
-      top: "gpt-6.1-sol",
-    });
-    // Priced per token, the top tier is the dearest of the newest.
-    const copilot = {
-      "claude-haiku-5.5": model("claude-haiku-5.5", "2026-10-07", 0.5),
-      "gpt-6.1-sol": model("gpt-6.1-sol", "2026-09-29", 10),
-      "claude-sonnet-5.5": model("claude-sonnet-5.5", "2026-09-28", 10),
-      "claude-opus-5.5": model("claude-opus-5.5", "2026-09-22", 20),
-    };
-    expect(suggestModels(copilot)).toEqual({
-      small: "claude-haiku-5.5",
-      standard: "gpt-6.1-sol",
-      top: "claude-opus-5.5",
-    });
-    expect(suggestModels({ "deepseek-v4-pro": model("deepseek-v4-pro", "2026-08-12") })).toEqual({
-      small: "deepseek-v4-pro",
-      standard: "deepseek-v4-pro",
-      top: "deepseek-v4-pro",
-    });
-  });
-
-  it("asks once, with the suggestions as the default", async () => {
-    const { client } = fakeClient();
-    const out = io([""]);
-    expect(await pickModels(client, "openai", out)).toEqual({
-      small: "openai/gpt-6-luna",
-      standard: "openai/gpt-6-sol",
-      top: "openai/gpt-6.1-sol",
-    });
-    expect(out.asked).toHaveLength(1);
-    expect(out.said[0]).toBe(
-      "Models for small, standard and top tasks: gpt-6-luna, gpt-6-sol, gpt-6.1-sol",
-    );
-  });
-
-  it("takes three of the provider's models, and asks again for one it doesn't have", async () => {
-    const { client } = fakeClient();
-    const out = io(["gpt-6-luna, gpt-9", "gpt-6-luna, gpt-6-luna, gpt-6-astra"]);
-    expect(await pickModels(client, "openai", out)).toEqual({
-      small: "openai/gpt-6-luna",
-      standard: "openai/gpt-6-luna",
-      top: "openai/gpt-6-astra",
-    });
-    expect(out.asked).toHaveLength(2);
-  });
-
-  it("uses the suggestions without asking when there's no one to ask", async () => {
-    const { client } = fakeClient();
-    expect((await pickModels(client, "openai"))?.top).toBe("openai/gpt-6.1-sol");
   });
 });

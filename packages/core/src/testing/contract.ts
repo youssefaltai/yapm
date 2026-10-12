@@ -1407,6 +1407,8 @@ export function hubContract(
         run: {
           kind: "decision",
           modelTier: "small",
+          provider: "anthropic",
+          engine: "claude",
           model: "claude-sonnet-5-5",
           effort: "medium",
           issue: issue?.identifier,
@@ -1472,7 +1474,13 @@ export function hubContract(
 
       const work = await runner<Claim>("/claim", machine.token, {});
       expect(work.body).toMatchObject({
-        run: { kind: "work", modelTier: "standard", model: "claude-opus-5-5", effort: "medium" },
+        run: {
+          kind: "work",
+          modelTier: "standard",
+          provider: "anthropic",
+          model: "claude-opus-5-5",
+          effort: "medium",
+        },
         input: { tools: true },
       });
       expect(work.body.input.prompt).toContain("Your goal: Draft the 12-week plan");
@@ -1832,11 +1840,12 @@ export function hubContract(
           },
         },
       );
+      // Tiers that don't name a provider are Claude's, as before tiers had one.
       expect(routing.data?.organizationUpdate.organization.modelRouting).toEqual({
         tiers: {
-          small: { model: "claude-sonnet-5-5", effort: "medium" },
-          standard: { model: "claude-sonnet-5-5", effort: "high" },
-          top: { model: "claude-opus-5-5", effort: "high" },
+          small: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
+          standard: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "high" },
+          top: { provider: "anthropic", model: "claude-opus-5-5", effort: "high" },
         },
         labels: { bills: "top" },
       });
@@ -1845,22 +1854,11 @@ export function hubContract(
         { r: { tiers: { top: { model: "claude-opus-5-5", effort: "enormous" } } } },
       );
       expect(badRouting.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
-      const inverted = await gql(
-        'mutation($id: String!) { userUpdate(id: $id, input: { modelFloor: "top", modelCeiling: "standard" }) { success } }',
+      const limited = await gql<{ userUpdate: { user: { topRunsPerWeek: number } } }>(
+        "mutation($id: String!) { userUpdate(id: $id, input: { topRunsPerWeek: 1 }) { user { topRunsPerWeek } } }",
         { id: coachId },
       );
-      expect(inverted.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
-      const limited = await gql<{
-        userUpdate: { user: { modelFloor: string; modelCeiling: string; topRunsPerWeek: number } };
-      }>(
-        'mutation($id: String!) { userUpdate(id: $id, input: { modelCeiling: "standard", topRunsPerWeek: 1 }) { user { modelFloor modelCeiling topRunsPerWeek } } }',
-        { id: coachId },
-      );
-      expect(limited.data?.userUpdate.user).toEqual({
-        modelFloor: "small",
-        modelCeiling: "standard",
-        topRunsPerWeek: 1,
-      });
+      expect(limited.data?.userUpdate.user).toEqual({ topRunsPerWeek: 1 });
       const billIssue = await gql<{ issueCreate: { issue: { id: string } } }>(
         "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
         {
@@ -1887,25 +1885,21 @@ export function hubContract(
         });
         return claimed.body.run;
       };
-      // The Bills label asks for top; the agent's ceiling caps it at standard.
+      // The Bills label asks for top.
       expect(await startOn()).toEqual({
-        model: "claude-sonnet-5-5",
+        model: "claude-opus-5-5",
         effort: "high",
-        routeRule: "label:bills+ceiling",
+        routeRule: "label:bills",
       });
-      expect(await finish(0.5)).toMatchObject({ model: "claude-sonnet-5-5", effort: "high" });
-      // The owner may overrule the agent's limits.
+      await finish(0.5);
+      // The owner may overrule the agent's budget, already spent.
       expect(await startOn("top")).toEqual({
         model: "claude-opus-5-5",
         effort: "high",
         routeRule: "owner",
       });
-      await finish(1.25);
-      // With the ceiling raised, the week's one top run is already spent.
-      await gql(
-        'mutation($id: String!) { userUpdate(id: $id, input: { modelCeiling: "top" }) { success } }',
-        { id: coachId },
-      );
+      expect(await finish(1.25)).toMatchObject({ model: "claude-opus-5-5", effort: "high" });
+      // Past the week's one top run, the label's work drops to standard.
       expect(await startOn()).toEqual({
         model: "claude-sonnet-5-5",
         effort: "high",
@@ -3689,6 +3683,29 @@ export function hubContract(
         lead?.token,
       );
       expect(routing.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+
+      // Agents read their models; setting a hire's needs agent.models, which the owner approves.
+      const modelsOf = async () =>
+        (await callTool(lead?.token ?? "", "get_user", { query: "Ops Intern" })).json().models;
+      expect(await modelsOf()).toEqual({
+        custom: false,
+        small: { provider: "Claude", model: "claude-sonnet-5-5", effort: "medium" },
+        standard: { provider: "Claude", model: "claude-opus-5-5", effort: "medium" },
+        top: { provider: "Claude", model: "claude-opus-5-5", effort: "high" },
+      });
+      const cheaper = {
+        user: "Ops Intern",
+        models: { standard: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "low" } },
+      };
+      expect((await callTool(lead?.token ?? "", "update_user", cheaper)).text).toContain(
+        "needs approval: agent.models",
+      );
+      await grant("agent.models");
+      expect((await callTool(lead?.token ?? "", "update_user", cheaper)).isError).toBe(false);
+      expect(await modelsOf()).toMatchObject({
+        custom: true,
+        standard: { provider: "Claude", model: "claude-sonnet-5-5", effort: "low" },
+      });
     });
 
     it("lets agents edit, archive and delete what members can, through MCP", async () => {
@@ -4156,9 +4173,40 @@ export function hubContract(
       );
     });
 
-    it("runs an agent only on a machine with its engine, Claude unless the owner picks", async () => {
-      const ceo = await agentToken("CEO");
-      const scout = await agentToken("Scout");
+    /** Machines report the providers they're signed in to and their models. */
+    const CLAUDE = {
+      id: "anthropic",
+      name: "Claude",
+      models: [{ id: "claude-opus-5-5", name: "Opus 5.5", efforts: ["low", "medium", "high"] }],
+    };
+    const CHATGPT = {
+      id: "openai",
+      name: "ChatGPT",
+      models: [
+        { id: "gpt-6-luna", name: "GPT-6 Luna", efforts: ["low", "high"] },
+        { id: "gpt-6-sol", name: "GPT-6 Sol", efforts: [] },
+      ],
+    };
+    const enrolBox = async (info?: Record<string, unknown>) => {
+      const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+        "mutation { machineSetupTokenCreate { token } }",
+      );
+      const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+        method: "POST",
+        json: { name: "Box", setupToken: made.data?.machineSetupTokenCreate.token },
+      });
+      // Older runners say nothing: they run Claude.
+      if (info)
+        await client.json("/api/runner/heartbeat", {
+          method: "POST",
+          json: info,
+          token: joined.body.token,
+        });
+      return joined.body;
+    };
+    const revoke = (id: string) =>
+      client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", { id });
+    const clearRuns = async () => {
       const queued = await client.graphql<{ runs: { nodes: { id: string }[] } }>(
         "{ runs(filter: { status: [queued, running] }) { nodes { id } } }",
       );
@@ -4167,84 +4215,86 @@ export function hubContract(
           'mutation($id: String!) { runStop(id: $id, reason: "Clearing") { success } }',
           { id: run.id },
         );
-      const engineOf = async () =>
-        (
-          await client.graphql<{ user: { engine: string } }>(
-            "query($id: String!) { user(id: $id) { engine } }",
-            { id: scout.id },
-          )
-        ).data?.user.engine;
-      const pick = (engine: string, token?: string) =>
-        client.graphql(
-          "mutation($id: String!, $e: String!) { userUpdate(id: $id, input: { engine: $e }) { success } }",
-          { id: scout.id, e: engine },
+    };
+
+    it("runs each tier on a machine signed in to its provider, from the models machines have", async () => {
+      const ceo = await agentToken("CEO");
+      const scout = await agentToken("Scout");
+      await clearRuns();
+      const setModels = (models: unknown, token?: string) =>
+        client.graphql<{ userUpdate: { user: { models: Record<string, unknown> | null } } }>(
+          "mutation($id: String!, $m: JSONObject) { userUpdate(id: $id, input: { models: $m }) { user { models } } }",
+          { id: scout.id, m: models },
           token,
         );
-      const enrol = async (engines?: string[]) => {
-        const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
-          "mutation { machineSetupTokenCreate { token } }",
-        );
-        const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
-          method: "POST",
-          json: { name: "Box", setupToken: made.data?.machineSetupTokenCreate.token },
-        });
-        // Older runners don't say: they run Claude.
-        if (engines)
-          await client.json("/api/runner/heartbeat", {
-            method: "POST",
-            json: { engines },
-            token: joined.body.token,
-          });
-        return joined.body;
-      };
       const claim = (token: string) =>
-        client.json<{ run: { engine: string }; agent: { name: string } }>("/api/runner/claim", {
-          method: "POST",
-          json: {},
-          token,
-        });
+        client.request("/api/runner/claim", { method: "POST", json: {}, token });
 
-      expect(await engineOf()).toBe("claude");
-      expect((await pick("opencode", ceo.token)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
-      expect((await pick("gpt")).errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
-      expect((await pick("opencode")).errors).toBeUndefined();
-      expect(await engineOf()).toBe("opencode");
+      const claudeOnly = await enrolBox();
+      const both = await enrolBox({
+        engines: ["claude", "opencode"],
+        providers: [CLAUDE, CHATGPT],
+      });
+      // The catalog is every provider and model some machine has, each once.
+      const catalog = await client.graphql<{
+        organization: { aiProviders: { id: string; name: string; models: { id: string }[] }[] };
+      }>("{ organization { aiProviders { id name models { id efforts } } } }");
+      const providers = catalog.data?.organization.aiProviders ?? [];
+      expect(providers.map((p) => p.name)).toEqual(["Claude", "ChatGPT"]);
+      expect(providers[1]?.models).toEqual([
+        { id: "gpt-6-luna", efforts: ["low", "high"] },
+        { id: "gpt-6-sol", efforts: [] },
+      ]);
 
-      const claudeOnly = await enrol();
-      const both = await enrol(["claude", "opencode"]);
+      // An agent may not change its own models without approval; the owner sets them.
+      const small = { provider: "openai", model: "gpt-6-luna", effort: "low" };
+      const asked = await setModels({ small }, ceo.token);
+      expect(asked.errors?.[0]?.message).toContain("needs approval: agent.models");
+      const missing = await setModels({ small: { ...small, model: "gpt-9" } });
+      expect(missing.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const custom = await setModels({ small });
+      // Tiers left out start from the company's.
+      expect(custom.data?.userUpdate.user.models).toMatchObject({
+        small,
+        standard: { provider: "anthropic", model: "claude-opus-5-5" },
+      });
+
+      // Its small tier runs on ChatGPT, so only the machine signed in to it takes the run.
       await client.graphql(
         "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
-        { input: { agentId: scout.id, goal: "Scout on OpenCode" } },
+        { input: { agentId: scout.id, goal: "Scout on ChatGPT", modelTier: "small" } },
       );
-      const none = await client.request("/api/runner/claim", {
-        method: "POST",
-        json: {},
-        token: claudeOnly.token,
-      });
-      expect(none.status).toBe(204);
-      const taken = await claim(both.token);
-      expect(taken.body.agent.name).toBe("Scout");
-      expect(taken.body.run.engine).toBe("opencode");
+      expect((await claim(claudeOnly.token)).status).toBe(204);
+      const taken = (await (await claim(both.token)).json()) as {
+        run: Record<string, unknown>;
+        agent: { name: string };
+      };
+      expect(taken.agent.name).toBe("Scout");
+      // Runners before 0.7 pick their engine from `engine`.
+      expect(taken.run).toMatchObject({ ...small, engine: "opencode" });
 
-      await pick("claude");
+      // Its standard tier is still Claude's.
       await client.graphql(
         "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
         { input: { agentId: scout.id, goal: "Scout on Claude" } },
       );
-      expect((await claim(claudeOnly.token)).body.run.engine).toBe("claude");
+      const onClaude = (await (await claim(claudeOnly.token)).json()) as {
+        run: Record<string, unknown>;
+      };
+      expect(onClaude.run).toMatchObject({ provider: "anthropic", engine: "claude" });
 
+      // Back to the company's.
+      expect((await setModels(null)).data?.userUpdate.user.models).toBeNull();
       const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
         "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
         { id: scout.id },
       );
       expect(log.data?.auditEntries.nodes.map((n) => n.action)).toContain("user.update");
-      for (const { id } of [claudeOnly, both])
-        await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
-          id,
-        });
+      await clearRuns();
+      for (const { id } of [claudeOnly, both]) await revoke(id);
     });
 
-    it("records the engine and model each run ran on, and says why a run waits", async () => {
+    it("records the provider and model each run ran on, and says why a run waits", async () => {
       const scout = await agentToken("Scout");
       const update = (input: Record<string, unknown>) =>
         client.graphql(
@@ -4255,39 +4305,25 @@ export function hubContract(
         (
           await client.graphql<{
             run: {
-              engine: string | null;
+              provider: string | null;
+              providerName: string | null;
               model: string | null;
               effort: string | null;
               queuedReason: string | null;
             };
-          }>("query($id: String!) { run(id: $id) { engine model effort queuedReason } }", { id })
+          }>(
+            "query($id: String!) { run(id: $id) { provider providerName model effort queuedReason } }",
+            { id },
+          )
         ).data?.run;
-      const enrol = async (engines: string[]) => {
-        const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
-          "mutation { machineSetupTokenCreate { token } }",
-        );
-        const joined = await client.json<{ id: string; token: string }>("/api/runner/enrol", {
-          method: "POST",
-          json: { name: "Box", setupToken: made.data?.machineSetupTokenCreate.token },
-        });
-        await client.json("/api/runner/heartbeat", {
-          method: "POST",
-          json: { engines },
-          token: joined.body.token,
-        });
-        return joined.body;
-      };
       const runner = <T>(path: string, token: string, json: unknown) =>
         client.json<T>(`/api/runner${path}`, { method: "POST", json, token });
 
-      await update({ engine: "opencode" });
-      const claudeOnly = await enrol(["claude"]);
-      const machines = await client.graphql<{ machines: { id: string; engines: string[] }[] }>(
-        "{ machines { id engines } }",
-      );
-      expect(machines.data?.machines.find((m) => m.id === claudeOnly.id)?.engines).toEqual([
-        "claude",
-      ]);
+      // Set while a machine has ChatGPT; that machine then goes.
+      const gone = await enrolBox({ providers: [CHATGPT] });
+      await update({ models: { standard: { provider: "openai", model: "gpt-6-sol" } } });
+      await revoke(gone.id);
+      const claudeOnly = await enrolBox({ engines: ["claude"] });
       const work = await client.graphql<{
         issueCreate: { issue: { id: string } };
       }>("mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }", {
@@ -4295,33 +4331,24 @@ export function hubContract(
       });
       const issueId = work.data?.issueCreate.issue.id;
       // Clear what else is queued (the new issue wakes the CEO), so the machine gets Scout's run.
-      const queued = await client.graphql<{ runs: { nodes: { id: string }[] } }>(
-        "{ runs(filter: { status: [queued, running] }) { nodes { id } } }",
-      );
-      for (const run of queued.data?.runs.nodes ?? [])
-        await client.graphql(
-          'mutation($id: String!) { runStop(id: $id, reason: "Clearing") { success } }',
-          { id: run.id },
-        );
+      await clearRuns();
       const created = await client.graphql<{ runCreate: { run: { id: string } } }>(
         "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
         { input: { agentId: scout.id, issueId, goal: "Scout the trail" } },
       );
       const runId = created.data?.runCreate.run.id ?? "";
-      // Nothing online runs the agent's engine, or has its tags: the run says so.
-      expect((await runOf(runId))?.queuedReason).toBe(
-        "Waiting for a machine that runs ChatGPT, Copilot & more",
-      );
+      // Nothing online is signed in to the tier's provider, or has its tags: the run says so.
+      expect((await runOf(runId))?.queuedReason).toBe("Waiting for a machine signed in to ChatGPT");
       await update({ runnerTags: ["nowhere"] });
       expect((await runOf(runId))?.queuedReason).toBe("Waiting for a machine tagged nowhere");
       await update({ runnerTags: [] });
 
-      // The run records the engine it was claimed for, and the model that actually ran.
-      const both = await enrol(["claude", "opencode"]);
+      // The run records the provider and the model that actually ran.
+      const both = await enrolBox({ providers: [CLAUDE, CHATGPT] });
       expect((await runOf(runId))?.queuedReason).toBeNull();
       const claimed = await runner<{ run: { id: string } }>("/claim", both.token, {});
       expect(claimed.body.run.id).toBe(runId);
-      expect((await runOf(runId))?.engine).toBe("opencode");
+      // Runners before 0.7 report OpenCode's model as `provider/model`.
       await runner(`/runs/${runId}/complete`, both.token, {
         status: "completed",
         result: { outcome: "needs_input", question: "Which trail?" },
@@ -4330,35 +4357,42 @@ export function hubContract(
         effort: null,
       });
       expect(await runOf(runId)).toMatchObject({
-        engine: "opencode",
-        model: "openai/gpt-6-sol",
+        provider: "openai",
+        providerName: "ChatGPT",
+        model: "gpt-6-sol",
         effort: null,
       });
-      // Insights and Usage keep each engine's models apart, so costs don't mix.
+      // Insights and Usage keep each provider's models apart, so costs don't mix.
       const spent = await client.graphql<{
-        insights: { routes: { engine: string | null; model: string | null }[] };
+        insights: { routes: { providerName: string | null; model: string | null }[] };
         usageHistory: { key: string; label: string }[];
       }>(
-        "{ insights(days: 1) { routes { engine model } } usageHistory(groupBy: model, days: 1) { key label } }",
+        "{ insights(days: 1) { routes { providerName model } } usageHistory(groupBy: model, days: 1) { key label } }",
       );
       expect(spent.data?.insights.routes).toContainEqual({
-        engine: "opencode",
-        model: "openai/gpt-6-sol",
+        providerName: "ChatGPT",
+        model: "gpt-6-sol",
       });
       expect(spent.data?.usageHistory).toContainEqual({
-        key: "opencode:openai/gpt-6-sol",
-        label: "openai/gpt-6-sol · OpenCode",
+        key: "openai:gpt-6-sol",
+        label: "gpt-6-sol · ChatGPT",
       });
 
       // The agent moved to Claude since it paused: the answer starts a fresh session, with the
       // issue in the prompt, rather than handing Claude an OpenCode session.
-      await update({ engine: "claude" });
+      await update({ models: null });
       await client.graphql(
         'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "The north one" }) { success } }',
         { id: issueId },
       );
       type Claim = {
-        run: { id: string; kind: string; engine: string; model: string; sessionId: string | null };
+        run: {
+          id: string;
+          kind: string;
+          provider: string;
+          model: string;
+          sessionId: string | null;
+        };
         agent: { name: string };
         input: { prompt: string };
       };
@@ -4372,7 +4406,11 @@ export function hubContract(
         fresh = await runner<Claim>("/claim", claudeOnly.token, {});
       }
       expect(fresh.body.agent.name).toBe("Scout");
-      expect(fresh.body.run).toMatchObject({ kind: "work", engine: "claude", sessionId: null });
+      expect(fresh.body.run).toMatchObject({
+        kind: "work",
+        provider: "anthropic",
+        sessionId: null,
+      });
       expect(fresh.body.run.model).toMatch(/^claude-/);
       expect(fresh.body.input.prompt).toContain("Your goal: Scout the trail");
       // An older runner doesn't say what ran: the hub's choice stays.
@@ -4381,12 +4419,12 @@ export function hubContract(
         status: "completed",
         result: { outcome: "done", summary: "North trail it is." },
       });
-      expect(await runOf(fresh.body.run.id)).toMatchObject({ engine: "claude", model: chosen });
-
-      for (const { id } of [claudeOnly, both])
-        await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
-          id,
-        });
+      expect(await runOf(fresh.body.run.id)).toMatchObject({
+        provider: "anthropic",
+        providerName: "Claude",
+        model: chosen,
+      });
+      for (const { id } of [claudeOnly, both]) await revoke(id);
     });
   });
 }

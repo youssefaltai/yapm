@@ -1,20 +1,13 @@
-import {
-  apiTokens,
-  ENGINES,
-  type Engine,
-  MODEL_TIERS,
-  type ModelTier,
-  teamMemberships,
-  users,
-} from "@yapm/schema";
+import { apiTokens, teamMemberships, users } from "@yapm/schema";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
 import { forbidden, notFound, ServiceError } from "../errors.js";
+import { cleanTiers, loadRouting } from "../runs/routing.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
 import { revisionOp, updateLessons } from "./feedback.js";
-import { cleanTags } from "./machines.js";
+import { cleanTags, loadCatalog } from "./machines.js";
 import { authorize } from "./requests.js";
 
 export interface AgentHireInput {
@@ -33,11 +26,8 @@ export interface UserUpdateInput {
   lessons?: string | null;
   managerId?: string | null;
   runnerTags?: string[] | null;
-  /** Owner only: what runs the agent, claude or opencode. */
-  engine?: string | null;
-  /** Owner only: the cheapest and dearest tiers the agent's work may run on. */
-  modelFloor?: string | null;
-  modelCeiling?: string | null;
+  /** An agent's own model per tier (`agent.models`); null goes back to the company's. */
+  models?: unknown;
   /** Owner only: top-tier work runs allowed in any 7 days. */
   topRunsPerWeek?: number | null;
 }
@@ -155,35 +145,24 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on machines");
     next.runnerTags = cleanTags(input.runnerTags, "Runner tags");
   }
-  if (input.engine != null) {
-    if ((await actor(ctx)).kind !== "owner")
-      throw forbidden("Only the owner decides what runs agents");
-    if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on engines");
-    if (!ENGINES.includes(input.engine as Engine))
-      throw new ServiceError("BAD_REQUEST", "The engine is claude or opencode");
-    next.engine = input.engine as Engine;
-  }
-  if (input.modelFloor != null || input.modelCeiling != null || input.topRunsPerWeek != null) {
-    if ((await actor(ctx)).kind !== "owner")
-      throw forbidden("Only the owner sets which models an agent may use");
+  if (input.models !== undefined) {
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on models");
-    const tier = (value: string, what: string) => {
-      if (!MODEL_TIERS.includes(value as ModelTier))
-        throw new ServiceError("BAD_REQUEST", `${what} is small, standard or top`);
-      return value as ModelTier;
-    };
-    if (input.modelFloor != null) next.modelFloor = tier(input.modelFloor, "The floor");
-    if (input.modelCeiling != null) next.modelCeiling = tier(input.modelCeiling, "The ceiling");
-    const floor = next.modelFloor ?? user.modelFloor;
-    const ceiling = next.modelCeiling ?? user.modelCeiling;
-    if (MODEL_TIERS.indexOf(floor) > MODEL_TIERS.indexOf(ceiling))
-      throw new ServiceError("BAD_REQUEST", "The floor can't be above the ceiling");
-    if (input.topRunsPerWeek != null) {
-      const n = input.topRunsPerWeek;
-      if (!Number.isInteger(n) || n < 0 || n > 1000)
-        throw new ServiceError("BAD_REQUEST", "Top runs per week is a whole number from 0 to 1000");
-      next.topRunsPerWeek = n;
-    }
+    // Tiers left out start from the agent's own, else the company's.
+    const { tiers } = await loadRouting(db);
+    const models =
+      input.models === null
+        ? null
+        : cleanTiers(input.models, user.models ?? tiers, await loadCatalog(db));
+    if (JSON.stringify(models) !== JSON.stringify(user.models)) next.models = models;
+  }
+  if (input.topRunsPerWeek != null) {
+    if ((await actor(ctx)).kind !== "owner")
+      throw forbidden("Only the owner sets an agent's top-tier budget");
+    if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents run on models");
+    const n = input.topRunsPerWeek;
+    if (!Number.isInteger(n) || n < 0 || n > 1000)
+      throw new ServiceError("BAD_REQUEST", "Top runs per week is a whole number from 0 to 1000");
+    next.topRunsPerWeek = n;
   }
   if (input.lessons !== undefined) await updateLessons(ctx, id, input.lessons);
   const { charter } = input;
@@ -194,10 +173,13 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents have charters");
     next.charter = charter?.trim() || null;
   }
-  // Agents change their own name and title freely; the rest of the org needs a grant.
+  // Agents change their own name and title freely; the rest of the org needs a grant, and
+  // models, which spend the owner's plans, need agent.models even for oneself.
   const allowed: WriteOp[] = [];
-  if (diff && (id !== ctx.actorId || next.managerId !== undefined))
+  const { models: _, ...others } = diff ?? {};
+  if (Object.keys(others).length && (id !== ctx.actorId || next.managerId !== undefined))
     allowed.push(...(await authorize(ctx, "user.update", id)));
+  if (next.models !== undefined) allowed.push(...(await authorize(ctx, "agent.models", id)));
   if (charterChanged) allowed.push(...(await authorize(ctx, "charter.update", id)));
   const events = [];
   if (diff) events.push(event(ctx, "user.update", "user", id, diff));

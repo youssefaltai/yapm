@@ -3,6 +3,13 @@ import type { ClaudeAccount, PlanUsage } from "./plan.js";
 
 export type EngineName = "claude" | "opencode";
 
+/** A provider this machine is signed in to, and its models with the efforts each supports. */
+export interface ProviderModels {
+  id: string;
+  name: string;
+  models: { id: string; name: string; efforts: string[] }[];
+}
+
 /** Talks to the hub: the runner protocol with the machine's secret, GraphQL with a run's token. */
 export class HubError extends Error {
   constructor(
@@ -26,10 +33,12 @@ export interface Claim {
     id: string;
     kind: "decision" | "work";
     modelTier: "small" | "standard" | "top";
-    /** The pinned model id and effort the hub chose; older hubs send neither. */
+    /** The provider, model and effort the hub chose (null: the model has none); older hubs send
+     * no provider, and neither model nor effort before that. */
+    provider?: string;
     model?: string;
-    effort?: "low" | "medium" | "high" | "xhigh" | "max";
-    /** What runs the agent; older hubs send nothing, meaning Claude. */
+    effort?: string | null;
+    /** What runs the model: Claude for Anthropic's, OpenCode for the rest; older hubs send nothing, meaning Claude. */
     engine?: EngineName;
     sessionId: string | null;
     issue: string | null;
@@ -130,6 +139,7 @@ export class HubClient {
       runIds: string[];
       tags?: string[];
       engines?: EngineName[];
+      providers?: ProviderModels[];
       claudeAccount?: ClaudeAccount;
       planUsage?: PlanUsage;
     },

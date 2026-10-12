@@ -32,6 +32,7 @@ import {
   useAgentFeedback,
   useRevisions,
 } from "./Learning.js";
+import { AI_PROVIDERS, type AiProvider, type Tiers, TierTable } from "./Models.js";
 import { AGENT_RUNS, type RunSummary, RunsSection } from "./Runs.js";
 
 interface Token {
@@ -42,19 +43,6 @@ interface Token {
   lastUsedAt: string | null;
   revokedAt: string | null;
 }
-
-type Tier = "small" | "standard" | "top";
-const TIERS: { value: Tier; label: string }[] = [
-  { value: "small", label: "Small" },
-  { value: "standard", label: "Standard" },
-  { value: "top", label: "Top" },
-];
-
-type Engine = "claude" | "opencode";
-const ENGINES: { value: Engine; label: string }[] = [
-  { value: "claude", label: "Claude" },
-  { value: "opencode", label: "ChatGPT, Copilot & more" },
-];
 
 interface MemberDetail {
   id: string;
@@ -72,16 +60,13 @@ interface MemberDetail {
   };
   apiTokens: Token[];
   runnerTags: string[];
-  engine: Engine;
-  modelFloor: Tier;
-  modelCeiling: Tier;
+  models: Tiers | null;
   topRunsPerWeek: number;
   assignedIssues: { nodes: { id: string }[] };
 }
 
-const MEMBER_QUERY = `query($id: String!) { user(id: $id) {
-  id name kind title charter lessons active isMe createdAt runnerTags engine
-  modelFloor modelCeiling topRunsPerWeek
+const MEMBER_QUERY = `query($id: String!) { organization { modelRouting ${AI_PROVIDERS} } user(id: $id) {
+  id name kind title charter lessons active isMe createdAt runnerTags models topRunsPerWeek
   manager { id name }
   directReports { nodes { id name kind title } }
   apiTokens { id name prefix createdAt lastUsedAt revokedAt }
@@ -89,7 +74,10 @@ const MEMBER_QUERY = `query($id: String!) { user(id: $id) {
 } }`;
 
 export function MemberPage({ id }: { id: string }) {
-  const { data, error } = useQuery<{ user: MemberDetail }>(MEMBER_QUERY, { id });
+  const { data, error } = useQuery<{
+    user: MemberDetail;
+    organization: { modelRouting: { tiers: Tiers }; aiProviders: AiProvider[] };
+  }>(MEMBER_QUERY, { id });
   // The agent parts of the page load alongside it, so it renders once, complete.
   const charterHistory = useRevisions("charter", id);
   const lessonsHistory = useRevisions("lessons", id);
@@ -100,10 +88,19 @@ export function MemberPage({ id }: { id: string }) {
   const runRows = runs.data?.runs.nodes ?? (runs.error ? [] : null);
   const workspace = useStore(workspaceStore);
   const member = data?.user;
+  const company = data?.organization.modelRouting;
   const [newToken, setNewToken] = useState<string | null>(null);
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
-  if (!member || !workspace || !charterHistory || !lessonsHistory || !feedback || !runRows)
+  if (
+    !member ||
+    !company ||
+    !workspace ||
+    !charterHistory ||
+    !lessonsHistory ||
+    !feedback ||
+    !runRows
+  )
     return <PageSkeleton />;
   const canEdit = workspace.viewer.kind === "owner";
   const update = (input: Record<string, unknown>) =>
@@ -258,45 +255,6 @@ export function MemberPage({ id }: { id: string }) {
                       className={lineField}
                     />
                   </Property>
-                  <Property label="Engine" control={editable}>
-                    {editable ? (
-                      <Select
-                        aria-label="Engine"
-                        value={member.engine}
-                        options={ENGINES}
-                        onChange={(engine) => update({ engine })}
-                        className={`${propertyButton} w-full`}
-                      />
-                    ) : (
-                      ENGINES.find((e) => e.value === member.engine)?.label
-                    )}
-                  </Property>
-                  <Property label="Cheapest tier" control={editable}>
-                    {editable ? (
-                      <Select
-                        aria-label="Cheapest tier"
-                        value={member.modelFloor}
-                        options={TIERS}
-                        onChange={(modelFloor) => update({ modelFloor })}
-                        className={`${propertyButton} w-full`}
-                      />
-                    ) : (
-                      tierLabel(member.modelFloor)
-                    )}
-                  </Property>
-                  <Property label="Dearest tier" control={editable}>
-                    {editable ? (
-                      <Select
-                        aria-label="Dearest tier"
-                        value={member.modelCeiling}
-                        options={TIERS}
-                        onChange={(modelCeiling) => update({ modelCeiling })}
-                        className={`${propertyButton} w-full`}
-                      />
-                    ) : (
-                      tierLabel(member.modelCeiling)
-                    )}
-                  </Property>
                   <Property label="Top runs/week" control>
                     <EditableLine
                       label="Top runs a week"
@@ -309,7 +267,35 @@ export function MemberPage({ id }: { id: string }) {
                       className={lineField}
                     />
                   </Property>
+                  <Property label="Models" control={editable}>
+                    {editable ? (
+                      <Select
+                        aria-label="Models"
+                        value={member.models ? "custom" : "company"}
+                        options={MODELS}
+                        onChange={(choice) =>
+                          update({ models: choice === "custom" ? company.tiers : null })
+                        }
+                        className={`${propertyButton} w-full`}
+                      />
+                    ) : member.models ? (
+                      "Custom"
+                    ) : (
+                      "Company default"
+                    )}
+                  </Property>
                 </PropertyList>
+              )}
+              {member.kind === "agent" && (
+                <div className="mt-2">
+                  <TierTable
+                    tiers={member.models ?? company.tiers}
+                    providers={data.organization.aiProviders}
+                    onChange={
+                      editable && member.models ? (models) => update({ models }) : undefined
+                    }
+                  />
+                </div>
               )}
             </>
           }
@@ -436,7 +422,10 @@ export function MemberPage({ id }: { id: string }) {
   );
 }
 
-const tierLabel = (tier: Tier) => TIERS.find((t) => t.value === tier)?.label ?? tier;
+const MODELS = [
+  { value: "company", label: "Company default" },
+  { value: "custom", label: "Custom" },
+];
 
 function EditableLine(props: {
   label: string;

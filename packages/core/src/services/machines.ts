@@ -1,4 +1,11 @@
-import { type Engine, machineSetupTokens, machines, users } from "@yapm/schema";
+import {
+  EFFORTS,
+  type Engine,
+  type MachineProvider,
+  machineSetupTokens,
+  machines,
+  users,
+} from "@yapm/schema";
 import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId, randomToken, sha256Hex } from "../crypto.js";
@@ -25,25 +32,93 @@ export function machineName(m: Pick<MachineRow, "name" | "displayName">) {
   return m.displayName ?? m.name;
 }
 
-const ENGINE_NAMES: Record<Engine, string> = {
-  claude: "Claude",
-  opencode: "ChatGPT, Copilot & more",
+/** Which engine runs a provider's models: Claude's SDK for Anthropic, OpenCode for the rest. */
+export const engineOf = (provider: string): Engine =>
+  provider === "anthropic" ? "claude" : "opencode";
+
+const PROVIDER_NAMES: Record<string, string> = {
+  anthropic: "Claude",
+  openai: "ChatGPT",
+  "github-copilot": "Copilot",
 };
 
+/** A provider as owners know it: ChatGPT rather than OpenAI, else as a machine names it. */
+export function providerName(id: string, catalog: MachineProvider[] = []) {
+  return PROVIDER_NAMES[id] ?? catalog.find((p) => p.id === id)?.name ?? id;
+}
+
+/** Claude's models the hub knows, for runners before 0.7, which don't list them. */
+const KNOWN_CLAUDE: MachineProvider = {
+  id: "anthropic",
+  name: "Claude",
+  models: [
+    ["claude-fable-5-1", "Fable 5.1"],
+    ["claude-opus-5-5", "Opus 5.5"],
+    ["claude-sonnet-5-5", "Sonnet 5.5"],
+    ["claude-haiku-5-5", "Haiku 5.5"],
+  ].map(([id = "", name = ""]) => ({ id, name, efforts: [...EFFORTS] })),
+};
+
+type Reports = Pick<MachineRow, "engines" | "providers">;
+
 /**
- * Why an agent's run waits for these machines, or null when one of them may run it: it needs
- * all the agent's tags and the agent's engine. Runners that don't list engines run Claude.
+ * The providers a machine reports, named as owners know them. A runner that couldn't list
+ * Claude's models, or is older and has Claude, has the known ones.
+ */
+function reported(m: Reports): MachineProvider[] {
+  if (!m.providers) return (m.engines ?? ["claude"]).includes("claude") ? [KNOWN_CLAUDE] : [];
+  return m.providers.map((p) =>
+    p.id === "anthropic" && !p.models.length
+      ? KNOWN_CLAUDE
+      : { ...p, name: providerName(p.id, [p]) },
+  );
+}
+
+/** Whether a machine may run a provider's model. An older runner's OpenCode runs any but Claude. */
+function canRun(m: Reports, provider: string) {
+  if (m.providers) return m.providers.some((p) => p.id === provider);
+  return (m.engines ?? ["claude"]).includes(engineOf(provider));
+}
+
+/** Every provider and model some machine has, each once: what tiers may choose from. */
+export function modelCatalog(all: Reports[]): MachineProvider[] {
+  const out: MachineProvider[] = [];
+  for (const provider of all.flatMap(reported)) {
+    const known = out.find((p) => p.id === provider.id);
+    if (!known) out.push({ ...provider, models: [...provider.models] });
+    else
+      for (const model of provider.models)
+        if (!known.models.some((m) => m.id === model.id)) known.models.push(model);
+  }
+  return out;
+}
+
+/** The catalog from every approved machine, online or not. */
+export async function loadCatalog(db: HubDb) {
+  return modelCatalog(
+    await db
+      .select({ engines: machines.engines, providers: machines.providers })
+      .from(machines)
+      .where(eq(machines.status, "active"))
+      .all(),
+  );
+}
+
+/**
+ * Why a run on `provider`'s model waits for these machines, or null when one of them may run
+ * it: it needs all the agent's tags and a sign-in to the provider.
  */
 export function waitingFor(
-  agent: { engine: Engine; runnerTags: string[] | null },
-  online: Pick<MachineRow, "tags" | "engines">[],
+  agent: { runnerTags: string[] | null },
+  provider: string,
+  online: Pick<MachineRow, "tags" | "engines" | "providers">[],
 ) {
   if (!online.length) return "Waiting for a machine to come online";
   const tags = agent.runnerTags ?? [];
   const tagged = online.filter((m) => tags.every((tag) => m.tags.includes(tag)));
   if (!tagged.length) return `Waiting for a machine tagged ${tags.join(", ")}`;
-  if (!tagged.some((m) => (m.engines ?? ["claude"]).includes(agent.engine)))
-    return `Waiting for a machine that runs ${ENGINE_NAMES[agent.engine]}`;
+  if (!tagged.some((m) => canRun(m, provider)))
+    return `Waiting for a machine signed in to ${providerName(provider)}`;
   return null;
 }
 

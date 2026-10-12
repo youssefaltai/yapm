@@ -125,7 +125,7 @@ describe("runner daemon", () => {
     const decide = sessions[0];
     expect(decide?.model).toBe("claude-sonnet-5-5");
     expect(decide?.effort).toBe("medium");
-    expect(decide?.modelTier).toBe("small");
+    expect(decide?.provider).toBe("anthropic");
     expect(decide?.input.tools).toBe(false);
     expect(decide?.input.prompt).toContain("Plan my training");
 
@@ -397,7 +397,7 @@ describe("runner daemon", () => {
     expect(planRunner.plan.pending()).toEqual({});
   });
 
-  it("runs each agent on its own engine, and tells the hub which engines it has", async () => {
+  it("runs each tier on its provider's engine, and tells the hub which models it has", async () => {
     const enrolment = await hub.enrol({ name: "Both", tags: [], capacity: 1, version: "test" });
     await gql(
       "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
@@ -406,42 +406,61 @@ describe("runner daemon", () => {
     const ran: string[] = [];
     const done =
       (name: string): Engine =>
-      async () => {
+      async (run) => {
         ran.push(name);
+        sessions.push(run);
         return { output: { outcome: "done", summary: "Done." }, sessionId: null, usage: {} };
       };
     const both = new Runner({
       hub,
       token: enrolment.token,
       engines: { claude: done("claude"), opencode: done("opencode") },
+      catalog: async () => [
+        { id: "anthropic", name: "Claude", models: [] },
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: [{ id: "gpt-6-luna", name: "GPT-6 Luna", efforts: ["low", "high"] }],
+        },
+      ],
       capacity: 1,
       version: "test",
       cwd: tmpdir(),
       pollMs: 10,
       log: (line) => lines.push(line),
     });
-    const pick = (engine: string) =>
-      gql(
-        "mutation($id: String!, $e: String!) { userUpdate(id: $id, input: { engine: $e }) { success } }",
-        {
-          id: agentId,
-          e: engine,
-        },
-      );
-    const work = async () => {
+    const work = async (modelTier: string) => {
       await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }", {
-        input: { agentId, goal: "Work on whichever engine" },
+        input: { agentId, goal: "Work on whichever provider", modelTier },
       });
       expect(await both.claim()).toBe(1);
       await both.idle();
     };
-    // Until it says it has OpenCode, the hub gives it only Claude agents' runs.
+    // Once it says which models it has, the owner may pick them.
+    await both.readCatalog();
     await both.heartbeat();
-    await pick("opencode");
-    await work();
-    await pick("claude");
-    await work();
+    const catalog = await gql<{ organization: { aiProviders: { name: string }[] } }>(
+      "{ organization { aiProviders { name models { id } } } }",
+    );
+    expect(catalog.organization.aiProviders).toContainEqual({
+      name: "ChatGPT",
+      models: [{ id: "gpt-6-luna" }],
+    });
+    await gql(
+      "mutation($id: String!, $m: JSONObject) { userUpdate(id: $id, input: { models: $m }) { success } }",
+      { id: agentId, m: { small: { provider: "openai", model: "gpt-6-luna", effort: "high" } } },
+    );
+    await work("small");
+    await work("standard");
     expect(ran).toEqual(["opencode", "claude"]);
+    expect(sessions.slice(-2).map((r) => [r.provider, r.model, r.effort])).toEqual([
+      ["openai", "gpt-6-luna", "high"],
+      ["anthropic", "claude-opus-5-5", "medium"],
+    ]);
+    await gql(
+      "mutation($id: String!) { userUpdate(id: $id, input: { models: null }) { success } }",
+      { id: agentId },
+    );
   });
 
   it("upgrades when the owner asks, once its runs finish", async () => {

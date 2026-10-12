@@ -16,8 +16,8 @@ export interface Config {
   apiKey?: string;
   /** Older runners ran every agent on one engine; `"opencode"` counts as OpenCode set up. */
   engine?: string;
-  /** Set when OpenCode is; its `provider/model` per tier, left out OpenCode's default model. */
-  opencode?: { models?: { small?: string; standard?: string; top?: string } };
+  /** Set when OpenCode is; which models agents use is picked in the app. */
+  opencode?: object;
 }
 
 export const home = process.env.YAPM_RUNNER_HOME ?? join(homedir(), ".yapm-runner");
@@ -57,7 +57,7 @@ export function engineNames(
   ];
 }
 
-/** Sets OpenCode up alongside whatever Claude has. */
+/** Sets OpenCode up alongside whatever Claude has; models older runners kept here go. */
 export function withOpencode<T extends Partial<Config>>({ engine: _, ...config }: T) {
-  return { ...config, opencode: config.opencode ?? {} };
+  return { ...config, opencode: {} };
 }

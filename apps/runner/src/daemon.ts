@@ -5,6 +5,7 @@ import {
   type EngineName,
   type HubClient,
   HubError,
+  type ProviderModels,
   type Usage,
 } from "./hub.js";
 import { decideTool } from "./permissions.js";
@@ -24,6 +25,10 @@ export interface RunnerOptions {
   cwd: string;
   /** Reads the plan's limits while no session is running; left out, only sessions read them. */
   probe?: PlanProbe;
+  /** Lists the providers signed in here and their models, for the hub's catalog. */
+  catalog?: () => Promise<ProviderModels[]>;
+  /** How often to list them again; sign-ins change rarely. */
+  catalogEveryMs?: number;
   /** How often to take a full reading of the plan's limits. */
   planEveryMs?: number;
   pollMs?: number;
@@ -55,6 +60,10 @@ export class Runner {
   private readonly log: (line: string) => void;
   readonly plan: PlanTracker;
   private probing = false;
+  /** The newest model list, until a check-in has sent it. */
+  private providers: ProviderModels[] | null = null;
+  private listedAt = 0;
+  private listing: Promise<void> | null = null;
 
   constructor(private readonly options: RunnerOptions) {
     this.pollMs = options.pollMs ?? 5000;
@@ -72,14 +81,17 @@ export class Runner {
   async heartbeat() {
     const { hub, token } = this.options;
     const plan = this.plan.pending();
+    const providers = this.providers;
     const answer = await hub.heartbeat(token, {
       capacity: this.options.capacity,
       version: this.options.version,
       runIds: this.running,
       engines: Object.keys(this.options.engines) as EngineName[],
+      ...(providers ? { providers } : {}),
       ...plan,
     });
     this.plan.sent(plan);
+    if (providers === this.providers) this.providers = null;
     for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
     if (answer?.upgrade && !this.upgrading) {
       this.upgrading = true;
@@ -174,8 +186,8 @@ export class Runner {
       if (!engine) throw new Error(`This machine has no ${claim.run.engine} engine`);
       const result = await engine({
         input: claim.input,
+        ...(claim.run.provider ? { provider: claim.run.provider } : {}),
         model: claim.run.model ?? MODELS[claim.run.modelTier] ?? MODELS.standard,
-        modelTier: claim.run.modelTier,
         ...(claim.run.effort ? { effort: claim.run.effort } : {}),
         hubMcp: { url: claim.mcpUrl, token: claim.token },
         mcpServers: { ...this.options.mcpServers, ...claim.mcpServers },
@@ -258,6 +270,26 @@ export class Runner {
   }
 
   /**
+   * Lists the models here when a listing is due, for the next check-in to send. Runs in the
+   * background; a failed listing waits for the next turn.
+   */
+  readCatalog() {
+    const { catalog, catalogEveryMs = 10 * 60_000 } = this.options;
+    if (!catalog || this.listing || Date.now() - this.listedAt < catalogEveryMs)
+      return this.listing ?? Promise.resolve();
+    this.listedAt = Date.now();
+    this.listing = catalog()
+      .then((providers) => {
+        this.providers = providers;
+      })
+      .catch((error) => this.log(`Couldn't list this machine's models: ${String(error)}`))
+      .finally(() => {
+        this.listing = null;
+      });
+    return this.listing;
+  }
+
+  /**
    * Runs until `shutdown()`: heartbeats on a timer, claims on every poll. Resolves "upgrade"
    * when the owner asked for the latest runner and nothing is running any more.
    */
@@ -276,6 +308,7 @@ export class Runner {
         if (this.upgrading && this.active.size === 0) return "upgrade";
         await this.claim();
         this.readPlan();
+        void this.readCatalog();
       } catch (error) {
         if (error instanceof HubError && error.status === 401) {
           this.log("The hub doesn't know this machine any more. Enrol again to rejoin.");

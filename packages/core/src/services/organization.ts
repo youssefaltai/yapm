@@ -7,6 +7,7 @@ import { cleanRouting, loadRouting } from "../runs/routing.js";
 import { isTimeZone } from "../time.js";
 import { type Ctx, changes, event } from "./common.js";
 import { updateHandbook } from "./feedback.js";
+import { loadCatalog } from "./machines.js";
 import { authorize, requireOwner } from "./requests.js";
 import { rescheduleAll } from "./templates.js";
 
@@ -34,7 +35,7 @@ export async function updateOrganization(ctx: Ctx, input: OrganizationUpdateInpu
   }
   if (input.modelRouting != null) {
     await requireOwner(ctx, "change how runs pick a model");
-    const routing = cleanRouting(input.modelRouting);
+    const routing = cleanRouting(input.modelRouting, await loadCatalog(db));
     if (JSON.stringify(routing) !== JSON.stringify(await loadRouting(db)))
       next.modelRouting = routing;
   }

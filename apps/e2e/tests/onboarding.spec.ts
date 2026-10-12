@@ -298,14 +298,15 @@ test.describe
       await expect(page.getByLabel("Charter")).toHaveText(
         "Owns the household budget and the bills.",
       );
-      // Agents run on Claude unless the owner picks ChatGPT, Copilot or another provider.
-      const engine = page.getByLabel("Engine");
-      await expect(engine).toContainText("Claude");
-      await choose(page, engine, "ChatGPT, Copilot & more");
+      // Agents run on the company's models unless the owner sets their own.
+      const models = page.getByLabel("Models", { exact: true });
+      await expect(models).toContainText("Company default");
+      await choose(page, models, "Custom");
       await page.reload();
-      await expect(engine).toContainText("ChatGPT, Copilot & more");
-      await choose(page, engine, "Claude");
-      await expect(engine).toContainText("Claude");
+      await expect(models).toContainText("Custom");
+      await expect(page.getByLabel("Small model")).toContainText("Sonnet 5.5 · Claude");
+      await choose(page, models, "Company default");
+      await expect(models).toContainText("Company default");
 
       await page.getByRole("button", { name: "+ New token" }).click();
       const tokenDialog = page.getByRole("dialog", { name: "New API token" });

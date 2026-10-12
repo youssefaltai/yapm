@@ -60,7 +60,10 @@ export const RUN_SUMMARY = `id kind status goal modelTier createdAt startedAt en
 
 const ACTIVE: RunStatus[] = ["queued", "running", "needs_input"];
 
-export const ENGINES: Record<string, string> = { claude: "Claude", opencode: "OpenCode" };
+export const ENGINES: Record<string, string> = {
+  claude: "Claude",
+  opencode: "ChatGPT, Copilot & more",
+};
 export const isActive = (status: RunStatus) => ACTIVE.includes(status);
 
 const STATUS: Record<RunStatus, { label: string; className: string }> = {
@@ -502,7 +505,7 @@ export function RunPage({ id }: { id: string }) {
                   <Property label="Cost">
                     ${run.costUsd.toFixed(3)}
                     <span className="text-faint">
-                      {run.engine === "opencode" ? "as OpenCode reports" : "at API prices"}
+                      {run.engine === "opencode" ? "as reported" : "at API prices"}
                     </span>
                   </Property>
                 ) : null}

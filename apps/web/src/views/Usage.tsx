@@ -238,9 +238,9 @@ export function UsageView() {
           <p className="mt-6 max-w-3xl text-[12px] text-faint">
             Plans don't publish their limits in tokens or dollars, only how full each window is, so
             limits show as percentages. Cost is what the same tokens would cost at API prices for
-            Claude runs, and what OpenCode reports for OpenCode runs (0 on a subscription); the
-            subscription doesn't charge it. Your own use of Claude, ChatGPT or Copilot counts toward
-            the limits above but isn't among the runs below.
+            Claude runs, and what's reported for other runs (0 on a subscription); the subscription
+            doesn't charge it. Your own use of Claude, ChatGPT or Copilot counts toward the limits
+            above but isn't among the runs below.
           </p>
         </PageBody>
       )}
@@ -276,7 +276,7 @@ function SubscriptionCard({ subscription: s }: { subscription: Subscription }) {
       ) : (
         <>
           {plan.limits.length === 0 ? (
-            <p className="mt-3 text-muted">Claude Code didn't report any limit windows.</p>
+            <p className="mt-3 text-muted">No limit windows reported yet.</p>
           ) : (
             <ul className="mt-3 space-y-3">
               {plan.limits.map((l) => (
@@ -311,10 +311,10 @@ function OpencodeCards({ machine: m }: { machine: UsageMachine }) {
   if (plans.length === 0)
     return (
       <section
-        aria-label={`OpenCode on ${m.name}`}
+        aria-label={`ChatGPT, Copilot & more on ${m.name}`}
         className="rounded-lg border border-line px-4 py-3"
       >
-        <span className="font-medium">OpenCode</span>
+        <span className="font-medium">ChatGPT, Copilot & more</span>
         <p className="text-[12px] text-faint">On {m.name}</p>
         <p className="mt-3 text-muted">
           A ChatGPT or Copilot plan's limits are shown after the first run on one. An API key has no
@@ -332,7 +332,7 @@ function OpencodeCards({ machine: m }: { machine: UsageMachine }) {
         <span className="min-w-0 flex-1 truncate font-medium">{PROVIDERS[p.provider]}</span>
         {planName(p.name) && <span className="text-[12px] text-muted">{planName(p.name)}</span>}
       </div>
-      <p className="text-[12px] text-faint">Used by {m.name}, through OpenCode</p>
+      <p className="text-[12px] text-faint">Used by {m.name}</p>
       {p.usage?.limits.length ? (
         <ul className="mt-3 space-y-3">
           {p.usage.limits.map((l) => (

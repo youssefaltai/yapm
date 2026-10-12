@@ -2,7 +2,7 @@
   "name": "@yapm/runner",
   "version": "0.6.4",
   "type": "module",
-  "description": "Runs your company's agents on this machine with the Claude Agent SDK or OpenCode.",
+  "description": "Runs your company's agents on this machine, on your own Claude, ChatGPT or Copilot plan, or an API key.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",

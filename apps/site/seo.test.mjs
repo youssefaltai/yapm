@@ -30,6 +30,16 @@ test("structured data describes the app and answers the FAQ on the page", () => 
   for (const { name } of faq.mainEntity) assert.ok(html.includes(`>${name}</`), name);
 });
 
+test("pages lead with the AI owners bring, naming the engines only in the FAQ and self-host guide", () => {
+  assert.match(html.match(/<p class="lede">[\s\S]*?<\/p>/)[0], /Claude, ChatGPT or Copilot/);
+  assert.match(html, /<h3>Bring your own AI<\/h3>/);
+  const engines = /OpenCode|Agent SDK|Claude Code/;
+  const outsideFaq = html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, "");
+  assert.doesNotMatch(outsideFaq.replace(/<section id="faq"[\s\S]*?<\/section>/, ""), engines);
+  for (const file of ["how-it-works.html", "vs-linear.html", "llms.txt"])
+    assert.doesNotMatch(read(file), engines, file);
+});
+
 test("the h1 says what people search for", () => {
   assert.match(html.match(/<h1[\s\S]*?<\/h1>/)[0], /Linear alternative/i);
 });

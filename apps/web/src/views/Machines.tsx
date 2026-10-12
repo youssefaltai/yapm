@@ -337,8 +337,8 @@ export function SetupPanel({
         {setup.command}
       </code>
       <p className="mt-2 text-muted">
-        It installs the runner, asks how agents should run if the computer isn't set up yet, and
-        keeps it running in the background. Works on macOS and Linux, once, until{" "}
+        It installs the runner, asks which AI agents should use if the computer isn't set up yet,
+        and keeps it running in the background. Works on macOS and Linux, once, until{" "}
         {new Date(setup.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.
       </p>
       <div className="mt-3 flex items-center gap-2">

@@ -116,7 +116,7 @@ vi.mock("@opencode-ai/sdk/v2", () => ({
   },
 }));
 
-const { installOpencode, opencodeEngine, opencodeSignedIn } = await import("../src/opencode.js");
+const { installOpencode, opencodeEngine, opencodeProviders } = await import("../src/opencode.js");
 
 const idle = { type: "session.idle", properties: { sessionID: "ses_1" } };
 const part = (p: Record<string, unknown>, sessionID = "ses_1") => ({
@@ -697,23 +697,28 @@ describe("opencode engine", () => {
       push(idle);
     });
     const result = await engine()(run());
-    expect(result.error).toBe("Token expired. Run: yapm-runner login --opencode");
+    expect(result.error).toBe("Token expired. Run: yapm-runner login");
   });
 
-  it("knows whether OpenCode has a provider to run on", () => {
+  it("names the providers OpenCode is signed in to, as owners know them", () => {
     authList = "┌  Credentials ~/.local/share/opencode/auth.json\n│\n└  0 credentials\n";
-    expect(opencodeSignedIn("/opt/opencode", "/h")).toBe(false);
+    expect(opencodeProviders("/opt/opencode", "/h")).toEqual([]);
     expect(installs.at(-1)).toEqual(["/opt/opencode", "auth", "list"]);
-    authList += "┌  Environment\n│\n●  OpenAI OPENAI_API_KEY\n│\n└  1 environment variable\n";
-    expect(opencodeSignedIn("/opt/opencode", "/h")).toBe(true);
-    authList = "●  OpenAI oauth\n│\n└  2 credentials\n";
-    expect(opencodeSignedIn("/opt/opencode", "/h")).toBe(true);
+    authList += "┌  Environment\n│\n●  DeepSeek DEEPSEEK_API_KEY\n│\n└  1 environment variable\n";
+    expect(opencodeProviders("/opt/opencode", "/h")).toEqual(["DeepSeek"]);
+    // As printed, colours and all.
+    authList =
+      "\u001b[0m\n┌  Credentials \u001b[90m~/.local/share/opencode/auth.json\n│\n●  OpenAI \u001b[90moauth\n│\n" +
+      "●  GitHub Copilot \u001b[90moauth\n│\n●  OpenAI \u001b[90mapi\n│\n└  3 credentials\n";
+    expect(opencodeProviders("/opt/opencode", "/h")).toEqual(["ChatGPT", "Copilot", "OpenAI"]);
   });
 
   it("installs its own OpenCode only when it's missing or another version", () => {
     const home = mkdtempSync(join(tmpdir(), "runner-"));
     const bin = join(home, "opencode", "node_modules", ".bin", "opencode");
-    expect(installOpencode(home, () => {})).toBe(bin);
+    const said: string[] = [];
+    expect(installOpencode(home, (line) => said.push(line))).toBe(bin);
+    expect(said.join("\n")).not.toMatch(/OpenCode/);
     expect(installs.at(-1)).toEqual([
       "npm",
       "install",

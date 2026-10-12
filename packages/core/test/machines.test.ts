@@ -40,7 +40,7 @@ it("says why an agent's run waits: no machine online, none with its tags, none w
     "Waiting for a machine tagged gym, home",
   );
   // Older runners don't say which engines they have: Claude only.
-  expect(waitingFor(agent, [mac])).toBe("Waiting for a machine that runs OpenCode");
+  expect(waitingFor(agent, [mac])).toBe("Waiting for a machine that runs ChatGPT, Copilot & more");
   expect(waitingFor(agent, [mac, { tags: ["home"], engines: ["opencode"] }])).toBeNull();
   expect(waitingFor({ engine: "claude", runnerTags: null }, [mac])).toBeNull();
 });

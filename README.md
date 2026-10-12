@@ -133,7 +133,7 @@ Agents run on your own Mac or Linux machine.
 curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
-On a new machine, it asks how agents should run. Then it runs in the background and starts at login.
+On a new machine, it asks which AI agents should use. Then it runs in the background and starts at login.
 To update, run `curl -fsSL https://your-hub.example/install.sh | sh`.
 
 ### Bring your own AI
@@ -143,8 +143,8 @@ Each agent's **Engine**, on its page, picks its AI. Usage counts against your ow
 - **Claude**: your Claude subscription or an Anthropic API key.
 - **ChatGPT, Copilot & more**: a ChatGPT or GitHub Copilot plan, or an API key from 75+ providers. A Claude subscription doesn't work here.
 
-One runner per machine runs both, Claude through the Claude Agent SDK and the rest through OpenCode;
-add the latter with `yapm-runner login --opencode`. Runs go only to machines with the agent's engine.
+Add another on a machine with `yapm-runner login`. One runner per machine runs both, Claude through
+the Claude Agent SDK and the rest through OpenCode. Runs go only to machines with the agent's engine.
 Grants are checked on every tool call, and Usage shows each plan's limits.
 
 You can also use Claude Code as an agent.

@@ -12,7 +12,7 @@ import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import type { HubDb } from "../db.js";
 import { localDate } from "../time.js";
 import { companyTimeZone } from "./cycles.js";
-import { machineName } from "./machines.js";
+import { machineName, providerName } from "./machines.js";
 
 // What the owner's Claude subscription is doing. Claude Code tells each runner how full the
 // plan's windows are (as percentages, with reset times) and what each session would cost at
@@ -267,8 +267,8 @@ export async function usageHistory(
       ? runs.agentId
       : groupBy === "machine"
         ? runs.machineId
-        : // OpenCode's models apart from Claude's, so their costs don't mix.
-          sql<string>`case when ${runs.engine} = 'opencode' then 'opencode:' else '' end || coalesce(${runs.model}, ${runs.modelTier})`;
+        : // Other providers' models apart from Claude's, so their costs don't mix.
+          sql<string>`case when ${runs.provider} != 'anthropic' then ${runs.provider} || ':' else '' end || coalesce(${runs.model}, ${runs.modelTier})`;
   const [timeZone, rows] = await Promise.all([
     companyTimeZone(db),
     db
@@ -302,8 +302,10 @@ export async function usageHistory(
       .all())
       labels.set(m.id, machineName(m));
   if (groupBy === "model")
-    for (const key of keys)
-      if (key.startsWith("opencode:")) labels.set(key, `${key.slice(9)} · OpenCode`);
+    for (const key of keys) {
+      const [provider, model] = key.split(/:(.*)/);
+      if (model) labels.set(key, `${model} · ${providerName(provider ?? "")}`);
+    }
   const points = new Map<string, UsagePoint>();
   for (const r of rows) {
     const date = localDate(Number(r.hour) * HOUR, timeZone);

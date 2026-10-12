@@ -1,5 +1,6 @@
 import type { AuditFilter, MetricScope, metricSnapshots } from "@yapm/schema";
 import { createGraphQLError } from "graphql-yoga";
+import { providerName } from "../services/machines.js";
 import {
   addCounts,
   archiveMetric,
@@ -57,11 +58,15 @@ const MetricsRef = builder.objectRef<Metrics>("Metrics").implement({
 
 const RouteMetrics = builder.objectRef<RouteStats>("RouteMetrics").implement({
   description:
-    "How runs on one model route did: one kind, tier, engine, model, effort and routing rule. Compare routes by success rate and cost per completed run before changing the routing.",
+    "How runs on one model route did: one kind, tier, provider, model, effort and routing rule. Compare routes by success rate and cost per completed run before changing the routing.",
   fields: (t) => ({
     kind: t.exposeString("kind"),
     modelTier: t.exposeString("modelTier"),
-    engine: t.exposeString("engine", { nullable: true }),
+    provider: t.exposeString("provider", { nullable: true }),
+    providerName: t.string({
+      nullable: true,
+      resolve: (r) => (r.provider ? providerName(r.provider) : null),
+    }),
     model: t.exposeString("model", { nullable: true }),
     effort: t.exposeString("effort", { nullable: true }),
     routeRule: t.exposeString("routeRule", { nullable: true }),

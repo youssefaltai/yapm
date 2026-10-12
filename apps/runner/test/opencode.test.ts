@@ -109,14 +109,29 @@ vi.mock("@opencode-ai/sdk/v2", () => ({
       permission: { reply: log("reply") },
       provider: {
         list: log("providers", () => ({
-          all: [{ id: "openai", models: { "gpt-5": { variants: { low: {}, high: {} } } } }],
+          all: [
+            {
+              id: "openai",
+              name: "OpenAI",
+              models: {
+                "gpt-5": { id: "gpt-5", name: "GPT-5", variants: { low: {}, high: {} } },
+                "gpt-4": { id: "gpt-4", name: "GPT-4", status: "deprecated" },
+                "gpt-5-mini": { id: "gpt-5-mini", name: "GPT-5 Mini" },
+                "dall-e": { id: "dall-e", name: "DALL·E", capabilities: { toolcall: false } },
+              },
+            },
+            { id: "deepseek", name: "DeepSeek", models: { "deepseek-v4": { id: "deepseek-v4" } } },
+          ],
+          connected: ["openai"],
         })),
       },
     };
   },
 }));
 
-const { installOpencode, opencodeEngine, opencodeProviders } = await import("../src/opencode.js");
+const { installOpencode, opencodeEngine, opencodeModels, opencodeProviders } = await import(
+  "../src/opencode.js"
+);
 
 const idle = { type: "session.idle", properties: { sessionID: "ses_1" } };
 const part = (p: Record<string, unknown>, sessionID = "ses_1") => ({
@@ -145,8 +160,8 @@ const run = (extra: Partial<EngineRun> = {}) =>
       tools: true,
       maxTurns: 5,
     },
-    model: "claude-sonnet-5-5",
-    modelTier: "standard",
+    provider: "openai",
+    model: "gpt-5",
     hubMcp: { url: "http://localhost/mcp", token: "los_test" },
     resume: null,
     cwd: "/tmp",
@@ -157,7 +172,7 @@ const run = (extra: Partial<EngineRun> = {}) =>
     ...extra,
   }) as EngineRun;
 
-const engine = (models = {}) => opencodeEngine({ bin: "/opt/opencode", home: "/h", models });
+const engine = () => opencodeEngine({ bin: "/opt/opencode", home: "/h" });
 
 const start = (scripted: typeof script) => {
   spawned = [];
@@ -289,9 +304,7 @@ describe("opencode engine", () => {
       push(structured({ act: true }));
       push(idle);
     });
-    const result = await engine({ standard: "openai/gpt-5" })(
-      run({ input: { ...run().input, tools: false }, effort: "high" }),
-    );
+    const result = await engine()(run({ input: { ...run().input, tools: false }, effort: "high" }));
     expect(result).toMatchObject({ output: { act: true }, sessionId: "ses_1" });
     expect(config().mcp).toBeUndefined();
     expect(calls.create?.[0]).toEqual({
@@ -310,14 +323,30 @@ describe("opencode engine", () => {
     });
   });
 
-  it("leaves the model and effort to OpenCode when the machine names none or the model lacks it", async () => {
+  it("leaves the model to OpenCode when an older hub names no provider, and drops an effort the model lacks", async () => {
     start((push) => push(idle));
-    await engine()(run({ effort: "high" }));
+    await engine()(run({ provider: undefined, model: "claude-sonnet-5-5", effort: "high" }));
     expect(calls.prompt?.[0]).not.toHaveProperty("model");
     expect(calls.prompt?.[0]).not.toHaveProperty("variant");
     start((push) => push(idle));
-    await engine({ standard: "openai/gpt-5" })(run({ effort: "max" }));
+    await engine()(run({ effort: "max" }));
+    expect(calls.prompt?.[0]).toMatchObject({ model: { providerID: "openai", modelID: "gpt-5" } });
     expect(calls.prompt?.[0]).not.toHaveProperty("variant");
+  });
+
+  it("lists the signed-in providers' models that can run agents, with their efforts", async () => {
+    const { createOpencodeClient } = await import("@opencode-ai/sdk/v2");
+    const client = createOpencodeClient({ baseUrl: "http://127.0.0.1:4096" });
+    expect(await opencodeModels(client)).toEqual([
+      {
+        id: "openai",
+        name: "OpenAI",
+        models: [
+          { id: "gpt-5", name: "GPT-5", efforts: ["low", "high"] },
+          { id: "gpt-5-mini", name: "GPT-5 Mini", efforts: [] },
+        ],
+      },
+    ]);
   });
 
   it("streams the transcript and reports the session's usage", async () => {

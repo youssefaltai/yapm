@@ -1,4 +1,5 @@
 import {
+  type EffortLevel,
   type Options,
   type Query,
   query,
@@ -7,6 +8,7 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Engine, EngineResult, PlanProbe } from "./engine.js";
+import type { ProviderModels } from "./hub.js";
 import { HUB_MCP } from "./permissions.js";
 import { accountFrom, type PlanUpdate, usageFrom } from "./plan.js";
 
@@ -77,7 +79,7 @@ export const sdkEngine: Engine = async (run) => {
   const options: Options = {
     systemPrompt: run.input.systemPrompt,
     model: run.model,
-    ...(run.effort ? { effort: run.effort } : {}),
+    ...(run.effort ? { effort: run.effort as EffortLevel } : {}),
     // A decision answers in one go; the structured output may take a turn of its own.
     maxTurns: run.input.tools ? run.input.maxTurns : 3,
     outputFormat: { type: "json_schema", schema: run.input.outputSchema },
@@ -205,11 +207,8 @@ async function readUsage(session: Query): Promise<PlanUpdate | null> {
   }
 }
 
-/**
- * Opens Claude Code without a prompt, reads the login and /usage, and closes it. No model is
- * called, so it costs nothing against the plan.
- */
-export const probePlan: PlanProbe = async () => {
+/** Opens Claude Code without a prompt, uses it, and closes it. No model is called. */
+async function withIdleSession<T>(use: (session: Query) => Promise<T>): Promise<T> {
   let release = () => {};
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -225,10 +224,28 @@ export const probePlan: PlanProbe = async () => {
     options: { settingSources: [], tools: [], persistSession: false },
   });
   try {
-    const [account, usage] = await Promise.all([readAccount(session), readUsage(session)]);
-    return [account, usage].filter((u): u is PlanUpdate => u !== null);
+    return await use(session);
   } finally {
     release();
     session.close();
   }
-};
+}
+
+/** Reads the login and /usage; costs nothing against the plan. */
+export const probePlan: PlanProbe = () =>
+  withIdleSession(async (session) => {
+    const [account, usage] = await Promise.all([readAccount(session), readUsage(session)]);
+    return [account, usage].filter((u): u is PlanUpdate => u !== null);
+  });
+
+/** Claude's models this sign-in may use, each once by its id (aliases resolved). */
+export const claudeModels = (): Promise<ProviderModels> =>
+  withIdleSession(async (session) => {
+    const models: ProviderModels["models"] = [];
+    for (const m of await within(session.supportedModels(), 15_000)) {
+      const id = m.resolvedModel ?? m.value;
+      if (m.value === "default" || models.some((known) => known.id === id)) continue;
+      models.push({ id, name: m.displayName, efforts: m.supportedEffortLevels ?? [] });
+    }
+    return { id: "anthropic", name: "Claude", models };
+  });

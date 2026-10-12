@@ -176,6 +176,13 @@
       "when": 1791760628199,
       "tag": "0024_machine_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1791767007550,
+      "tag": "0025_tiers_by_provider",
+      "breakpoints": true
     }
   ]
 }

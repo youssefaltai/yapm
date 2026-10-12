@@ -166,7 +166,8 @@ const UsagePointRef = builder.objectRef<UsagePoint>("UsagePoint").implement({
   fields: (t) => ({
     date: t.exposeString("date", { description: "YYYY-MM-DD in the company's time zone." }),
     key: t.exposeString("key", {
-      description: "The agent id, model id (OpenCode's start with `opencode:`) or machine id.",
+      description:
+        "The agent id, model id (other providers' than Claude's start with `<provider>:`) or machine id.",
     }),
     label: t.exposeString("label"),
     runs: t.exposeInt("runs"),
@@ -174,7 +175,7 @@ const UsagePointRef = builder.objectRef<UsagePoint>("UsagePoint").implement({
     outputTokens: t.exposeFloat("outputTokens"),
     costUsd: t.exposeFloat("costUsd", {
       description:
-        "What the runs cost as their engines report it: at API prices from Claude, OpenCode's own figure (0 on a subscription) from OpenCode. Not what a plan charges.",
+        "What the runs cost as reported: at API prices for Claude, the provider's own figure (0 on a subscription) for others. Not what a plan charges.",
     }),
   }),
 });

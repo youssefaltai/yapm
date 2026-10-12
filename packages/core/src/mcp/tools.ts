@@ -5,11 +5,13 @@ import {
   ISSUE_RELATION_TYPES,
   issues,
   labels,
+  type ModelTiers,
   notifications,
   PRIORITY_LABELS,
   projectMilestones,
   projects,
   requests,
+  type TierModel,
   teams,
   users,
   WORKFLOW_STATE_TYPES,
@@ -21,6 +23,7 @@ import type { HubDeps, User } from "../context.js";
 import type { HubDb } from "../db.js";
 import { type IssueFilterShape, queryIssues } from "../graphql/filters.js";
 import type { Loaders } from "../loaders.js";
+import { loadRouting } from "../runs/routing.js";
 import {
   createComment,
   createReaction,
@@ -39,6 +42,7 @@ import {
   updateIssue,
 } from "../services/issues.js";
 import { createLabel, deleteLabel, updateLabel } from "../services/labels.js";
+import { loadCatalog, providerName } from "../services/machines.js";
 import {
   archiveNotification,
   inInbox,
@@ -364,6 +368,23 @@ async function issueInput(c: McpContext, args: Args, teamId: string) {
   return input;
 }
 
+/** An agent's tiers as people read them: Claude, ChatGPT…, not provider ids. */
+async function modelsOf(db: HubDb, own: ModelTiers | null) {
+  const [{ tiers }, catalog] = await Promise.all([loadRouting(db), loadCatalog(db)]);
+  const named = (t: TierModel) => ({
+    provider: providerName(t.provider, catalog),
+    model: t.model,
+    effort: t.effort,
+  });
+  const using = own ?? tiers;
+  return {
+    custom: own !== null,
+    small: named(using.small),
+    standard: named(using.standard),
+    top: named(using.top),
+  };
+}
+
 export const limitArg = { type: "integer", description: "Maximum results (default 50, max 250)" };
 
 /**
@@ -526,7 +547,8 @@ export const tools: Tool<McpContext>[] = [
   {
     name: "get_user",
     title: "Get user",
-    description: 'Get a member by id or name, or "me". Agents include their charter and lessons.',
+    description:
+      'Get a member by id or name, or "me". Agents include their charter, lessons and models: the provider, model and effort each tier runs on (custom, or the company\'s).',
     readOnly: true,
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
     async run(args, c) {
@@ -540,6 +562,7 @@ export const tools: Tool<McpContext>[] = [
         manager: manager?.name ?? null,
         charter: u.charter,
         lessons: u.lessons,
+        ...(u.kind === "agent" ? { models: await modelsOf(c.db, u.models) } : {}),
       };
     },
   },
@@ -1071,7 +1094,7 @@ export const tools: Tool<McpContext>[] = [
     name: "update_user",
     title: "Update member",
     description:
-      "Change a member's name, title, manager, charter or lessons. You may rename yourself and rewrite your own lessons freely; changing others needs user.update, charters need charter.update and someone else's lessons need lessons.update. Lessons replace the old text, so keep what still holds.",
+      "Change a member's name, title, manager, charter, lessons or models. You may rename yourself and rewrite your own lessons freely; changing others needs user.update, charters need charter.update, someone else's lessons need lessons.update and models agent.models. Lessons replace the old text, so keep what still holds.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1084,6 +1107,11 @@ export const tools: Tool<McpContext>[] = [
           description: "What the agent has learned, in markdown. Read on every run.",
         },
         manager: { type: "string" },
+        models: {
+          type: ["object", "null"],
+          description:
+            'An agent\'s own model per tier: { small?, standard?, top? }, each { provider, model, effort }, e.g. { "provider": "anthropic", "model": "claude-opus-5-5", "effort": "medium" }. Provider ids: anthropic (Claude), openai (ChatGPT), github-copilot (Copilot)…; only models a machine has. null goes back to the company\'s.',
+        },
       },
       required: ["user"],
     },
@@ -1097,6 +1125,7 @@ export const tools: Tool<McpContext>[] = [
           ...(str(args.charter) !== undefined ? { charter: str(args.charter) } : {}),
           ...(str(args.lessons) !== undefined ? { lessons: str(args.lessons) } : {}),
           ...(manager ? { managerId: manager.id } : {}),
+          ...(args.models !== undefined ? { models: args.models } : {}),
         }),
       );
       return { id: user.id };

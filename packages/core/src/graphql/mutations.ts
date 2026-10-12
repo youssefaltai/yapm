@@ -273,18 +273,11 @@ const UserUpdateInput = builder.inputType("UserUpdateInput", {
       required: false,
       description: "Owner only: machines need all these tags to run this agent.",
     }),
-    engine: t.string({
-      required: false,
-      description: "Owner only: what runs this agent (claude, opencode).",
-    }),
-    modelFloor: t.string({
+    models: t.field({
+      type: "JSONObject",
       required: false,
       description:
-        "Owner only: the cheapest tier this agent's work runs on (small, standard, top).",
-    }),
-    modelCeiling: t.string({
-      required: false,
-      description: "Owner only: the dearest tier this agent's work may run on.",
+        "An agent's own `{ provider, model, effort }` per tier (small, standard, top), from `Organization.aiProviders`; tiers left out keep theirs. Null goes back to the company's. Needs agent.models.",
     }),
     topRunsPerWeek: t.int({
       required: false,

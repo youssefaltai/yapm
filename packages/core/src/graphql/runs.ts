@@ -1,5 +1,6 @@
 import {
   MACHINE_STATUSES,
+  type MachineProvider,
   machines,
   RUN_KINDS,
   RUN_STATUSES,
@@ -23,7 +24,9 @@ import {
   approveMachine,
   createSetupToken,
   listMachines,
+  loadCatalog,
   machineName,
+  providerName,
   revokeMachine,
   updateMachine,
   upgradeMachine,
@@ -34,6 +37,7 @@ import {
   builder,
   connection,
   db,
+  type GraphQLContext,
   notFoundError,
   now,
   pageArgs,
@@ -41,7 +45,7 @@ import {
   requireViewer,
 } from "./builder.js";
 import { Request } from "./requests.js";
-import { Issue, User } from "./types.js";
+import { Issue, Organization, User } from "./types.js";
 
 type RunRow = typeof runs.$inferSelect;
 type MachineRow = typeof machines.$inferSelect;
@@ -51,6 +55,43 @@ const RunStatus = builder.enumType("RunStatus", { values: RUN_STATUSES });
 const MachineStatus = builder.enumType("MachineStatus", { values: MACHINE_STATUSES });
 
 export const Run = builder.objectRef<RunRow>("Run");
+
+/** The models machines have, read once per request. */
+const catalogs = new WeakMap<object, Promise<MachineProvider[]>>();
+function catalog(ctx: GraphQLContext) {
+  const found = catalogs.get(ctx) ?? loadCatalog(db(ctx));
+  catalogs.set(ctx, found);
+  return found;
+}
+
+const AiModel = builder.objectRef<MachineProvider["models"][number]>("AiModel").implement({
+  description: "A model a provider offers on some machine.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    efforts: t.exposeStringList("efforts", {
+      description: "The effort levels it supports, e.g. low to max; empty when it has none.",
+    }),
+  }),
+});
+
+const AiProvider = builder.objectRef<MachineProvider>("AiProvider").implement({
+  description: "An AI provider some machine is signed in to, with its models.",
+  fields: (t) => ({
+    id: t.exposeID("id", { description: "anthropic, openai, github-copilot, openrouter…" }),
+    name: t.exposeString("name", { description: "As owners know it: Claude, ChatGPT…" }),
+    models: t.field({ type: [AiModel], resolve: (p) => p.models }),
+  }),
+});
+
+builder.objectField(Organization, "aiProviders", (t) =>
+  t.field({
+    type: [AiProvider],
+    description:
+      "The providers and models machines have: what each tier (`modelRouting.tiers`, `User.models`) may choose.",
+    resolve: (_o, _args, ctx) => catalog(ctx),
+  }),
+);
 export const Machine = builder.objectRef<MachineRow>("Machine");
 const RunConnection = connection<RunRow>("Run", Run);
 
@@ -75,16 +116,25 @@ Run.implement({
     status: t.field({ type: RunStatus, resolve: (r) => r.status }),
     goal: t.exposeString("goal", { nullable: true }),
     modelTier: t.exposeString("modelTier"),
-    engine: t.exposeString("engine", {
+    provider: t.exposeString("provider", {
       nullable: true,
-      description: "What ran it: claude or opencode. Null until a machine picks it up.",
+      description: "The model's provider id, e.g. anthropic or openai.",
+    }),
+    providerName: t.string({
+      nullable: true,
+      description: "The provider as owners know it, e.g. Claude or ChatGPT.",
+      resolve: async (r, _args, ctx) =>
+        r.provider ? providerName(r.provider, await catalog(ctx)) : null,
     }),
     model: t.exposeString("model", {
       nullable: true,
       description:
-        "The model that ran, e.g. claude-opus-5-5 or openai/gpt-6-sol; until it ends (or from older runners), the one the hub chose.",
+        "The model that ran, e.g. claude-opus-5-5 or gpt-6-sol; until it ends (or from older runners), the one the hub chose.",
     }),
-    effort: t.exposeString("effort", { nullable: true, description: "low to max." }),
+    effort: t.exposeString("effort", {
+      nullable: true,
+      description: "One the model supports, e.g. low to max; null when it has none.",
+    }),
     routeRule: t.exposeString("routeRule", {
       nullable: true,
       description:
@@ -92,7 +142,7 @@ Run.implement({
     }),
     costUsd: t.exposeFloat("costUsd", {
       description:
-        "What the session cost as its engine reports it: at API prices from Claude, OpenCode's own figure (0 on a subscription) from OpenCode.",
+        "What the session cost as reported: at API prices for Claude, the provider's own figure (0 on a subscription) for others.",
     }),
     trigger: t.field({ type: "JSONObject", nullable: true, resolve: (r) => r.trigger ?? null }),
     result: t.field({ type: "JSONObject", nullable: true, resolve: (r) => r.result ?? null }),
@@ -106,7 +156,7 @@ Run.implement({
     queuedReason: t.string({
       nullable: true,
       description:
-        "Why a queued run hasn't started: no machine online, or none with the agent's tags or engine. Null otherwise.",
+        "Why a queued run hasn't started: no machine online, or none with the agent's tags or signed in to the run's provider. Null otherwise.",
       resolve: async (r, _args, ctx) => {
         if (r.status !== "queued" || (r.notBefore ?? 0) > now(ctx)) return null;
         const agent = await ctx.loaders.user.load(r.agentId);
@@ -118,7 +168,7 @@ Run.implement({
             now(ctx) - m.lastSeenAt < ONLINE_WINDOW &&
             (!r.machineId || m.id === r.machineId),
         );
-        return waitingFor(agent, online);
+        return waitingFor(agent, r.provider ?? "anthropic", online);
       },
     }),
     createdAt: t.field({ type: "DateTime", resolve: (r) => r.createdAt }),
@@ -323,14 +373,12 @@ builder.objectField(User, "runnerTags", (t) =>
 );
 
 builder.objectFields(User, (t) => ({
-  engine: t.exposeString("engine", {
-    description: "What runs this agent: claude or opencode. Only machines that have it run it.",
-  }),
-  modelFloor: t.exposeString("modelFloor", {
-    description: "The cheapest tier this agent's work runs on.",
-  }),
-  modelCeiling: t.exposeString("modelCeiling", {
-    description: "The dearest tier this agent's work may run on.",
+  models: t.field({
+    type: "JSONObject",
+    nullable: true,
+    description:
+      "An agent's own provider, model and effort per tier; null means the company's (`Organization.modelRouting`).",
+    resolve: (u) => (u.models ?? null) as Record<string, unknown> | null,
   }),
   topRunsPerWeek: t.exposeInt("topRunsPerWeek", {
     description: "Top-tier work runs allowed in any 7 days; more drop to standard.",

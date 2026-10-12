@@ -6,7 +6,6 @@ interface Io {
   say: Say;
   ask: (question: string, hidden?: boolean) => Promise<string>;
 }
-type Tier = "small" | "standard" | "top";
 
 export const CHOICE = `Which AI should agents on this machine use? (pick any; add more later)
   1) Claude subscription      4) GitHub Copilot
@@ -117,71 +116,4 @@ export async function keySignIn(client: Client, io: Io, providerFlag?: string, k
   await client.auth.set({ providerID: provider.id, auth: { type: "api", key: secret } });
   io.say(`${provider.name}: agents use your API key.`);
   return provider.id;
-}
-
-interface Model {
-  id: string;
-  release_date: string;
-  status?: string;
-  capabilities?: { toolcall?: boolean };
-  cost?: { output?: number };
-}
-
-const SMALL = /mini|nano|luna|haiku|flash|lite|small/;
-
-/**
- * Sensible models per tier: the newest small one, then of the newest others the dearest for top
- * and the next for standard. Faster or cheaper variants of a model (`-fast`, `-flex`) are left out.
- */
-export function suggestModels(models: Record<string, Model>): Record<Tier, string> {
-  const usable = Object.values(models)
-    .filter(
-      (m) =>
-        m.status !== "deprecated" &&
-        m.capabilities?.toolcall !== false &&
-        !/-(fast|flex|ultrafast)$|:free$/.test(m.id),
-    )
-    .sort((a, b) => b.release_date.localeCompare(a.release_date) || a.id.localeCompare(b.id));
-  const large = usable.filter((m) => !SMALL.test(m.id));
-  const top = large
-    .slice(0, 3)
-    .reduce<Model | undefined>(
-      (best, m) => ((m.cost?.output ?? 0) > (best?.cost?.output ?? -1) ? m : best),
-      undefined,
-    );
-  const small = usable.find((m) => SMALL.test(m.id)) ?? top ?? usable[0];
-  const standard = large.find((m) => m !== top) ?? top ?? small;
-  return { small: small?.id ?? "", standard: standard?.id ?? "", top: (top ?? small)?.id ?? "" };
-}
-
-/**
- * The provider's models per tier, as `provider/model`: the suggestions, or three the owner types.
- * Without `io` there's no one to ask.
- */
-export async function pickModels(client: Client, providerID: string, io?: Io) {
-  const provider = (await client.provider.list()).data?.all.find((p) => p.id === providerID);
-  if (!provider) return undefined;
-  const models = provider.models as Record<string, Model>;
-  const suggested = suggestModels(models);
-  let picked: string[] = [suggested.small, suggested.standard, suggested.top];
-  if (io) {
-    io.say(`Models for small, standard and top tasks: ${picked.join(", ")}`);
-    const newest = Object.values(models)
-      .sort((a, b) => b.release_date.localeCompare(a.release_date))
-      .slice(0, 10)
-      .map((m) => m.id);
-    for (;;) {
-      const answer = await io.ask(`Enter to use them, or type three (${newest.join(", ")}, …): `);
-      if (!answer) break;
-      const typed = answer.split(",").map((m) => m.trim());
-      if (typed.length === 3 && typed.every((m) => m in models)) {
-        picked = typed;
-        break;
-      }
-      io.say(`Type three of ${provider.name}'s models, separated by commas.`);
-    }
-  }
-  if (!picked.every(Boolean)) return undefined;
-  const [small, standard, top] = picked.map((m) => `${providerID}/${m}`);
-  return { small, standard, top } as Record<Tier, string>;
 }

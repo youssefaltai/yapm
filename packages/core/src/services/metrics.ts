@@ -179,7 +179,7 @@ export async function countAll(db: HubDb, from: number, to: number) {
 
 /**
  * How each model route did over [from, to): the evidence for tuning the routing table. A route
- * is one engine, model, effort and rule; work is judged by cost per completed run, since a cheap run
+ * is one provider, model, effort and rule; work is judged by cost per completed run, since a cheap run
  * that fails and has to be redone isn't cheap.
  */
 export async function routeStats(db: HubDb, from: number, to: number) {
@@ -187,7 +187,7 @@ export async function routeStats(db: HubDb, from: number, to: number) {
     .select({
       kind: runs.kind,
       modelTier: runs.modelTier,
-      engine: runs.engine,
+      provider: runs.provider,
       model: runs.model,
       effort: runs.effort,
       routeRule: runs.routeRule,
@@ -200,7 +200,7 @@ export async function routeStats(db: HubDb, from: number, to: number) {
     })
     .from(runs)
     .where(and(gte(runs.endedAt, from), lt(runs.endedAt, to)))
-    .groupBy(runs.kind, runs.modelTier, runs.engine, runs.model, runs.effort, runs.routeRule)
+    .groupBy(runs.kind, runs.modelTier, runs.provider, runs.model, runs.effort, runs.routeRule)
     .all();
   return rows
     .map((r) => {

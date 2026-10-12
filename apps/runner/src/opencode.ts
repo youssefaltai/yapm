@@ -10,18 +10,15 @@ import {
   type Session,
 } from "@opencode-ai/sdk/v2";
 import type { Engine, EngineResult, EngineRun } from "./engine.js";
+import type { ProviderModels } from "./hub.js";
 import { HUB_MCP, type ToolDecision } from "./permissions.js";
 import { planFromHeaders } from "./plan.js";
-
-type Tier = NonNullable<EngineRun["modelTier"]>;
 
 export interface OpencodeOptions {
   /** The pinned `opencode` binary; never the one on PATH, which may be an incompatible 2.x. */
   bin: string;
   /** The runner's home; OpenCode's settings and sessions live in its `opencode` folder. */
   home: string;
-  /** `provider/model` per tier; left out, OpenCode's own default model runs. */
-  models?: Partial<Record<Tier, string>>;
 }
 
 /** The OpenCode line the SDK speaks; 2.x has another API. */
@@ -102,6 +99,25 @@ export function opencodeLogin(home: string, log: (line: string) => void): boolea
   });
   log(login.status === 0 ? "Signed in." : `Not signed in yet. ${LOGIN_HINT}`);
   return login.status === 0;
+}
+
+/**
+ * The providers signed in here and their models that can run agents (they need tools), with
+ * each model's variants as its efforts.
+ */
+export async function opencodeModels(
+  client: Pick<ReturnType<typeof createOpencodeClient>, "provider">,
+): Promise<ProviderModels[]> {
+  const { all = [], connected = [] } = (await client.provider.list()).data ?? {};
+  return all
+    .filter((p) => connected.includes(p.id))
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      models: Object.values(p.models)
+        .filter((m) => m.status !== "deprecated" && m.capabilities?.toolcall !== false)
+        .map((m) => ({ id: m.id, name: m.name, efforts: Object.keys(m.variants ?? {}) })),
+    }));
 }
 
 /**
@@ -468,9 +484,9 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
         );
       };
 
-      const model = options.models?.[run.modelTier ?? "standard"];
-      const [providerID, ...rest] = model?.split("/") ?? [];
-      const modelID = rest.join("/");
+      // Older hubs name no provider: OpenCode's own default model runs.
+      const providerID = run.provider;
+      const modelID = run.model;
       // Variant names differ per model, and OpenCode drops unknown ones silently.
       const variants =
         providerID && run.effort
@@ -482,7 +498,7 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
       if (run.signal.aborted) throw new Error("Stopped");
       await client.session.promptAsync({
         sessionID,
-        ...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+        ...(providerID ? { model: { providerID, modelID } } : {}),
         ...(run.effort && variants?.[run.effort] ? { variant: run.effort } : {}),
         format: { type: "json_schema", schema: run.input.outputSchema },
         parts: [{ type: "text", text: run.input.prompt }],

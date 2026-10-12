@@ -52,17 +52,17 @@ setup is never read or changed. To give every agent on this machine a server by 
 
 ## ChatGPT, Copilot and other providers
 
-Each agent runs on Claude unless you set its **Engine** to **ChatGPT, Copilot & more** on its page
-in yapm. Those agents run on OpenCode, with a ChatGPT or GitHub Copilot plan, or any provider's API
-key (not a Claude subscription). Pick one in `yapm-runner login`: the runner installs its own
-OpenCode 1.19 into `~/.yapm-runner/opencode` (any other `opencode` on the machine is left alone),
-signs in through it, and keeps the sign-in in OpenCode's own store; Claude stays set up. Then
-`yapm-runner service install` to restart. The hub gives an agent's runs only to machines that have
-its engine. `login` suggests models per tier and asks once; they're kept in `config.json`:
+Sign in to a ChatGPT or GitHub Copilot plan, or any provider's API key (not a Claude
+subscription), in `yapm-runner login`: the runner installs its own OpenCode 1.19 into
+`~/.yapm-runner/opencode` (any other `opencode` on the machine is left alone), signs in through it,
+and keeps the sign-in in OpenCode's own store; Claude stays set up. Then
+`yapm-runner service install` to restart.
 
-```json
-"opencode": { "models": { "small": "openai/gpt-6-luna", "standard": "openai/gpt-6-sol", "top": "openai/gpt-6.1-sol" } }
-```
+Which model each tier of work runs on is picked in yapm (Settings, or an agent's page), not here.
+The runner tells the hub which providers it's signed in to and their models (Claude's from Claude
+Code, the rest from OpenCode, listed again every 10 minutes), and the hub gives a run only to a
+machine signed in to its model's provider. Claude's models run on the Claude Agent SDK, the rest on
+OpenCode.
 
 On a ChatGPT or Copilot plan, the Usage page shows its windows too, after the first run on it.
 A small OpenCode plugin the runner installs reads the rate-limit headers on the provider's own

@@ -1,10 +1,11 @@
 import { type ReactNode, useState } from "react";
 import { createTeamStore, hireAgentStore } from "../actions.js";
-import { type Member, useQuery, type Workspace } from "../data.js";
+import { type Member, mutate, useQuery, type Workspace } from "../data.js";
 import { button, Page, PageBody, PageHeader, PageTitle, pageHeading, Section } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
 import { Avatar } from "../ui.js";
+import { AI_PROVIDERS, type AiProvider, type Tiers, TierTable } from "./Models.js";
 import { McpConnect } from "./Requests.js";
 
 export function Company({ workspace }: { workspace: Workspace }) {
@@ -68,6 +69,8 @@ export function Company({ workspace }: { workspace: Workspace }) {
               )}
               <TeamList teams={teams} members={members} />
             </Section>
+
+            <ModelsSection editable={isOwner} />
 
             {isOwner && <ServerList />}
           </div>
@@ -190,6 +193,43 @@ function OrgNode({ member, members, depth }: { member: Member; members: Member[]
         <OrgNode key={report.id} member={report} members={members} depth={depth + 1} />
       ))}
     </>
+  );
+}
+
+interface ModelRouting {
+  tiers: Tiers;
+  labels: Record<string, string>;
+}
+
+/** The company's models per tier: what agents run on unless set otherwise. */
+function ModelsSection({ editable }: { editable: boolean }) {
+  const { data } = useQuery<{
+    organization: { modelRouting: ModelRouting; aiProviders: AiProvider[] };
+  }>(`{ organization { modelRouting ${AI_PROVIDERS} } }`);
+  if (!data) return null;
+  const { modelRouting, aiProviders } = data.organization;
+  return (
+    <Section
+      id="models-title"
+      title="Models"
+      description="Which model each tier of work runs on. Agents use these unless set otherwise."
+    >
+      <div className="rounded-lg border border-line px-4 py-2">
+        <TierTable
+          tiers={modelRouting.tiers}
+          providers={aiProviders}
+          onChange={
+            editable
+              ? (tiers) =>
+                  void mutate(
+                    "mutation($input: OrganizationUpdateInput!) { organizationUpdate(input: $input) { success } }",
+                    { input: { modelRouting: { ...modelRouting, tiers } } },
+                  )
+              : undefined
+          }
+        />
+      </div>
+    </Section>
   );
 }
 

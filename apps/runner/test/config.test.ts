@@ -37,14 +37,12 @@ describe("runner config", () => {
     expect(engineNames({ engine: "opencode" }, () => false)).toEqual(["opencode"]);
   });
 
-  it("adds OpenCode without dropping Claude or its models", () => {
+  it("adds OpenCode without dropping Claude, and forgets models the app picks now", () => {
     const models = { top: "openai/gpt-5" };
     expect(withOpencode({ apiKey: "sk-ant-api03-abc" })).toEqual({
       apiKey: "sk-ant-api03-abc",
       opencode: {},
     });
-    expect(withOpencode({ opencode: { models }, engine: "opencode" })).toEqual({
-      opencode: { models },
-    });
+    expect(withOpencode({ opencode: { models }, engine: "opencode" })).toEqual({ opencode: {} });
   });
 });

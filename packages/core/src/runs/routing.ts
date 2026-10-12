@@ -1,13 +1,15 @@
 import {
   EFFORTS,
-  type Effort,
   issueLabels,
   issues,
   labels,
+  type MachineProvider,
   MODEL_TIERS,
   type ModelRouting,
   type ModelTier,
+  type ModelTiers,
   runs,
+  type TierModel,
   users,
   workspaces,
 } from "@yapm/schema";
@@ -16,7 +18,8 @@ import type { HubDb } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
 
 // Which model and effort a run gets is decided here, by rules, never by a model. The decision
-// step may ask for a tier; the rules, the agent's limits and its weekly top-tier budget decide.
+// step may ask for a tier; the rules and the agent's weekly top-tier budget decide. Each tier is a
+// provider's model: the company's, or the agent's own.
 
 /**
  * Starting points: Sonnet 5.5 at medium effort for decisions and small work, since a decision
@@ -27,9 +30,9 @@ import { badRequest, notFound } from "../errors.js";
  */
 export const DEFAULT_ROUTING: ModelRouting = {
   tiers: {
-    small: { model: "claude-sonnet-5-5", effort: "medium" },
-    standard: { model: "claude-opus-5-5", effort: "medium" },
-    top: { model: "claude-opus-5-5", effort: "high" },
+    small: { provider: "anthropic", model: "claude-sonnet-5-5", effort: "medium" },
+    standard: { provider: "anthropic", model: "claude-opus-5-5", effort: "medium" },
+    top: { provider: "anthropic", model: "claude-opus-5-5", effort: "high" },
   },
   labels: {},
 };
@@ -43,7 +46,12 @@ const isTier = (v: unknown): v is ModelTier => MODEL_TIERS.includes(v as ModelTi
 export interface RouteFacts {
   kind: "decision" | "work";
   /** The paused run this one continues: it keeps its model, so its cache and thinking hold. */
-  resumes?: { modelTier: string; model: string | null; effort: string | null } | null;
+  resumes?: {
+    modelTier: string;
+    provider: string | null;
+    model: string | null;
+    effort: string | null;
+  } | null;
   /** The owner picked a tier when starting the run. */
   ownerTier?: ModelTier | null;
   /** The decision step's request. */
@@ -55,23 +63,21 @@ export interface RouteFacts {
   estimate: number | null;
   /** The latest earlier work run on the issue, when it failed. */
   lastFailure?: { modelTier: string; routeRule: string | null } | null;
-  agent: { modelFloor: ModelTier; modelCeiling: ModelTier; topRunsPerWeek: number };
+  agent: { topRunsPerWeek: number };
   /** Top-tier work runs this agent started in the last 7 days. */
   topRunsThisWeek: number;
 }
 
-export interface Route {
+export interface Route extends TierModel {
   modelTier: ModelTier;
-  model: string;
-  effort: Effort;
-  /** Which rule chose it, e.g. `label:research`, plus `+ceiling` or `+budget` when capped. */
+  /** Which rule chose it, e.g. `label:research`, plus `+budget` when capped. */
   routeRule: string;
 }
 
 /** Large and urgent work gets the top tier. */
 const LARGE_ESTIMATE = 5;
 
-/** The ordered rules: the first that matches picks the tier, then the agent's limits apply. */
+/** The ordered rules: the first that matches picks the tier, then the agent's budget applies. */
 export function route(facts: RouteFacts, routing: ModelRouting): Route {
   const pick = (tier: ModelTier, rule: string): Route => ({
     modelTier: tier,
@@ -83,13 +89,15 @@ export function route(facts: RouteFacts, routing: ModelRouting): Route {
   if (resumed) {
     const tier = isTier(resumed.modelTier) ? resumed.modelTier : "standard";
     const base = pick(tier, "resume");
+    if (!resumed.model) return base;
     return {
       ...base,
-      model: resumed.model ?? base.model,
-      effort: EFFORTS.includes(resumed.effort as Effort) ? (resumed.effort as Effort) : base.effort,
+      provider: resumed.provider ?? "anthropic",
+      model: resumed.model,
+      effort: resumed.effort,
     };
   }
-  // The owner is the one person who may overrule the agent's limits.
+  // The owner is the one person who may overrule the agent's budget.
   if (facts.ownerTier) return pick(facts.ownerTier, "owner");
 
   let tier: ModelTier = "standard";
@@ -120,16 +128,7 @@ export function route(facts: RouteFacts, routing: ModelRouting): Route {
     }
   }
 
-  const { modelFloor, modelCeiling, topRunsPerWeek } = facts.agent;
-  if (rank(tier) > rank(modelCeiling)) {
-    tier = modelCeiling;
-    rule += "+ceiling";
-  }
-  if (rank(tier) < rank(modelFloor)) {
-    tier = modelFloor;
-    rule += "+floor";
-  }
-  if (tier === "top" && facts.topRunsThisWeek >= topRunsPerWeek) {
+  if (tier === "top" && facts.topRunsThisWeek >= facts.agent.topRunsPerWeek) {
     tier = "standard";
     rule += "+budget";
   }
@@ -142,20 +141,55 @@ export async function loadRouting(db: HubDb): Promise<ModelRouting> {
   return company?.routing ?? DEFAULT_ROUTING;
 }
 
-/** Checks routing the owner sends; anything off is an error, never a guess. */
-export function cleanRouting(value: unknown): ModelRouting {
-  const v = (value ?? {}) as Partial<Record<keyof ModelRouting, unknown>>;
-  const tiersIn = (v.tiers ?? {}) as Record<string, { model?: unknown; effort?: unknown }>;
-  const tiers = {} as ModelRouting["tiers"];
+/** The agent's own tiers, or the company's. */
+export async function loadTiers(db: HubDb, agentId: string): Promise<ModelTiers> {
+  const [routing, agent] = await Promise.all([
+    loadRouting(db),
+    db.select({ models: users.models }).from(users).where(eq(users.id, agentId)).get(),
+  ]);
+  return agent?.models ?? routing.tiers;
+}
+
+const PROVIDER = /^[a-z0-9][a-z0-9._-]{0,59}$/;
+const MODEL = /^[\w.:/@-]{1,120}$/;
+
+/**
+ * Checks tiers the owner sends against the models machines have: a provider's model and an
+ * effort it supports. Tiers left out keep `base`'s. Claude's models may also be named before any
+ * machine lists them, as older runners don't; anything else is an error, never a guess.
+ */
+export function cleanTiers(value: unknown, base: ModelTiers, catalog: MachineProvider[]) {
+  const tiersIn = (value ?? {}) as Record<string, Partial<Record<keyof TierModel, unknown>>>;
+  const tiers = {} as ModelTiers;
   for (const tier of MODEL_TIERS) {
-    const entry = tiersIn[tier] ?? DEFAULT_ROUTING.tiers[tier];
+    const entry = tiersIn[tier] ?? base[tier];
+    const provider = typeof entry.provider === "string" ? entry.provider : "anthropic";
     const model = typeof entry.model === "string" ? entry.model.trim() : "";
-    if (!/^claude-[a-z0-9.-]+$/.test(model) || model.length > 80)
+    const effort = typeof entry.effort === "string" ? entry.effort : null;
+    if (!PROVIDER.test(provider) || !MODEL.test(model))
+      throw badRequest(`The ${tier} tier needs a provider and a model`);
+    const known = catalog.find((p) => p.id === provider)?.models.find((m) => m.id === model);
+    const efforts = known?.efforts ?? (provider === "anthropic" ? [...EFFORTS] : null);
+    if (!efforts) {
+      throw badRequest(
+        `No machine has ${provider}/${model}; sign a machine in to it first (the ${tier} tier)`,
+      );
+    }
+    if (provider === "anthropic" && !known && !/^claude-[a-z0-9.-]+$/.test(model))
       throw badRequest(`The ${tier} tier needs a Claude model id, e.g. claude-opus-5-5`);
-    if (!EFFORTS.includes(entry.effort as Effort))
-      throw badRequest(`The ${tier} tier's effort is one of ${EFFORTS.join(", ")}`);
-    tiers[tier] = { model, effort: entry.effort as Effort };
+    if (!efforts.length && effort !== null)
+      throw badRequest(`${model} has no effort levels (the ${tier} tier)`);
+    if (efforts.length && !efforts.includes(effort ?? ""))
+      throw badRequest(`The ${tier} tier's effort is one of ${efforts.join(", ")}`);
+    tiers[tier] = { provider, model, effort };
   }
+  return tiers;
+}
+
+/** Checks routing the owner sends; tiers left out take the hub's defaults. */
+export function cleanRouting(value: unknown, catalog: MachineProvider[]): ModelRouting {
+  const v = (value ?? {}) as Partial<Record<keyof ModelRouting, unknown>>;
+  const tiers = cleanTiers(v.tiers, DEFAULT_ROUTING.tiers, catalog);
   const labelsIn = (v.labels ?? {}) as Record<string, unknown>;
   if (Object.keys(labelsIn).length > 100) throw badRequest("Route at most 100 labels");
   const labelsOut: Record<string, ModelTier> = {};
@@ -171,8 +205,8 @@ export function cleanRouting(value: unknown): ModelRouting {
 const WEEK = 7 * 86_400_000;
 
 /**
- * Routes a run about to be queued, reading what the rules need. A decision reads only the
- * routing; a fresh work run also reads its issue, the issue's last work run and the agent.
+ * Routes a run about to be queued, on the agent's own tiers or the company's. A decision reads
+ * only those; a fresh work run also reads its issue, the issue's last work run and the budget.
  */
 export async function routeRun(
   db: HubDb,
@@ -186,7 +220,15 @@ export async function routeRun(
   },
   at: number,
 ): Promise<Route> {
-  const routing = await loadRouting(db);
+  const [routing, agent] = await Promise.all([
+    loadRouting(db),
+    db
+      .select({ models: users.models, topRunsPerWeek: users.topRunsPerWeek })
+      .from(users)
+      .where(eq(users.id, run.agentId))
+      .get(),
+  ]);
+  if (!agent) throw notFound("Agent");
   const facts: RouteFacts = {
     kind: run.kind,
     resumes: run.resumes ?? null,
@@ -195,20 +237,11 @@ export async function routeRun(
     labels: [],
     priority: 0,
     estimate: null,
-    agent: { modelFloor: "small", modelCeiling: "top", topRunsPerWeek: 0 },
+    agent,
     topRunsThisWeek: 0,
   };
   if (run.kind === "work" && !run.resumes && !run.ownerTier) {
-    const [agent, issue, names, last, top] = await Promise.all([
-      db
-        .select({
-          modelFloor: users.modelFloor,
-          modelCeiling: users.modelCeiling,
-          topRunsPerWeek: users.topRunsPerWeek,
-        })
-        .from(users)
-        .where(eq(users.id, run.agentId))
-        .get(),
+    const [issue, names, last, top] = await Promise.all([
       run.issueId
         ? db
             .select({ priority: issues.priority, estimate: issues.estimate })
@@ -252,13 +285,11 @@ export async function routeRun(
         )
         .get(),
     ]);
-    if (!agent) throw notFound("Agent");
-    facts.agent = agent;
     facts.priority = issue?.priority ?? 0;
     facts.estimate = issue?.estimate ?? null;
     facts.labels = names.map((l) => l.name.toLowerCase());
     facts.lastFailure = last?.status === "failed" ? last : null;
     facts.topRunsThisWeek = top?.n ?? 0;
   }
-  return route(facts, routing);
+  return route(facts, { ...routing, tiers: agent.models ?? routing.tiers });
 }

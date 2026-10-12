@@ -22,6 +22,7 @@ import {
   installOpencode,
   opencodeEngine,
   opencodeLogin,
+  opencodeModels,
   opencodeProviders,
   withOpencodeServer,
 } from "./opencode.js";
@@ -32,12 +33,11 @@ import {
   keySignIn,
   loginChoice,
   oauthSignIn,
-  pickModels,
 } from "./providers.js";
-import { probePlan, sdkEngine } from "./sdk.js";
+import { claudeModels, probePlan, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
-const VERSION = "0.6.5";
+const VERSION = "0.7.0";
 
 // Agents' Claude sign-in, sessions and settings live here, apart from the owner's own ~/.claude.
 process.env.CLAUDE_CONFIG_DIR = join(home, "claude");
@@ -196,19 +196,14 @@ async function main() {
       return;
     }
     const io = { say, ask };
-    const ok = await withOpencodeServer(home, say, async (client) => {
-      const id =
-        choice === "provider"
-          ? await keySignIn(client, io, values.provider, values["api-key"])
-          : await oauthSignIn(client, choice, say);
-      const config = await loadConfig();
-      // Asked once, set up front; flags keep models already picked.
-      if (!id || (!interactive && config.opencode?.models)) return Boolean(id);
-      const models = await pickModels(client, id, interactive ? io : undefined);
-      if (models) await saveConfig({ ...config, opencode: { ...config.opencode, models } });
-      return true;
-    });
-    if (!ok) process.exitCode = 1;
+    const id = await withOpencodeServer(home, say, (client) =>
+      choice === "provider"
+        ? keySignIn(client, io, values.provider, values["api-key"])
+        : oauthSignIn(client, choice, say),
+    );
+    // Which of its models agents use is picked in the app.
+    if (id) say("Pick which of its models agents use in yapm.");
+    else process.exitCode = 1;
     return;
   }
 
@@ -266,18 +261,21 @@ async function main() {
       engines: {
         ...(claude ? { claude: sdkEngine } : {}),
         ...(names.includes("opencode")
-          ? {
-              opencode: opencodeEngine({
-                bin: opencodeBin,
-                home,
-                models: config.opencode?.models,
-              }),
-            }
+          ? { opencode: opencodeEngine({ bin: opencodeBin, home }) }
           : {}),
       },
       mcpServers: config.mcpServers,
       // Plan readings are Claude's.
       ...(claude ? { probe: probePlan } : {}),
+      // What the app may pick for tiers; a Claude listing that fails leaves the hub's known models.
+      catalog: async () => [
+        ...(claude
+          ? [await claudeModels().catch(() => ({ id: "anthropic", name: "Claude", models: [] }))]
+          : []),
+        ...(names.includes("opencode")
+          ? await withOpencodeServer(home, () => {}, opencodeModels)
+          : []),
+      ],
       capacity: config.capacity,
       version: VERSION,
       cwd: homedir(),

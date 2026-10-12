@@ -4,6 +4,7 @@ import {
   comments,
   ENGINES,
   type Engine,
+  type MachineProvider,
   machines,
   notifications,
   requests,
@@ -24,7 +25,7 @@ import type { Ctx } from "../services/common.js";
 import { event } from "../services/common.js";
 import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
-import { cleanTags, waitingFor } from "../services/machines.js";
+import { cleanTags, engineOf, waitingFor } from "../services/machines.js";
 import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
 import { cleanAccount, cleanPlanUsage, mergePlans, runUsageSet } from "../services/usage.js";
 import { isAbove } from "../services/users.js";
@@ -38,7 +39,7 @@ import {
   type RunInput,
   workInput,
 } from "./prompts.js";
-import { loadRouting, routeRun } from "./routing.js";
+import { loadRouting, loadTiers, routeRun } from "./routing.js";
 
 type RunRow = typeof runs.$inferSelect;
 type Machine = typeof machines.$inferSelect;
@@ -162,13 +163,11 @@ async function wake(
   if (onIssue.some((r) => r.kind === "work" && r.status === "running")) return false;
 
   if (paused && answers) {
-    // A session only resumes on the engine that started it; on another, the run starts afresh.
-    const agent = await db
-      .select({ engine: users.engine })
-      .from(users)
-      .where(eq(users.id, agentId))
-      .get();
-    const same = (paused.engine ?? "claude") === agent?.engine;
+    // A session only resumes on the engine that started it; if the agent's tier has moved to
+    // another, the run starts afresh.
+    const tiers = await loadTiers(db, agentId);
+    const current = tiers[paused.modelTier as ModelTier] ?? tiers.standard;
+    const same = engineOf(paused.provider ?? "anthropic") === engineOf(current.provider);
     const routed = await routeRun(
       db,
       { kind: "work", agentId, issueId: paused.issueId, resumes: same ? paused : null },
@@ -243,10 +242,11 @@ export interface ClaimedRun {
     id: string;
     kind: RunRow["kind"];
     modelTier: ModelTier;
-    /** The pinned model id and effort to run with. */
+    /** The provider, its model id and the effort to run with (null: the model has none). */
+    provider: string;
     model: string;
-    effort: string;
-    /** What runs the agent on the machine. */
+    effort: string | null;
+    /** What runs it: Claude for Anthropic, OpenCode for the rest; for runners before 0.7. */
     engine: Engine;
     /** Resume this Agent SDK session (needs-input runs continue where they paused). */
     sessionId: string | null;
@@ -288,7 +288,6 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
     .select({
       run: runs,
       agentTags: users.runnerTags,
-      agentEngine: users.engine,
       agentActive: users.active,
     })
     .from(runs)
@@ -303,14 +302,15 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
     .orderBy(asc(runs.createdAt))
     .limit(25)
     .all();
-  for (const { run, agentTags, agentEngine, agentActive } of candidates) {
+  for (const { run, agentTags, agentActive } of candidates) {
     if (!agentActive) continue;
-    if (waitingFor({ engine: agentEngine, runnerTags: agentTags }, [machine])) continue;
+    const provider = run.provider ?? "anthropic";
+    if (waitingFor({ runnerTags: agentTags }, provider, [machine])) continue;
     const won = await db
       .update(runs)
       .set({
         status: "running",
-        engine: agentEngine,
+        engine: engineOf(provider),
         machineId: machine.id,
         startedAt: at,
         heartbeatAt: at,
@@ -358,7 +358,7 @@ async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedR
       kind: run.kind,
       modelTier: run.modelTier as ModelTier,
       ...(await modelOf(db, run)),
-      engine: agent.engine,
+      engine: engineOf(run.provider ?? "anthropic"),
       sessionId,
       issue: issue ? await identifierOf(db, issue) : null,
       issueId: issue?.id ?? null,
@@ -370,9 +370,10 @@ async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedR
   };
 }
 
-/** The run's model and effort; runs queued before routing existed take their tier's setting. */
+/** The run's model; runs queued before routing existed take their tier's setting. */
 async function modelOf(db: HubDb, run: RunRow) {
-  if (run.model && run.effort) return { model: run.model, effort: run.effort };
+  if (run.model)
+    return { provider: run.provider ?? "anthropic", model: run.model, effort: run.effort };
   const { tiers } = await loadRouting(db);
   return tiers[run.modelTier as ModelTier] ?? tiers.standard;
 }
@@ -503,7 +504,8 @@ export async function completeRun(
         ...(body.sessionId ? { sessionId: body.sessionId } : {}),
         ...(typeof body.model === "string" && body.model
           ? {
-              model: body.model.slice(0, 120),
+              // Runners before 0.7 name OpenCode's models `provider/model`.
+              model: body.model.replace(`${run.provider}/`, "").slice(0, 120),
               effort: typeof body.effort === "string" ? body.effort.slice(0, 40) : null,
             }
           : {}),
@@ -744,6 +746,37 @@ export async function stopRun(ctx: Ctx, id: string, reason: string) {
   ]);
 }
 
+const text = (value: unknown, max: number) =>
+  typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null;
+
+/** The providers a runner reports, trimmed to what the catalog needs and bounded in size. */
+function cleanProviders(list: unknown[]): MachineProvider[] {
+  return list.slice(0, 50).flatMap((p) => {
+    const { id, name, models } = (p ?? {}) as Record<string, unknown>;
+    const pid = text(id, 60);
+    if (!pid || !Array.isArray(models)) return [];
+    return [
+      {
+        id: pid,
+        name: text(name, 60) ?? pid,
+        models: models.slice(0, 300).flatMap((m) => {
+          const { id: mid, name: label, efforts } = (m ?? {}) as Record<string, unknown>;
+          const model = text(mid, 120);
+          if (!model) return [];
+          const levels = Array.isArray(efforts) ? efforts.slice(0, 10) : [];
+          return [
+            {
+              id: model,
+              name: text(label, 80) ?? model,
+              efforts: levels.flatMap((e) => text(e, 20) ?? []),
+            },
+          ];
+        }),
+      },
+    ];
+  });
+}
+
 /** A machine checks in: it's alive, here's what it has, and which of its runs must stop. */
 export async function heartbeat(
   db: HubDb,
@@ -752,6 +785,8 @@ export async function heartbeat(
     tags?: string[];
     /** The engines the runner has; older runners don't say. */
     engines?: unknown;
+    /** The providers signed in there and their models; runners before 0.7 don't say. */
+    providers?: unknown;
     capacity?: number;
     version?: string;
     runIds?: string[];
@@ -783,6 +818,7 @@ export async function heartbeat(
         ...(Array.isArray(info.engines)
           ? { engines: ENGINES.filter((e) => (info.engines as unknown[]).includes(e)) }
           : {}),
+        ...(Array.isArray(info.providers) ? { providers: cleanProviders(info.providers) } : {}),
         ...(account ? { claudeAccount: account } : {}),
         // Said once: the runner remembers it until its runs finish.
         ...(machine.upgradeRequestedAt != null ? { upgradeRequestedAt: null } : {}),

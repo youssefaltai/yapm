@@ -34,11 +34,24 @@ export const workspaces = sqliteTable("workspaces", {
 
 export const MODEL_TIERS = ["small", "standard", "top"] as const;
 export type ModelTier = (typeof MODEL_TIERS)[number];
+/** Claude's effort levels; other providers' models name their own (OpenCode's variants). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type Effort = (typeof EFFORTS)[number];
 
+/**
+ * A tier's model: a provider id (`anthropic`, or OpenCode's: `openai`, `github-copilot`…), the
+ * model's id there, and an effort it supports (null when it has none).
+ */
+export interface TierModel {
+  provider: string;
+  model: string;
+  effort: string | null;
+}
+export type ModelTiers = Record<ModelTier, TierModel>;
+
 export interface ModelRouting {
-  tiers: Record<ModelTier, { model: string; effort: Effort }>;
+  /** The company's default per tier; agents may have their own (`users.models`). */
+  tiers: ModelTiers;
   /** Issue label name (lowercase) to the tier its work runs on. */
   labels: Record<string, ModelTier>;
 }
@@ -68,9 +81,11 @@ export const users = sqliteTable(
     lessons: text("lessons"),
     /** Machines must have all of these tags to run this agent, e.g. `["employer-a"]`. */
     runnerTags: text("runner_tags", { mode: "json" }).$type<string[]>(),
-    /** What runs this agent; only machines that have it take its runs. */
+    /** This agent's own model per tier; null means the company's (`modelRouting.tiers`). */
+    models: text("models", { mode: "json" }).$type<ModelTiers>(),
+    /** @deprecated Unused since tiers name providers; dropped in the next migration. */
     engine: text("engine", { enum: ENGINES }).notNull().default("claude"),
-    /** The cheapest and dearest tiers this agent's work runs may use. */
+    /** @deprecated Unused; dropped in the next migration. */
     modelFloor: text("model_floor", { enum: MODEL_TIERS }).notNull().default("small"),
     modelCeiling: text("model_ceiling", { enum: MODEL_TIERS }).notNull().default("top"),
     /** Top-tier work runs allowed in any 7 days; more drop to standard. */
@@ -573,6 +588,14 @@ export interface OpencodePlan {
   usage: PlanUsage;
 }
 
+/** A provider a machine is signed in to, and its models with the efforts each supports. */
+export interface MachineProvider {
+  id: string;
+  /** As owners know it: Claude, ChatGPT, Copilot, OpenRouter… */
+  name: string;
+  models: { id: string; name: string; efforts: string[] }[];
+}
+
 export interface ReportedUsage {
   inputTokens?: number;
   outputTokens?: number;
@@ -595,6 +618,8 @@ export const machines = sqliteTable(
     tags: text("tags", { mode: "json" }).$type<string[]>().notNull(),
     /** The engines its runner has; older runners don't say, and run Claude only. */
     engines: text("engines", { mode: "json" }).$type<Engine[]>(),
+    /** The providers signed in there and their models; runners before 0.7 don't say. */
+    providers: text("providers", { mode: "json" }).$type<MachineProvider[]>(),
     /** How many runs it takes at once. */
     capacity: integer("capacity").notNull().default(2),
     version: text("version"),
@@ -664,9 +689,10 @@ export const runs = sqliteTable(
     /** small, standard or top. */
     modelTier: text("model_tier").notNull().default("standard"),
     /**
-     * The model id and effort the hub chose, and the routing rule that chose them. Runners that
+     * The provider, model id and effort the hub chose, and the routing rule that chose them. Runners that
      * report what actually ran overwrite the model and effort when the run ends.
      */
+    provider: text("provider"),
     model: text("model"),
     effort: text("effort"),
     routeRule: text("route_rule"),

@@ -6,7 +6,7 @@ export const RUNNER_PACKAGE_PATH = "/downloads/yapm-runner.tgz";
  *
  * Installs the runner from this hub into ~/.yapm-runner (with its own Node.js when the
  * machine has none new enough, so nothing needs sudo), connects it to this hub, sets up
- * how agents run if needed and runs it in the background at login (launchd on macOS, systemd on
+ * which AI agents use if needed and runs it in the background at login (launchd on macOS, systemd on
  * Linux). Run again without a token to update.
  */
 export function installScript(hub: string): string {

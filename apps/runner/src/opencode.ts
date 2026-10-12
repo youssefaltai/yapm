@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { stripVTControlCharacters } from "node:util";
 import {
   createOpencodeClient,
   type Event,
@@ -65,7 +66,7 @@ export function installOpencode(home: string, log: (line: string) => void): stri
     const pkg = join(prefix, "node_modules", "opencode-ai", "package.json");
     if (JSON.parse(readFileSync(pkg, "utf8")).version === VERSION) return bin;
   } catch {}
-  log(`Installing OpenCode ${VERSION}…`);
+  log("Getting ready for ChatGPT, Copilot and other providers (once, about 150 MB)…");
   const args = ["install", "--prefix", prefix, "--no-audit", "--no-fund", "--loglevel=error"];
   // The npm next to the runner's Node, which its postinstall needs on PATH too.
   const PATH = `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`;
@@ -77,12 +78,20 @@ export function installOpencode(home: string, log: (line: string) => void): stri
   return bin;
 }
 
-const LOGIN_HINT = "Run: yapm-runner login --opencode";
+const LOGIN_HINT = "Run: yapm-runner login";
 
-/** Whether OpenCode has a provider to run on: a saved sign-in or a provider's key in the env. */
-export function opencodeSignedIn(bin: string, home: string): boolean {
+/** The providers OpenCode is signed in to or has a key for, by the names owners know. */
+export function opencodeProviders(bin: string, home: string): string[] {
   const list = spawnSync(bin, ["auth", "list"], { env: opencodeEnv(home), encoding: "utf8" });
-  return /\b[1-9]\d* (credential|environment variable)/.test(list.stdout ?? "");
+  // `●  OpenAI oauth`, greyed: a provider, then how it signs in (or its variable).
+  const lines = stripVTControlCharacters(list.stdout ?? "").split("\n");
+  const names = lines.flatMap((line) => {
+    const [, name, how] = /^●\s+(.+?)\s+(\S+)$/.exec(line.trim()) ?? [];
+    if (!name) return [];
+    if (how === "oauth") return [{ OpenAI: "ChatGPT", "GitHub Copilot": "Copilot" }[name] ?? name];
+    return [name];
+  });
+  return [...new Set(names)];
 }
 
 /** Signs in to a provider with OpenCode's own flow: ChatGPT, Copilot, an API key and more. */
@@ -91,8 +100,27 @@ export function opencodeLogin(home: string, log: (line: string) => void): boolea
     stdio: "inherit",
     env: opencodeEnv(home),
   });
-  log(login.status === 0 ? "OpenCode: signed in." : `OpenCode isn't signed in yet. ${LOGIN_HINT}`);
+  log(login.status === 0 ? "Signed in." : `Not signed in yet. ${LOGIN_HINT}`);
   return login.status === 0;
+}
+
+/**
+ * A short-lived OpenCode server for setting providers up; it keeps sign-ins in its own store.
+ * Closed when `use` is done, or the runner exits.
+ */
+export async function withOpencodeServer<T>(
+  home: string,
+  log: (line: string) => void,
+  use: (client: ReturnType<typeof createOpencodeClient>) => Promise<T>,
+): Promise<T> {
+  const server = serve(installOpencode(home, log), home, opencodeEnv(home), () => {});
+  process.on("exit", server.close);
+  try {
+    return await use(createOpencodeClient({ baseUrl: await server.url, directory: home }));
+  } finally {
+    server.close();
+    process.off("exit", server.close);
+  }
 }
 
 const clip = (text: string, max = 4000) => (text.length > max ? `${text.slice(0, max)}…` : text);

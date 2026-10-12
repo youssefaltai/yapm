@@ -4309,7 +4309,9 @@ export function hubContract(
       );
       const runId = created.data?.runCreate.run.id ?? "";
       // Nothing online runs the agent's engine, or has its tags: the run says so.
-      expect((await runOf(runId))?.queuedReason).toBe("Waiting for a machine that runs OpenCode");
+      expect((await runOf(runId))?.queuedReason).toBe(
+        "Waiting for a machine that runs ChatGPT, Copilot & more",
+      );
       await update({ runnerTags: ["nowhere"] });
       expect((await runOf(runId))?.queuedReason).toBe("Waiting for a machine tagged nowhere");
       await update({ runnerTags: [] });

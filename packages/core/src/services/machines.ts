@@ -25,7 +25,10 @@ export function machineName(m: Pick<MachineRow, "name" | "displayName">) {
   return m.displayName ?? m.name;
 }
 
-const ENGINE_NAMES: Record<Engine, string> = { claude: "Claude", opencode: "OpenCode" };
+const ENGINE_NAMES: Record<Engine, string> = {
+  claude: "Claude",
+  opencode: "ChatGPT, Copilot & more",
+};
 
 /**
  * Why an agent's run waits for these machines, or null when one of them may run it: it needs

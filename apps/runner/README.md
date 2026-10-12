@@ -13,14 +13,18 @@ curl -fsSL https://your-hub.example/install.sh | sh -s -- --token lms_…
 ```
 
 It installs the runner into `~/.yapm-runner` (with a private Node.js when the machine has no
-Node 22+), connects it with the one-time token, asks how agents should run (your Claude account, an
-Anthropic API key, or OpenCode) if it isn't set up yet and keeps it running in the background (launchd on macOS, systemd on Linux). Run it again without `--token` to update.
+Node 22+), connects it with the one-time token, asks which AI agents should use (a Claude
+subscription, an Anthropic API key, a ChatGPT plan, GitHub Copilot, or another provider's API key)
+if it isn't set up yet and keeps it running in the background (launchd on macOS, systemd on Linux). Run it again without `--token` to update.
 
 ```sh
 yapm-runner logs                # follow what it's doing
-yapm-runner login --claude      # switch agents to your Claude account
-yapm-runner login --api-key sk-ant-…   # or to an Anthropic API key
-yapm-runner login --opencode    # add OpenCode next to Claude
+yapm-runner login               # see which AI agents use here, and add another
+yapm-runner login --claude      # your Claude subscription
+yapm-runner login --api-key sk-ant-…   # or an Anthropic API key
+yapm-runner login --chatgpt     # a ChatGPT plan
+yapm-runner login --copilot     # GitHub Copilot
+yapm-runner login --provider openrouter --api-key sk-or-…   # another provider's key
 yapm-runner service uninstall   # stop running in the background
 ```
 
@@ -46,19 +50,18 @@ setup is never read or changed. To give every agent on this machine a server by 
 }
 ```
 
-## OpenCode alongside Claude
+## ChatGPT, Copilot and other providers
 
-Each agent runs on Claude unless you set its **Engine** to OpenCode on its page in yapm, to use a
-ChatGPT or GitHub Copilot plan, or any provider's API key (OpenCode can't use a Claude
-subscription). To let a machine run those agents, run
-`yapm-runner login --opencode` (or pick **OpenCode** when the installer asks). The runner installs
-its own OpenCode 1.19 into `~/.yapm-runner/opencode` (any other `opencode` on the machine is left
-alone) and opens OpenCode's sign-in; Claude stays set up. Then `yapm-runner service install` to
-restart. The hub gives an agent's runs only to machines that have its engine. Choose models per
-tier in `config.json` (left out, OpenCode's default):
+Each agent runs on Claude unless you set its **Engine** to **ChatGPT, Copilot & more** on its page
+in yapm. Those agents run on OpenCode, with a ChatGPT or GitHub Copilot plan, or any provider's API
+key (not a Claude subscription). Pick one in `yapm-runner login`: the runner installs its own
+OpenCode 1.19 into `~/.yapm-runner/opencode` (any other `opencode` on the machine is left alone),
+signs in through it, and keeps the sign-in in OpenCode's own store; Claude stays set up. Then
+`yapm-runner service install` to restart. The hub gives an agent's runs only to machines that have
+its engine. `login` suggests models per tier and asks once; they're kept in `config.json`:
 
 ```json
-"opencode": { "models": { "small": "openai/gpt-5-mini", "standard": "openai/gpt-5", "top": "openai/gpt-5" } }
+"opencode": { "models": { "small": "openai/gpt-6-luna", "standard": "openai/gpt-6-sol", "top": "openai/gpt-6.1-sol" } }
 ```
 
 On a ChatGPT or Copilot plan, the Usage page shows its windows too, after the first run on it.

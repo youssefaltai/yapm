@@ -37,11 +37,6 @@ export function claudeReady(apiKey: string | undefined, binary = claudeBinary())
   return Boolean(apiKey) || claudeSignedIn(binary);
 }
 
-/** The owner's answer to how agents should run. */
-export function authChoice(answer: string): "account" | "key" | "opencode" | null {
-  return ({ "1": "account", "2": "key", "3": "opencode" } as const)[answer.trim()] ?? null;
-}
-
 export const apiKeyLooksRight = (key: string) => key.startsWith("sk-ant-");
 
 /** Signs in to Claude in the browser unless already signed in. */

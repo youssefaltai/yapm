@@ -36,6 +36,9 @@ import {
   Modal,
   openMenu,
   ProjectDot,
+  Property,
+  PropertyList,
+  propertyButton,
   shortDate,
   timeAgo,
   useStore,
@@ -778,123 +781,131 @@ function Updates({ project: p }: { project: ProjectDetail }) {
 function ProjectProperties({ project: p }: { project: ProjectDetail }) {
   const workspace = useStore(workspaceStore);
   const state = PROJECT_STATES.find((s) => s.value === p.state);
-  const row = "flex min-h-7 items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-raised";
   return (
-    <div className="grid grid-cols-[6rem_1fr] items-center gap-x-3 gap-y-1">
-      <span className="text-faint">Status</span>
-      <button
-        type="button"
-        className={row}
-        onClick={() =>
-          openMenu({
-            placeholder: "Change project status…",
-            items: PROJECT_STATES.map((s) => ({
-              id: s.value,
-              label: s.label,
-              checked: s.value === p.state,
-              icon: <span className="size-2 rounded-full" style={{ background: s.color }} />,
-              onSelect: () => void updateProject(p.id, { state: s.value }),
-            })),
-          })
-        }
-      >
-        <span className="size-2 rounded-full" style={{ background: state?.color }} aria-hidden />
-        {state?.label}
-      </button>
-      <span className="text-faint">Health</span>
-      <span className="px-2 py-1">
-        <HealthBadge health={p.health} />
-      </span>
-      <span className="text-faint">Lead</span>
-      <button
-        type="button"
-        className={row}
-        onClick={() =>
-          openMenu({
-            placeholder: "Who leads this project?",
-            items: [
-              {
-                id: "none",
-                label: "No lead",
-                checked: !p.lead,
-                onSelect: () => void updateProject(p.id, { leadId: null }),
-              },
-              ...(workspace?.users.nodes ?? []).map((u) => ({
-                id: u.id,
-                label: u.name,
-                hint: u.title ?? undefined,
-                icon: <Avatar name={u.name} kind={u.kind} size={16} />,
-                checked: u.id === p.lead?.id,
-                onSelect: () => void updateProject(p.id, { leadId: u.id }),
-              })),
-            ],
-          })
-        }
-      >
-        {p.lead ? (
-          <>
-            <Avatar name={p.lead.name} kind={p.lead.kind} size={16} />
-            {p.lead.name}
-          </>
-        ) : (
-          <span className="text-faint">Add lead</span>
-        )}
-      </button>
-      <span className="text-faint">Teams</span>
-      <button
-        type="button"
-        className={row}
-        onClick={() => {
-          const current = new Set(p.teams.nodes.map((t) => t.id));
-          openMenu({
-            placeholder: "Teams working on it…",
-            items: (workspace?.teams.nodes ?? []).map((t) => ({
-              id: t.id,
-              label: t.name,
-              checked: current.has(t.id),
-              onSelect: () => {
-                const next = new Set(current);
-                if (next.has(t.id)) next.delete(t.id);
-                else next.add(t.id);
-                void updateProject(p.id, { teamIds: [...next] });
-              },
-            })),
-          });
-        }}
-      >
-        {p.teams.nodes.length ? (
-          <span className="truncate">{p.teams.nodes.map((t) => t.name).join(", ")}</span>
-        ) : (
-          <span className="text-faint">Add team</span>
-        )}
-      </button>
-      <span className="text-faint">Start date</span>
-      <DateField
-        label="Start date"
-        value={p.startDate}
-        onChange={(startDate) => void updateProject(p.id, { startDate })}
-      />
-      <span className="text-faint">Target date</span>
-      <DateField
-        label="Target date"
-        value={p.targetDate}
-        onChange={(targetDate) => void updateProject(p.id, { targetDate })}
-      />
-      <span className="text-faint">Initiative</span>
-      <span className="truncate px-2 py-1 text-muted">{p.initiative?.name ?? "None"}</span>
-      <span className="text-faint">Progress</span>
-      <span className={button("ghost")}>
-        {p.progress.completed} of {p.progress.scope} done
-      </span>
-      <span />
+    <>
+      <PropertyList>
+        <Property label="Status" control>
+          <button
+            type="button"
+            className={propertyButton}
+            onClick={() =>
+              openMenu({
+                placeholder: "Change project status…",
+                items: PROJECT_STATES.map((s) => ({
+                  id: s.value,
+                  label: s.label,
+                  checked: s.value === p.state,
+                  icon: <span className="size-2 rounded-full" style={{ background: s.color }} />,
+                  onSelect: () => void updateProject(p.id, { state: s.value }),
+                })),
+              })
+            }
+          >
+            <span
+              className="size-2 rounded-full"
+              style={{ background: state?.color }}
+              aria-hidden
+            />
+            {state?.label}
+          </button>
+        </Property>
+        <Property label="Health">
+          <HealthBadge health={p.health} />
+        </Property>
+        <Property label="Lead" control>
+          <button
+            type="button"
+            className={propertyButton}
+            onClick={() =>
+              openMenu({
+                placeholder: "Who leads this project?",
+                items: [
+                  {
+                    id: "none",
+                    label: "No lead",
+                    checked: !p.lead,
+                    onSelect: () => void updateProject(p.id, { leadId: null }),
+                  },
+                  ...(workspace?.users.nodes ?? []).map((u) => ({
+                    id: u.id,
+                    label: u.name,
+                    hint: u.title ?? undefined,
+                    icon: <Avatar name={u.name} kind={u.kind} size={16} />,
+                    checked: u.id === p.lead?.id,
+                    onSelect: () => void updateProject(p.id, { leadId: u.id }),
+                  })),
+                ],
+              })
+            }
+          >
+            {p.lead ? (
+              <>
+                <Avatar name={p.lead.name} kind={p.lead.kind} size={16} />
+                {p.lead.name}
+              </>
+            ) : (
+              <span className="text-faint">Add lead</span>
+            )}
+          </button>
+        </Property>
+        <Property label="Teams" control>
+          <button
+            type="button"
+            className={propertyButton}
+            onClick={() => {
+              const current = new Set(p.teams.nodes.map((t) => t.id));
+              openMenu({
+                placeholder: "Teams working on it…",
+                items: (workspace?.teams.nodes ?? []).map((t) => ({
+                  id: t.id,
+                  label: t.name,
+                  checked: current.has(t.id),
+                  onSelect: () => {
+                    const next = new Set(current);
+                    if (next.has(t.id)) next.delete(t.id);
+                    else next.add(t.id);
+                    void updateProject(p.id, { teamIds: [...next] });
+                  },
+                })),
+              });
+            }}
+          >
+            {p.teams.nodes.length ? (
+              <span className="truncate">{p.teams.nodes.map((t) => t.name).join(", ")}</span>
+            ) : (
+              <span className="text-faint">Add team</span>
+            )}
+          </button>
+        </Property>
+        <Property label="Start date" control>
+          <DateField
+            label="Start date"
+            value={p.startDate}
+            onChange={(startDate) => void updateProject(p.id, { startDate })}
+          />
+        </Property>
+        <Property label="Target date" control>
+          <DateField
+            label="Target date"
+            value={p.targetDate}
+            onChange={(targetDate) => void updateProject(p.id, { targetDate })}
+          />
+        </Property>
+        <Property label="Initiative">
+          <span className="truncate">{p.initiative?.name ?? "None"}</span>
+        </Property>
+        <Property label="Progress">
+          {p.progress.completed} of {p.progress.scope} done
+        </Property>
+      </PropertyList>
       <button
         type="button"
         onClick={() => void archiveProject(p)}
-        className="mt-2 justify-self-start rounded-md px-2 py-1 text-[12px] text-faint hover:text-critical"
+        className="mt-4 rounded-md px-2 py-1 text-[12px] text-faint hover:text-critical"
       >
         Archive project
       </button>
-    </div>
+    </>
   );
 }
 

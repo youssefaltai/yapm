@@ -209,6 +209,10 @@ test.describe
       await expect(page.getByLabel("Issue title")).toHaveValue("Pay the electricity bill");
       await expect(page.getByText("created the issue")).toBeVisible();
       await expect(page.getByText("changed status from Backlog to In Progress")).toBeVisible();
+      // Each property's label sits above its value, so the value gets the sidebar's whole width.
+      const label = await page.locator("dt", { hasText: /^Assignee$/ }).boundingBox();
+      const value = await page.locator("dt:text-is('Assignee') + dd").boundingBox();
+      expect(value?.y).toBeGreaterThanOrEqual((label?.y ?? 0) + (label?.height ?? 0));
 
       await page.getByLabel("Leave a comment").fill("Paid through the bank app.");
       await page.getByRole("button", { name: "Comment", exact: true }).click();
@@ -315,6 +319,10 @@ test.describe
       await expect(page.getByText("Copy this token now.")).toBeVisible();
       await expect(page.getByText(/claude mcp add --transport http yapm/)).toBeVisible();
       agentToken = (await page.locator("code").first().textContent()) ?? "";
+      // How it runs is settings, not facts, so it gets room in the page, not the sidebar.
+      const runs = page.getByRole("region", { name: "How it runs" });
+      await expect(runs.getByLabel("Runner tags")).toBeVisible();
+      expect((await runs.boundingBox())?.width).toBeGreaterThan(400);
       // New hires report to the CEO unless you pick someone else.
       expect(await mcp("get_user", { query: "me" })).toMatchObject({
         name: "Ada",
@@ -650,7 +658,9 @@ test.describe
       });
       expect(filed).toMatchObject({ status: "Triage", cycle: 1 });
       await page.getByRole("button", { name: /Cycle 1.*Current/ }).click();
-      await expect(page.getByRole("img", { name: "Cycle progress" })).toBeVisible();
+      const graph = page.getByRole("img", { name: "Cycle progress" });
+      await expect(graph).toBeVisible();
+      expect((await graph.boundingBox())?.width).toBeGreaterThan(400);
       const row = page.getByRole("button", { name: /Cancel the unused gym membership/ });
       await expect(row).toBeVisible();
 

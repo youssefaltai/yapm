@@ -138,15 +138,12 @@ export function IssuesView({
   title,
   tabs,
   banner,
-  aside,
 }: {
   source: IssueSource;
   title: ReactNode;
   tabs: ReactNode;
   /** Shown above the list, e.g. a cycle's chart. */
   banner?: ReactNode;
-  /** A sidebar beside the list on wide screens, like a cycle's progress. */
-  aside?: ReactNode;
 }) {
   const sourceKey = `${source.kind}:${sourceId(source)}`;
   const team = teamOf(source);
@@ -369,11 +366,6 @@ export function IssuesView({
             />
           )}
         </div>
-        {aside && (
-          <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-line xl:block">
-            {aside}
-          </aside>
-        )}
       </div>
       {selected.size > 0 && (
         <BulkBar issues={selectedIssues} onClear={() => setSelected(new Set())} />

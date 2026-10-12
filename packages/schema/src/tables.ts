@@ -83,11 +83,6 @@ export const users = sqliteTable(
     runnerTags: text("runner_tags", { mode: "json" }).$type<string[]>(),
     /** This agent's own model per tier; null means the company's (`modelRouting.tiers`). */
     models: text("models", { mode: "json" }).$type<ModelTiers>(),
-    /** @deprecated Unused since tiers name providers; dropped in the next migration. */
-    engine: text("engine", { enum: ENGINES }).notNull().default("claude"),
-    /** @deprecated Unused; dropped in the next migration. */
-    modelFloor: text("model_floor", { enum: MODEL_TIERS }).notNull().default("small"),
-    modelCeiling: text("model_ceiling", { enum: MODEL_TIERS }).notNull().default("top"),
     /** Top-tier work runs allowed in any 7 days; more drop to standard. */
     topRunsPerWeek: integer("top_runs_per_week").notNull().default(3),
     active: integer("active", { mode: "boolean" }).notNull().default(true),

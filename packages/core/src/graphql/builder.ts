@@ -1,4 +1,6 @@
 import SchemaBuilder, { type ObjectRef } from "@pothos/core";
+import { type Column, type SQL, sql } from "drizzle-orm";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { createGraphQLError } from "graphql-yoga";
 import type { HubDeps, Viewer } from "../context.js";
 import { ServiceError } from "../errors.js";
@@ -136,21 +138,40 @@ export function pageSize(first: number | null | undefined, fallback = 50): numbe
   return Math.min(Math.max(first ?? fallback, 1), 250);
 }
 
-/** Pages a small, already ordered list in memory. Large lists (issues) page in SQL instead. */
+/**
+ * Pages a small, already ordered list in memory, or `first + 1` rows read in SQL. `last` takes
+ * the list's end, like Linear. Large lists (issues) page in SQL instead.
+ */
 export function paginate<T extends { id: string }>(
   rows: T[],
-  args: { first?: number | null; after?: string | null },
+  args: { first?: number | null; after?: string | null; last?: number | null },
 ): Page<T> {
   const start = args.after ? rows.findIndex((row) => row.id === args.after) + 1 : 0;
-  const first = pageSize(args.first);
-  const nodes = rows.slice(start, start + first);
+  const size = pageSize(args.last ?? args.first);
+  const nodes = args.last ? rows.slice(start).slice(-size) : rows.slice(start, start + size);
   return {
     nodes,
-    pageInfo: { hasNextPage: start + first < rows.length, endCursor: nodes.at(-1)?.id ?? null },
+    pageInfo: {
+      hasNextPage: !args.last && start + size < rows.length,
+      endCursor: nodes.at(-1)?.id ?? null,
+    },
   };
+}
+
+/**
+ * Rows after a cursor in newest-first `(createdAt, id)` order. The cursor is a row id, and the
+ * id breaks ties, so rows written at one moment (a batch) never fall between pages.
+ */
+export function olderThan(
+  table: SQLiteTable & { createdAt: Column; id: Column },
+  after: string | null | undefined,
+): SQL | undefined {
+  if (!after) return undefined;
+  return sql`(${table.createdAt}, ${table.id}) < (select ${table.createdAt}, ${table.id} from ${table} where ${table.id} = ${after})`;
 }
 
 export const pageArgs = builder.args((t) => ({
   first: t.int({ required: false }),
   after: t.string({ required: false }),
+  last: t.int({ required: false }),
 }));

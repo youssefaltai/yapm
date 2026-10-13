@@ -15,7 +15,9 @@ import {
   db,
   notFoundError,
   now,
+  olderThan,
   pageArgs,
+  pageSize,
   paginate,
   requireViewer,
 } from "./builder.js";
@@ -75,14 +77,17 @@ builder.queryFields((t) => ({
         .select()
         .from(notifications)
         .where(
-          args.includeArchived
-            ? eq(notifications.userId, viewer.user.id)
-            : inInbox(viewer.user.id, now(ctx)),
+          and(
+            args.includeArchived
+              ? eq(notifications.userId, viewer.user.id)
+              : inInbox(viewer.user.id, now(ctx)),
+            olderThan(notifications, args.after),
+          ),
         )
         .orderBy(desc(notifications.createdAt), desc(notifications.id))
-        .limit(250)
+        .limit(pageSize(args.first) + 1)
         .all();
-      return paginate(rows, args);
+      return paginate(rows, { first: args.first });
     },
   }),
   notificationsUnreadCount: t.int({

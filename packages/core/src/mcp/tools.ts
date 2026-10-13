@@ -21,6 +21,7 @@ import {
 import { and, asc, desc, eq, isNull, or, type SQL, sql } from "drizzle-orm";
 import type { HubDeps, User } from "../context.js";
 import type { HubDb } from "../db.js";
+import { paginate } from "../graphql/builder.js";
 import { type IssueFilterShape, queryIssues } from "../graphql/filters.js";
 import type { Loaders } from "../loaders.js";
 import { loadRouting } from "../runs/routing.js";
@@ -911,7 +912,11 @@ export const tools: Tool<McpContext>[] = [
     readOnly: true,
     inputSchema: {
       type: "object",
-      properties: { issueId: { type: "string" } },
+      properties: {
+        issueId: { type: "string" },
+        limit: limitArg,
+        cursor: { type: "string", description: "nextCursor from a previous page" },
+      },
       required: ["issueId"],
     },
     async run(args, c) {
@@ -920,19 +925,23 @@ export const tools: Tool<McpContext>[] = [
         .select()
         .from(comments)
         .where(eq(comments.issueId, issue.id))
-        .orderBy(asc(comments.createdAt))
+        .orderBy(asc(comments.createdAt), asc(comments.id))
         .all();
-      const authors = await c.loaders.user.loadMany([...new Set(rows.map((r) => r.userId))]);
+      const page = paginate(rows, { first: num(args.limit) ?? 50, after: str(args.cursor) });
+      const authors = await c.loaders.user.loadMany([...new Set(page.nodes.map((r) => r.userId))]);
       const names = new Map(
         authors.flatMap((a) => (a && !(a instanceof Error) ? [[a.id, a.name] as const] : [])),
       );
-      return rows.map((r) => ({
-        id: r.id,
-        author: names.get(r.userId) ?? null,
-        body: r.body,
-        parentId: r.parentId,
-        createdAt: new Date(r.createdAt).toISOString(),
-      }));
+      return {
+        comments: page.nodes.map((r) => ({
+          id: r.id,
+          author: names.get(r.userId) ?? null,
+          body: r.body,
+          parentId: r.parentId,
+          createdAt: new Date(r.createdAt).toISOString(),
+        })),
+        nextCursor: page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null,
+      };
     },
   },
   {

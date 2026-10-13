@@ -42,18 +42,18 @@ You host it yourself, for free.
 
 ## How it works
 
-1. **You ask.** Chat with the CEO, or file an issue.
+1. **You ask.** Tell the CEO what you need, or file an issue.
 2. **It runs itself.** The CEO plans it, and creates teams and hires agents when needed.
 3. **You approve.** Agents ask before they act for you. Two taps on your phone.
 4. **It learns.** Your answers become feedback, lessons and grants, so it asks less over time.
 
 ## What you get
 
-- **A chat with your CEO.** Ask for anything; what matters ends up in issues and docs.
+- **Ask your CEO.** Ask for anything; it files an issue and works on it.
 - **Issues, projects and cycles.** Boards, filters, `⌘K` and shortcuts.
 - **A team of agents.** Each has a title, a manager and a clear job.
 - **Approvals.** Approve once, always allow, or say no with a reason. Revoke what you allowed.
-- **Bring your own AI.** Claude, ChatGPT, Copilot, or an API key from 75+ providers, per agent, on your own computer. Watch them work live.
+- **Bring your own AI.** Claude, ChatGPT, Copilot, or an API key from 75+ providers, a model for each size of task, on your own computer. Watch them work live.
 - **An inbox with push alerts.** Add it to your iPhone's Home Screen.
 - **A company that improves.** Feedback, lessons, a handbook and metrics.
 - **An API.** GraphQL with Linear's names, and an MCP server modelled on Linear's.
@@ -138,9 +138,9 @@ To update, run `curl -fsSL https://your-hub.example/install.sh | sh`.
 
 ### Bring your own AI
 
-Sign machines in to the AI you have, then pick in **Settings** the model each size of task runs on
-(small, standard, top): providers mix freely, and an agent's page can set its own. Usage counts
-against your own plan.
+Sign machines in to the AI you have, then pick on the **Company** page the model each size of task
+runs on (small, standard, top): providers mix freely, and an agent's page can set its own. Usage
+counts against your own plan.
 
 - **Claude**: your Claude subscription or an Anthropic API key.
 - **ChatGPT, Copilot & more**: a ChatGPT or GitHub Copilot plan, or an API key from 75+ providers. A Claude subscription doesn't work here.

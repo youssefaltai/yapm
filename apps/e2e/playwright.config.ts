@@ -11,15 +11,25 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    // Start from an empty database every run.
-    command: `rm -rf ${dataDir} && node ../hub-node/dist/main.js`,
-    url: `http://localhost:${port}/api/health`,
-    reuseExistingServer: false,
-    env: {
-      PORT: String(port),
-      DATABASE_URL: `file:${dataDir}yapm.db`,
-      YAPM_SECRET: "e2e secret",
+  webServer: [
+    {
+      // Start from an empty database every run.
+      command: `rm -rf ${dataDir} && node ../hub-node/dist/main.js`,
+      url: `http://localhost:${port}/api/health`,
+      reuseExistingServer: false,
+      env: {
+        PORT: String(port),
+        DATABASE_URL: `file:${dataDir}yapm.db`,
+        YAPM_SECRET: "e2e secret",
+      },
     },
-  },
+    {
+      // The landing page, served by wrangler with the same asset rules as on Cloudflare.
+      command: "node_modules/.bin/wrangler dev --port 8791",
+      cwd: new URL("../site/", import.meta.url).pathname,
+      url: "http://localhost:8791/",
+      reuseExistingServer: false,
+      env: { WRANGLER_SEND_METRICS: "false" },
+    },
+  ],
 });

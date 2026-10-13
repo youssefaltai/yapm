@@ -240,7 +240,8 @@ async function sendToDevices(
   const at = deps.now?.() ?? Date.now();
   const keys = await vapidKeys(db, at);
   const subject = origin.startsWith("https://") ? origin : "mailto:yapm@localhost";
-  const payload = encoder.encode(JSON.stringify({ ...msg, url: new URL(msg.url, origin).href }));
+  // The link stays a path: the service worker opens it on its own origin.
+  const payload = encoder.encode(JSON.stringify(msg));
   const results = await Promise.all(
     devices.map(async (device) => {
       try {

@@ -14,7 +14,7 @@ const pushOutbox: Request[] = [];
 let queries = 0;
 const recordPush: typeof fetch = async (input, init) => {
   const request = new Request(input, init);
-  if (new URL(request.url).hostname !== "push.example.com") return fetch(request);
+  if (new URL(request.url).hostname !== "fcm.googleapis.com") return fetch(request);
   pushOutbox.push(request);
   return new Response(null, { status: 201 });
 };

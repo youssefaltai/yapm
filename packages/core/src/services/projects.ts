@@ -15,7 +15,7 @@ import {
   teams,
   users,
 } from "@yapm/schema";
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray, max } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
@@ -257,13 +257,11 @@ export async function createMilestone(
   const { db, now } = ctx;
   await requireProject(db, input.projectId);
   const fields = cleanMilestone(input);
-  const count = (
-    await db
-      .select({ id: projectMilestones.id })
-      .from(projectMilestones)
-      .where(eq(projectMilestones.projectId, input.projectId))
-      .all()
-  ).length;
+  const last = await db
+    .select({ sortOrder: max(projectMilestones.sortOrder) })
+    .from(projectMilestones)
+    .where(eq(projectMilestones.projectId, input.projectId))
+    .get();
   const id = newId();
   await commit(db, [
     db.insert(projectMilestones).values({
@@ -271,7 +269,7 @@ export async function createMilestone(
       id,
       projectId: input.projectId,
       name: fields.name ?? "",
-      sortOrder: fields.sortOrder ?? count,
+      sortOrder: fields.sortOrder ?? (last?.sortOrder ?? -1) + 1,
       createdAt: now,
       updatedAt: now,
     }),
@@ -368,9 +366,17 @@ export async function createProjectUpdate(
   const { db, now } = ctx;
   const project = await requireProject(db, input.projectId);
   const body = cleanText(input.body, "Update", 20_000);
+  // Leaving health out keeps the project's current health.
   const health: ProjectHealth = input.health
     ? checkOneOf(input.health, PROJECT_HEALTHS, "Health")
-    : "onTrack";
+    : ((
+        await db
+          .select({ health: projectUpdates.health })
+          .from(projectUpdates)
+          .where(eq(projectUpdates.projectId, project.id))
+          .orderBy(desc(projectUpdates.createdAt))
+          .get()
+      )?.health ?? "onTrack");
   const id = newId();
   const owner = await ownerId(db);
   await commit(db, [

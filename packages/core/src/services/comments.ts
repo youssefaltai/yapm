@@ -1,5 +1,5 @@
 import { comments, reactions, users } from "@yapm/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit } from "../db.js";
@@ -92,7 +92,23 @@ export async function updateComment(
   const comment = await ownComment(ctx, id, false);
   const body = cleanText(input.body, "Comment", 50_000);
   if (body === comment.body) return id;
+  const before = new Set(await mentionedUserIds(db, comment.body));
+  const mentioned = (await mentionedUserIds(db, body)).filter((u) => !before.has(u));
   await commit(db, [
+    ...subscribe(
+      db,
+      mentioned.map((userId) => ({ issueId: comment.issueId, userId })),
+      now,
+    ),
+    ...notify(
+      ctx,
+      mentioned.map((userId) => ({
+        userId,
+        type: "issueCommentMention" as const,
+        issueId: comment.issueId,
+        commentId: id,
+      })),
+    ),
     db.update(comments).set({ body, editedAt: now, updatedAt: now }).where(eq(comments.id, id)),
     ...audit(db, [event(ctx, "comment.update", "issue", comment.issueId, { commentId: id })], now),
   ]);
@@ -105,6 +121,14 @@ export async function deleteComment(ctx: Ctx, id: string): Promise<void> {
   const comment = await ownComment(ctx, id, true);
   await commit(db, [
     db.delete(reactions).where(eq(reactions.commentId, id)),
+    db
+      .delete(reactions)
+      .where(
+        inArray(
+          reactions.commentId,
+          db.select({ id: comments.id }).from(comments).where(eq(comments.parentId, id)),
+        ),
+      ),
     db.delete(comments).where(eq(comments.parentId, id)),
     db.delete(comments).where(eq(comments.id, id)),
     ...audit(db, [event(ctx, "comment.delete", "issue", comment.issueId, { commentId: id })], now),

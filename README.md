@@ -96,6 +96,12 @@ Any server with Docker.
 ORIGIN=https://hub.example.com docker compose up -d
 ```
 
+The hub runs as the `node` user. Upgrading from an image that ran as root? Hand it the data first:
+
+```sh
+docker compose run --rm --user root hub chown -R node:node /data
+```
+
 Put it behind HTTPS, with Caddy or a Cloudflare Tunnel.
 Your data is one SQLite file in the `yapm-data` volume.
 

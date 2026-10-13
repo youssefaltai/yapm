@@ -3,8 +3,11 @@ name: Deploy to Cloudflare
 # Deploys the hub and web app to the Cloudflare account in the repository secrets
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Creates the D1 database on the
 # first run and applies migrations every run. Skipped when the secrets are not set.
+# Main deploys once CI passes for that commit; run it by hand to deploy a branch.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -14,8 +17,10 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
@@ -30,6 +35,8 @@ jobs:
           fi
       - if: steps.secrets.outputs.ready == 'true'
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
       - if: steps.secrets.outputs.ready == 'true'
         uses: pnpm/action-setup@v4
       - if: steps.secrets.outputs.ready == 'true'
@@ -56,4 +63,4 @@ jobs:
         # Set the repository variable HUB_DOMAIN to serve the hub on your own domain; it also sets ORIGIN.
         env:
           HUB_DOMAIN: ${{ vars.HUB_DOMAIN }}
-        run: npx wrangler deploy --var YAPM_VERSION:${GITHUB_SHA::7} ${HUB_DOMAIN:+--domain "$HUB_DOMAIN" --var ORIGIN:"https://$HUB_DOMAIN"}
+        run: npx wrangler deploy --var YAPM_VERSION:${DEPLOY_SHA::7} ${HUB_DOMAIN:+--domain "$HUB_DOMAIN" --var ORIGIN:"https://$HUB_DOMAIN"}

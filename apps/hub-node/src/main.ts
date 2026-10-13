@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { type HubDeps, tick } from "@yapm/core";
 import { WebSocketServer } from "ws";
-import { createNodeApp } from "./app.js";
+import { configWarnings, createNodeApp } from "./app.js";
 import { openDatabase } from "./db.js";
 import { publicFetch } from "./public-fetch.js";
 import { createNodeRealtime } from "./realtime.js";
@@ -11,6 +11,7 @@ const env = process.env;
 const port = Number(env.PORT ?? 8787);
 const databaseUrl = env.DATABASE_URL ?? "file:./data/yapm.db";
 const webDir = env.WEB_DIR ?? fileURLToPath(new URL("../../web/dist", import.meta.url));
+for (const warning of configWarnings(env)) console.warn(`Warning: ${warning}`);
 
 if (databaseUrl.startsWith("file:")) {
   const { mkdirSync } = await import("node:fs");

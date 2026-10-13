@@ -98,4 +98,30 @@ describe("deciding a tool call", () => {
       await decideTool(ctx, "Bash", { command });
     expect(asked).toHaveLength(6);
   });
+
+  it("waits through failed calls, and counts an approval it used whose answer was lost", async () => {
+    const calls: string[] = [];
+    const hub = {
+      graphql: async (_token: string, query: string) => {
+        calls.push(query.includes("permissionUse") ? "use" : "poll");
+        // The first poll fails, and so does the use after approval, which the hub did record.
+        if (calls.length === 2 || calls.length === 4) throw new Error("fetch failed");
+        if (calls.length === 1)
+          return { permissionUse: { allowed: false, pendingRequestId: "r1" } };
+        return { request: { status: "approved", answer: null, used: calls.length > 4 } };
+      },
+    } as unknown as HubClient;
+    const ctx = {
+      hub,
+      token: "t",
+      agent: "CEO",
+      issueId: null,
+      issue: null,
+      pollMs: 1,
+      signal: new AbortController().signal,
+      onEvent: () => {},
+    };
+    expect(await decideTool(ctx, "Bash", { command: "touch x" })).toEqual({ behavior: "allow" });
+    expect(calls).toEqual(["use", "poll", "poll", "use", "poll"]);
+  });
 });

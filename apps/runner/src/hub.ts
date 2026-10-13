@@ -81,23 +81,51 @@ export interface Completion {
   effort?: string | null;
 }
 
+/** A blip worth trying again: no answer, the hub or its proxy failing, or too many calls. */
+export const transient = (error: unknown) =>
+  !(error instanceof HubError) || error.status >= 500 || error.status === 429;
+
 export class HubClient {
   readonly url: string;
+  private readonly timeoutMs: number;
+  private readonly retryMs: number;
 
   constructor(
     url: string,
     private readonly send: typeof fetch = fetch,
+    { timeoutMs = 30_000, retryMs = 1000 } = {},
   ) {
     this.url = url.replace(/\/+$/, "");
+    this.timeoutMs = timeoutMs;
+    this.retryMs = retryMs;
   }
 
-  private async call<T>(path: string, token: string, json?: unknown): Promise<T | null> {
+  /** A call, tried again with backoff after a blip, `retries` times at most. */
+  private async call<T>(
+    path: string,
+    token: string,
+    json?: unknown,
+    retries = 3,
+  ): Promise<T | null> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.once<T>(path, token, json);
+      } catch (error) {
+        if (attempt >= retries || !transient(error)) throw error;
+        const wait = Math.min(this.retryMs * 2 ** attempt, this.timeoutMs);
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+  }
+
+  private async once<T>(path: string, token: string, json?: unknown): Promise<T | null> {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (token) headers.authorization = `Bearer ${token}`;
     const response = await this.send(`${this.url}${path}`, {
       method: json === undefined ? "GET" : "POST",
       headers,
       ...(json !== undefined ? { body: JSON.stringify(json) } : {}),
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (response.status === 204) return null;
     const text = await response.text();
@@ -167,16 +195,27 @@ export class HubClient {
     );
   }
 
+  /** Tried until the hub takes it: a run's result is lost otherwise. */
   complete(token: string, runId: string, completion: Completion) {
-    return this.call<{ status: string }>(`/api/runner/runs/${runId}/complete`, token, completion);
+    return this.call<{ status: string }>(
+      `/api/runner/runs/${runId}/complete`,
+      token,
+      completion,
+      Number.POSITIVE_INFINITY,
+    );
   }
 
-  /** GraphQL as the run's agent. Errors come back as a thrown HubError. */
+  /**
+   * GraphQL as the run's agent. Errors come back as a thrown HubError. Not tried again: a
+   * mutation whose answer was lost may have happened.
+   */
   async graphql<T>(token: string, query: string, variables?: Record<string, unknown>) {
-    const body = await this.call<{ data?: T; errors?: { message: string }[] }>("/graphql", token, {
-      query,
-      variables,
-    });
+    const body = await this.call<{ data?: T; errors?: { message: string }[] }>(
+      "/graphql",
+      token,
+      { query, variables },
+      0,
+    );
     if (body?.errors?.length) throw new HubError(body.errors[0]?.message ?? "GraphQL error", 200);
     return body?.data as T;
   }

@@ -1223,7 +1223,7 @@ export function hubContract(
     });
 
     it("sends notifications as encrypted Web Push to the owner's devices", async () => {
-      const receiver = await TestPushReceiver.create("https://push.example.com/send/abc");
+      const receiver = await TestPushReceiver.create("https://fcm.googleapis.com/fcm/send/abc");
       const { p256dh, auth } = receiver.toJSON().keys;
       const sealed = await encryptPayload(p256dh, auth, new TextEncoder().encode('{"hi":1}'));
       expect(await receiver.decrypt(sealed)).toEqual({ hi: 1 });
@@ -1246,6 +1246,12 @@ export function hubContract(
         endpoint: "http://push.example.com/x",
       });
       expect(insecure.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      // Only the browsers' push services: anything else would have the hub post to it.
+      const elsewhere = await subscribe({
+        ...receiver.toJSON(),
+        endpoint: "https://push.example.com/x",
+      });
+      expect(elsewhere.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
       const first = await subscribe(receiver);
       expect(first.errors).toBeUndefined();
       const again = await subscribe(receiver);
@@ -1256,11 +1262,15 @@ export function hubContract(
       const outbox = options.pushOutbox;
       if (outbox) {
         outbox.length = 0;
-        await client.graphql(
-          'mutation { requestCreate(input: { title: "Buy running shoes", action: "spend", resource: "120 EUR", reason: "The old pair is done." }) { success } }',
-          undefined,
-          ceoToken,
-        );
+        // A forged Host must not reach the link the owner taps.
+        await client.request("http://evil.example/graphql", {
+          method: "POST",
+          json: {
+            query:
+              'mutation { requestCreate(input: { title: "Buy running shoes", action: "spend", resource: "120 EUR", reason: "The old pair is done." }) { success } }',
+          },
+          token: ceoToken,
+        });
         for (let i = 0; i < 100 && !outbox.length; i++) await new Promise((r) => setTimeout(r, 20));
         const sent = outbox[0];
         expect(sent?.url).toBe(receiver.endpoint);
@@ -1270,7 +1280,7 @@ export function hubContract(
         expect(vapid).toMatchObject({
           valid: true,
           publicKey,
-          claims: { aud: "https://push.example.com" },
+          claims: { aud: "https://fcm.googleapis.com" },
         });
         const payload = await receiver.decrypt(
           new Uint8Array(await (sent as Request).arrayBuffer()),
@@ -1278,7 +1288,7 @@ export function hubContract(
         expect(payload).toMatchObject({
           title: "CEO asks for approval",
           body: "Buy running shoes",
-          url: expect.stringMatching(/^http:\/\/localhost\/request\//),
+          url: expect.stringMatching(/^\/request\//),
         });
 
         const test = await client.graphql<{ pushSubscriptionTest: number }>(
@@ -3113,6 +3123,23 @@ export function hubContract(
             return new Response(null, { status: 401 });
           case "POST https://open.example.com/mcp":
             return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+          // Points the hub at addresses inside the network.
+          case "POST https://moved.example.com/mcp":
+            // Followed, the redirect would land on an open server inside the network.
+            if (request.redirect !== "manual")
+              return Response.json({ jsonrpc: "2.0", id: 1, result: {} });
+            return new Response(null, {
+              status: 302,
+              headers: { location: "http://169.254.169.254/latest/meta-data" },
+            });
+          case "POST https://sneaky.example.com/mcp":
+            return new Response(null, {
+              status: 401,
+              headers: {
+                "www-authenticate":
+                  'Bearer resource_metadata="http://169.254.169.254/latest/meta-data"',
+              },
+            });
           // Like Slack: OAuth with the owner's own app, and errors as HTTP 200 with ok: false.
           case "POST https://chat.example.com/mcp":
             return new Response(null, {
@@ -3574,6 +3601,27 @@ export function hubContract(
         expect((await claimFor(coach.id)).mcpServers.drive).toMatchObject({
           headers: { Authorization: "Bearer drive-2" },
         });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("fetches only the https addresses an agent gives, without following redirects", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
+      try {
+        const coach = await agentToken("Coach");
+        for (const name of ["moved", "sneaky"]) {
+          const asked = await callTool(coach.token, "create_mcp_server", {
+            name,
+            url: `https://${name}.example.com/mcp`,
+            reason: "Testing.",
+          });
+          expect(asked.isError).toBe(true);
+        }
+        const reached = fetchSpy.mock.calls.map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        );
+        expect(reached.filter((url) => url.includes("169.254"))).toEqual([]);
       } finally {
         fetchSpy.mockRestore();
       }

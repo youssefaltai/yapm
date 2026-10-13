@@ -47,16 +47,14 @@ function cleanUrl(value: string) {
   } catch {
     throw badRequest("That isn't a URL");
   }
-  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-  if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
-    throw badRequest("Remote MCP servers need https");
+  if (url.protocol !== "https:") throw badRequest("Remote MCP servers need https");
   return url.toString();
 }
 
-/** Outgoing HTTP that says which URL failed, so the agent can fix it. */
+/** Outgoing HTTP that says which URL failed, so the agent can fix it. Redirects aren't followed. */
 async function reach(deps: HubDeps, url: string, init?: RequestInit) {
   try {
-    return await (deps.fetch ?? fetch)(url, init);
+    return await (deps.fetch ?? fetch)(url, { ...init, redirect: "manual" });
   } catch (error) {
     throw badRequest(`Couldn't reach ${url}: ${error instanceof Error ? error.message : error}`);
   }
@@ -103,10 +101,14 @@ async function discoverAuth(
   const param = (key: string) => new RegExp(`${key}="([^"]*)"`).exec(challenge)?.[1];
   const resource = await getJson(
     deps,
-    param("resource_metadata") ?? new URL("/.well-known/oauth-protected-resource", url).href,
+    cleanUrl(
+      param("resource_metadata") ?? new URL("/.well-known/oauth-protected-resource", url).href,
+    ),
   );
   const servers = resource?.authorization_servers;
-  const issuer = new URL(Array.isArray(servers) ? String(servers[0]) : new URL(url).origin);
+  const issuer = new URL(
+    cleanUrl(Array.isArray(servers) ? String(servers[0]) : new URL(url).origin),
+  );
   const path = issuer.pathname.replace(/\/$/, "");
   const meta =
     (await getJson(deps, `${issuer.origin}/.well-known/oauth-authorization-server${path}`)) ??

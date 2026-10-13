@@ -4,6 +4,7 @@ import { type HubDeps, tick } from "@yapm/core";
 import { WebSocketServer } from "ws";
 import { createNodeApp } from "./app.js";
 import { openDatabase } from "./db.js";
+import { publicFetch } from "./public-fetch.js";
 import { createNodeRealtime } from "./realtime.js";
 
 const env = process.env;
@@ -28,6 +29,7 @@ const deps: HubDeps = {
     ...(env.YAPM_SECRET ? { secret: env.YAPM_SECRET } : {}),
   },
   realtime: createNodeRealtime(),
+  fetch: publicFetch,
 };
 const app = createNodeApp(deps, webDir);
 

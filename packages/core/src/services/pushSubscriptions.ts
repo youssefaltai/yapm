@@ -12,6 +12,10 @@ interface SubscriptionJson {
   keys?: { p256dh?: unknown; auth?: unknown };
 }
 
+/** The browsers' push services: Chrome's FCM, Firefox's autopush, Safari's and Edge's WNS. */
+const pushServices =
+  /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9-]+\.notify\.windows\.com)$/;
+
 /** Saves a browser's push subscription for the viewer; subscribing again just refreshes it. */
 export async function createPushSubscription(
   ctx: Ctx,
@@ -34,7 +38,8 @@ export async function createPushSubscription(
   } catch {
     throw badRequest("The subscription has no valid endpoint");
   }
-  if (url.protocol !== "https:") throw badRequest("Push endpoints must use https");
+  if (url.protocol !== "https:" || !pushServices.test(url.hostname))
+    throw badRequest("Push endpoints must be a browser's push service, over https");
   if (fromBase64Url(p256dh).length !== 65 || fromBase64Url(auth).length !== 16)
     throw badRequest("The subscription's keys are not a P-256 key and a 16-byte secret");
   const existing = await db

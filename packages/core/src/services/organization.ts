@@ -16,11 +16,14 @@ export interface OrganizationUpdateInput {
   timezone?: string | null;
   handbook?: string | null;
   modelRouting?: unknown;
+  /** Why it changed; kept with the handbook's revision. */
+  reason?: string | null;
 }
 
 /** Name and time zone need `organization.update`, the handbook `handbook.update`; model routing is the owner's. */
 export async function updateOrganization(ctx: Ctx, input: OrganizationUpdateInput) {
   const { db, now } = ctx;
+  if (input.reason) ctx.reason = input.reason;
   const company = await db.select().from(workspaces).get();
   if (!company) throw notFound("Company");
   const next: Partial<typeof company> = {};
@@ -41,15 +44,19 @@ export async function updateOrganization(ctx: Ctx, input: OrganizationUpdateInpu
   }
   const diff = changes(company, next);
   const allowed = diff ? await authorize(ctx, "organization.update") : [];
-  if (input.handbook != null) await updateHandbook(ctx, input.handbook);
-  if (!diff) return;
+  const handbook = input.handbook != null ? await updateHandbook(ctx, input.handbook) : [];
   await commit(db, [
-    db
-      .update(workspaces)
-      .set({ ...next, updatedAt: now })
-      .where(eq(workspaces.id, company.id)),
-    ...allowed,
-    ...audit(db, [event(ctx, "organization.update", "organization", company.id, diff)], now),
+    ...handbook,
+    ...(diff
+      ? [
+          db
+            .update(workspaces)
+            .set({ ...next, updatedAt: now })
+            .where(eq(workspaces.id, company.id)),
+          ...allowed,
+          ...audit(db, [event(ctx, "organization.update", "organization", company.id, diff)], now),
+        ]
+      : []),
+    ...(next.timezone ? await rescheduleAll(db, next.timezone, now) : []),
   ]);
-  if (next.timezone) await rescheduleAll(db, next.timezone, now);
 }

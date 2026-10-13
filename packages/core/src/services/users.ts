@@ -30,6 +30,8 @@ export interface UserUpdateInput {
   models?: unknown;
   /** Owner only: top-tier work runs allowed in any 7 days. */
   topRunsPerWeek?: number | null;
+  /** Why it changed; kept with the charter's and lessons' revisions. */
+  reason?: string | null;
 }
 
 async function actor(ctx: Ctx) {
@@ -124,6 +126,7 @@ export async function hireAgent(ctx: Ctx, input: AgentHireInput): Promise<string
 
 export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): Promise<string> {
   const { db, now } = ctx;
+  if (input.reason) ctx.reason = input.reason;
   const user = await db.select().from(users).where(eq(users.id, id)).get();
   if (!user) throw notFound("User");
   const next: Partial<typeof user> = {};
@@ -164,11 +167,14 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
       throw new ServiceError("BAD_REQUEST", "Top runs per week is a whole number from 0 to 1000");
     next.topRunsPerWeek = n;
   }
-  if (input.lessons !== undefined) await updateLessons(ctx, id, input.lessons);
+  const lessons = input.lessons !== undefined ? await updateLessons(ctx, id, input.lessons) : [];
   const { charter } = input;
   const diff = changes(user, next);
   const charterChanged = charter !== undefined && (charter?.trim() || null) !== user.charter;
-  if (!diff && !charterChanged) return id;
+  if (!diff && !charterChanged) {
+    await commit(db, lessons);
+    return id;
+  }
   if (charterChanged) {
     if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents have charters");
     next.charter = charter?.trim() || null;
@@ -187,6 +193,7 @@ export async function updateUser(ctx: Ctx, id: string, input: UserUpdateInput): 
   if (charterChanged)
     events.push(event(ctx, "charter.update", "user", id, { from: user.charter, to: next.charter }));
   await commit(db, [
+    ...lessons,
     db
       .update(users)
       .set({ ...next, updatedAt: now })

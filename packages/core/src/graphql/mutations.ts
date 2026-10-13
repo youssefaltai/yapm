@@ -283,6 +283,7 @@ const UserUpdateInput = builder.inputType("UserUpdateInput", {
       required: false,
       description: "Owner only: top-tier work runs allowed in any 7 days; more drop to standard.",
     }),
+    reason: t.string({ required: false, description: "Why the charter or lessons changed." }),
   }),
 });
 

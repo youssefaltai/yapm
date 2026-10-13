@@ -160,16 +160,20 @@ export async function listRevisions(
 }
 
 /** An agent rewrites what it has learned freely; anyone else needs `lessons.update` on it. */
-export async function updateLessons(ctx: Ctx, agentId: string, lessons: string | null) {
+export async function updateLessons(
+  ctx: Ctx,
+  agentId: string,
+  lessons: string | null,
+): Promise<WriteOp[]> {
   const { db, now } = ctx;
   const agent = await loadUser(db, agentId);
   if (agent.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents keep lessons");
   const text = lessons?.trim() || null;
   if (text && text.length > LESSONS_MAX)
     throw new ServiceError("BAD_REQUEST", `Lessons must be at most ${LESSONS_MAX} characters`);
-  if (text === agent.lessons) return agentId;
+  if (text === agent.lessons) return [];
   const allowed = agentId === ctx.actorId ? [] : await authorize(ctx, "lessons.update", agentId);
-  await commit(db, [
+  return [
     db.update(users).set({ lessons: text, updatedAt: now }).where(eq(users.id, agentId)),
     revisionOp(ctx, "lessons", agentId, text),
     ...allowed,
@@ -178,12 +182,11 @@ export async function updateLessons(ctx: Ctx, agentId: string, lessons: string |
       [event(ctx, "lessons.update", "user", agentId, { length: text?.length ?? 0 })],
       now,
     ),
-  ]);
-  return agentId;
+  ];
 }
 
 /** The handbook says how the company works. The owner edits it; agents need `handbook.update`. */
-export async function updateHandbook(ctx: Ctx, handbook: string | null) {
+export async function updateHandbook(ctx: Ctx, handbook: string | null): Promise<WriteOp[]> {
   const { db, now } = ctx;
   const company = await db.select().from(workspaces).get();
   if (!company) throw notFound("Company");
@@ -193,9 +196,9 @@ export async function updateHandbook(ctx: Ctx, handbook: string | null) {
       "BAD_REQUEST",
       `The handbook must be at most ${HANDBOOK_MAX} characters`,
     );
-  if (text === company.handbook) return company.id;
+  if (text === company.handbook) return [];
   const allowed = await authorize(ctx, "handbook.update");
-  await commit(db, [
+  return [
     db
       .update(workspaces)
       .set({ handbook: text, updatedAt: now })
@@ -207,6 +210,5 @@ export async function updateHandbook(ctx: Ctx, handbook: string | null) {
       [event(ctx, "handbook.update", "organization", company.id, { length: text?.length ?? 0 })],
       now,
     ),
-  ]);
-  return company.id;
+  ];
 }

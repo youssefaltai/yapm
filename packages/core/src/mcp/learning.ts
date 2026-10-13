@@ -11,7 +11,6 @@ import {
   createFeedback,
   listFeedback,
   listRevisions,
-  updateHandbook,
 } from "../services/feedback.js";
 import {
   addCounts,
@@ -285,11 +284,19 @@ export const learningTools: Tool<McpContext>[] = [
       "Replace the company handbook (markdown). Needs handbook.update. Keep what still holds, and say why in the reason.",
     inputSchema: {
       type: "object",
-      properties: { handbook: { type: "string" } },
+      properties: {
+        handbook: { type: "string" },
+        reason: { type: "string", description: "Why it changed, e.g. the feedback it answers" },
+      },
       required: ["handbook"],
     },
     async run(args, c) {
-      await c.act((s) => updateHandbook(s, String(args.handbook)));
+      await c.act((s) =>
+        updateOrganization(s, {
+          handbook: String(args.handbook),
+          reason: str(args.reason) ?? null,
+        }),
+      );
       return { updated: true };
     },
   },

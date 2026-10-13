@@ -266,6 +266,7 @@ const OrganizationUpdateInput = builder.inputType("OrganizationUpdateInput", {
       description:
         'Each tier\'s model and effort, and labels that route issues to a tier: `{ tiers: { small: { model, effort }, standard, top }, labels: { research: "top" } }`.',
     }),
+    reason: t.string({ required: false, description: "Why the handbook changed." }),
   }),
 });
 

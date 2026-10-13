@@ -3,7 +3,7 @@ import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { audit } from "../audit.js";
 import type { HubDeps } from "../context.js";
 import { newId } from "../crypto.js";
-import { commit, type HubDb } from "../db.js";
+import { commit, type HubDb, type WriteOp } from "../db.js";
 import { badRequest, notFound } from "../errors.js";
 import { localDate, nextOccurrence, normalizeSchedule, type ScheduleShape } from "../time.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
@@ -21,20 +21,17 @@ export function checkSchedule(value: unknown): ScheduleShape {
 }
 
 /** Recomputes recurring issues' next times after the company's time zone changes. */
-export async function rescheduleAll(db: HubDb, timeZone: string, at: number) {
+export async function rescheduleAll(db: HubDb, timeZone: string, at: number): Promise<WriteOp[]> {
   const rows = await db.select().from(templates).where(isNotNull(templates.schedule)).all();
-  await commit(
-    db,
-    rows.flatMap((t) =>
-      t.schedule
-        ? [
-            db
-              .update(templates)
-              .set({ nextRunAt: nextOccurrence(t.schedule, timeZone, at) })
-              .where(eq(templates.id, t.id)),
-          ]
-        : [],
-    ),
+  return rows.flatMap((t) =>
+    t.schedule
+      ? [
+          db
+            .update(templates)
+            .set({ nextRunAt: nextOccurrence(t.schedule, timeZone, at) })
+            .where(eq(templates.id, t.id)),
+        ]
+      : [],
   );
 }
 

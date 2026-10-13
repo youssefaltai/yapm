@@ -2592,6 +2592,77 @@ export function hubContract(
       });
       expect(versions.handbook[0]?.content).toBe("Agents never pay without a receipt.");
       expect(versions.user.lessons).toBe("- Lead money updates with the total.");
+
+      // A refused update changes nothing, not even the parts that were allowed.
+      const refused = await client.graphql(
+        'mutation($id: String!) { userUpdate(id: $id, input: { lessons: "- Half done.", charter: "Run it all." }) { success } }',
+        { id: ceoId },
+        ceoToken,
+      );
+      expect(refused.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      const renamed = await client.graphql(
+        'mutation { organizationUpdate(input: { name: "Half Co", handbook: "Half done." }) { success } }',
+        undefined,
+        ceoToken,
+      );
+      expect(renamed.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      const unchanged = await gql<{
+        user: { lessons: string };
+        organization: { handbook: string };
+      }>("query($id: String!) { user(id: $id) { lessons } organization { handbook } }", {
+        id: ceoId,
+      });
+      expect(unchanged.user.lessons).toBe("- Lead money updates with the total.");
+      expect(unchanged.organization.handbook).toBe("Agents never pay without a receipt.");
+
+      // Every revision can say why it was made.
+      await gql(
+        'mutation($id: String!) { userUpdate(id: $id, input: { lessons: "- Total first.", charter: "Run the company.", reason: "Feedback on money updates" }) { success } }',
+        { id: ceoId },
+      );
+      const tool = async (name: string, args: Record<string, unknown>) => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name, arguments: args },
+          },
+          token: ceoToken,
+          headers: { accept: "application/json, text/event-stream" },
+        });
+        const body = (await response.json()) as { result: { content: { text: string }[] } };
+        return JSON.parse(body.result.content[0]?.text ?? "{}");
+      };
+      await tool("update_user", {
+        user: "me",
+        lessons: "- Total first, always.",
+        reason: "A second note",
+      });
+      await gql(
+        'mutation { organizationUpdate(input: { handbook: "Receipts first.", reason: "A missing receipt" }) { success } }',
+      );
+      const reasons = await gql<{
+        lessons: { reason: string | null }[];
+        charter: { reason: string | null }[];
+        handbook: { reason: string | null }[];
+      }>(
+        `query($id: String!) {
+          lessons: revisions(subject: "lessons", entityId: $id) { reason }
+          charter: revisions(subject: "charter", entityId: $id) { reason }
+          handbook: revisions(subject: "handbook") { reason }
+        }`,
+        { id: ceoId },
+      );
+      expect(reasons.lessons.map((r) => r.reason).slice(0, 2)).toEqual([
+        "A second note",
+        "Feedback on money updates",
+      ]);
+      expect(reasons.charter[0]?.reason).toBe("Feedback on money updates");
+      expect(reasons.handbook[0]?.reason).toBe("A missing receipt");
+      const listed = await tool("list_revisions", { subject: "lessons", agent: "me" });
+      expect(JSON.stringify(listed)).toContain("A second note");
     });
     it("measures the company's work for insights and retros", async () => {
       const result = await client.graphql<{

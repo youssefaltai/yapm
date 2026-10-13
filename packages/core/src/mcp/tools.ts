@@ -1112,6 +1112,10 @@ export const tools: Tool<McpContext>[] = [
           description:
             'An agent\'s own model per tier: { small?, standard?, top? }, each { provider, model, effort }, e.g. { "provider": "anthropic", "model": "claude-opus-5-5", "effort": "medium" }. Provider ids: anthropic (Claude), openai (ChatGPT), github-copilot (Copilot)…; only models a machine has. null goes back to the company\'s.',
         },
+        reason: {
+          type: "string",
+          description: "Why the charter or lessons changed, e.g. the feedback it answers",
+        },
       },
       required: ["user"],
     },
@@ -1126,6 +1130,7 @@ export const tools: Tool<McpContext>[] = [
           ...(str(args.lessons) !== undefined ? { lessons: str(args.lessons) } : {}),
           ...(manager ? { managerId: manager.id } : {}),
           ...(args.models !== undefined ? { models: args.models } : {}),
+          reason: str(args.reason) ?? null,
         }),
       );
       return { id: user.id };

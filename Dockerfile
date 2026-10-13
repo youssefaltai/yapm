@@ -17,6 +17,9 @@ COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /app/apps/hub-node/dist ./dist
 COPY --from=build /app/apps/web/dist /app/apps/web/dist
 COPY --from=build /app/packages/schema/migrations /app/packages/schema/migrations
+# Runs as the image's non-root node user, which owns the data directory.
+RUN mkdir /data && chown node:node /data
+USER node
 VOLUME /data
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://localhost:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

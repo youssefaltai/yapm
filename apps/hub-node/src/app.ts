@@ -13,3 +13,13 @@ export function createNodeApp(deps: HubDeps, webDir?: string) {
   }
   return app;
 }
+
+/** Settings the Docker setup can leave empty, which the hub runs without but shouldn't. */
+export function configWarnings(env: Record<string, string | undefined>) {
+  const warnings: string[] = [];
+  if (!env.YAPM_SECRET)
+    warnings.push("YAPM_SECRET is not set: saving MCP server sign-ins will fail.");
+  if (!env.ORIGIN)
+    warnings.push("ORIGIN is not set: the hub trusts request headers for its origin.");
+  return warnings;
+}

@@ -24,6 +24,7 @@ import {
 import { archiveState, createState } from "../src/services/states.js";
 import { createTeam, updateTeam } from "../src/services/teams.js";
 import { createRecurringIssues, createTemplate } from "../src/services/templates.js";
+import { usageHistory } from "../src/services/usage.js";
 import { addDays, localDate, nextOccurrence, weekday, zonedTime } from "../src/time.js";
 
 const migrationsFolder = decodeURIComponent(
@@ -51,6 +52,29 @@ async function company(timezone: string, now: number) {
 }
 
 const DAY = 86_400_000;
+
+/** A team's cycles, oldest first. */
+function cycleList(db: HubDb, teamId: string) {
+  return db
+    .select()
+    .from(schema.cycles)
+    .where(eq(schema.cycles.teamId, teamId))
+    .orderBy(schema.cycles.number)
+    .all();
+}
+
+/** The id of the team's first state of `type`. */
+async function stateOf(db: HubDb, teamId: string, type: string) {
+  const states = await db
+    .select()
+    .from(schema.workflowStates)
+    .where(eq(schema.workflowStates.teamId, teamId))
+    .all();
+  return nth(
+    states.filter((s) => s.type === type),
+    0,
+  ).id;
+}
 
 describe("time", () => {
   it("finds local midnight across daylight saving changes", () => {
@@ -131,6 +155,71 @@ describe("cycles", () => {
     await expect(updateIssue(ctx, open, { cycleId: nth(cycles, 0).id })).rejects.toThrow(
       /already completed/,
     );
+  });
+
+  it("records today's progress in the burn-up as it happens", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ctx = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(ctx, { name: "Health", key: "HEA" });
+    await updateTeam(ctx, teamId, { cyclesEnabled: true });
+    const [cycle] = await cycleList(db, teamId);
+    const ids = [];
+    for (const title of ["One", "Two", "Three"])
+      ids.push(await createIssue(ctx, { teamId, title, cycleId: cycle?.id }));
+    await syncCycles(db, start + 60_000);
+    const done = await stateOf(db, teamId, "completed");
+    for (const id of ids.slice(0, 2)) await updateIssue(ctx, id, { stateId: done });
+
+    await syncCycles(db, start + 3_600_000);
+    const [after] = await cycleList(db, teamId);
+    expect(after?.history.scope.at(-1)).toBe(3);
+    expect(after?.history.completed.at(-1)).toBe(2);
+  });
+
+  it("keeps archived issues in a cycle's scope", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ctx = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(ctx, { name: "Health", key: "HEA" });
+    await updateTeam(ctx, teamId, { cyclesEnabled: true });
+    const [cycle] = await cycleList(db, teamId);
+    const done = await stateOf(db, teamId, "completed");
+    await createIssue(ctx, { teamId, title: "Open", cycleId: cycle?.id });
+    for (const title of ["One", "Two"])
+      await createIssue(ctx, { teamId, title, cycleId: cycle?.id, stateId: done });
+    await db
+      .update(schema.issues)
+      .set({ archivedAt: start })
+      .where(eq(schema.issues.stateId, done));
+
+    await syncCycles(db, start + DAY);
+    const [after] = await cycleList(db, teamId);
+    expect(after?.history.scope.at(-1)).toBe(3);
+    expect(after?.history.completed.at(-1)).toBe(2);
+  });
+
+  it("re-lays the cycles that haven't started when the cycle settings change", async () => {
+    // Thursday 8 October 2026; cycles start on Mondays.
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ctx = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(ctx, { name: "Health", key: "HEA" });
+    await updateTeam(ctx, teamId, { cyclesEnabled: true, cycleStartDay: 1 });
+    const before = await cycleList(db, teamId);
+
+    await updateTeam(ctx, teamId, { cycleStartDay: 3, cycleDuration: 2, cycleCooldown: 1 });
+    const after = await cycleList(db, teamId);
+    const days = (c: (typeof after)[number]) => [
+      localDate(c.startsAt, "UTC"),
+      localDate(c.endsAt, "UTC"),
+    ];
+    expect(after.map((c) => [c.id, c.number])).toEqual(before.map((c) => [c.id, c.number]));
+    expect(after.map(days)).toEqual([
+      ["2026-10-05", "2026-10-12"],
+      ["2026-10-21", "2026-11-04"],
+      ["2026-11-11", "2026-11-25"],
+    ]);
   });
 
   it("skips ahead after a long pause", async () => {
@@ -289,6 +378,30 @@ describe("SLAs and auto-archive", () => {
     expect(archived.find((i) => i.id === done)?.archivedAt).not.toBeNull();
     expect(archived.find((i) => i.id === urgent)?.archivedAt).toBeNull();
   });
+  it("moves open issues' deadlines when the team's SLA changes", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    const ctx = { db, actorId: "owner", now: start };
+    const teamId = await createTeam(ctx, { name: "Bills", key: "BIL" });
+    const urgent = await createIssue(ctx, { teamId, title: "Card blocked", priority: 1 });
+    const closed = await createIssue(ctx, {
+      teamId,
+      title: "Old bill",
+      priority: 1,
+      stateId: await stateOf(db, teamId, "completed"),
+    });
+    const deadline = async (id: string) =>
+      (await db.select().from(schema.issues).where(eq(schema.issues.id, id)).get())?.slaBreachesAt;
+
+    const later = { ...ctx, now: start + 3_600_000 };
+    await updateTeam(later, teamId, { slaHours: { "1": 4 } });
+    expect(await deadline(urgent)).toBe(later.now + 4 * 3_600_000);
+    expect(await deadline(closed)).toBeNull();
+    await updateTeam({ ...ctx, now: start + 2 * 3_600_000 }, teamId, { slaHours: { "1": 2 } });
+    expect(await deadline(urgent)).toBe(later.now + 2 * 3_600_000);
+    await updateTeam(ctx, teamId, { slaHours: null });
+    expect(await deadline(urgent)).toBeNull();
+  });
 });
 
 describe("tick", () => {
@@ -433,5 +546,39 @@ describe("metrics", () => {
     });
     const [filed] = await metricValues(db, ...lastDays(at, 7));
     expect(filed?.value).toBe(1);
+  });
+  it("fills in the days the hub missed", async () => {
+    const start = Date.parse("2026-10-08T07:00:00Z");
+    const db = await company("UTC", start);
+    expect(await snapshotMetrics(db, Date.parse("2026-10-09T00:30:00Z"))).toBe(true);
+    const later = Date.parse("2026-10-12T00:30:00Z");
+    expect(await snapshotMetrics(db, later)).toBe(true);
+    expect(await snapshotMetrics(db, later + 60_000)).toBe(false);
+    const history = await metricHistory(db, "company", "", 7, later);
+    expect(history.map((h) => h.date)).toEqual([
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+    ]);
+  });
+
+  it("counts a run on its local day in half-hour time zones", async () => {
+    const at = Date.parse("2026-10-08T12:00:00Z");
+    const db = await company("Asia/Kolkata", at);
+    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
+    // 00:10 on 9 October in Kolkata.
+    const endedAt = Date.parse("2026-10-08T18:40:00Z");
+    await db.insert(schema.runs).values({
+      id: "r1",
+      agentId: ceo?.id ?? "",
+      kind: "work",
+      status: "completed",
+      endedAt,
+      createdAt: endedAt,
+      updatedAt: endedAt,
+    });
+    const points = await usageHistory(db, "agent", at, at + DAY);
+    expect(points.map((p) => p.date)).toEqual(["2026-10-09"]);
   });
 });

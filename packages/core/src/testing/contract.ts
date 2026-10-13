@@ -2449,6 +2449,21 @@ export function hubContract(
       const hours = (Date.parse(sla.slaBreachesAt) - Date.parse(sla.slaStartedAt)) / 3_600_000;
       expect(hours).toBe(24);
       expect(Date.parse(sla.slaStartedAt)).toBeGreaterThanOrEqual(before - 1000);
+      // A new SLA moves the deadline of issues already open.
+      const shorter = await gql<{
+        teamUpdate: { team: { issues: { nodes: { id: string; slaBreachesAt: string }[] } } };
+      }>(
+        `mutation($id: String!, $sla: JSONObject) {
+          teamUpdate(id: $id, input: { slaHours: $sla }) {
+            team { issues { nodes { id slaBreachesAt } } }
+          }
+        }`,
+        { id: teamId, sla: { "1": 12, "2": 72 } },
+      );
+      const moved = shorter.teamUpdate.team.issues.nodes.find((i) => i.id === sla.id);
+      expect(Date.parse(moved?.slaBreachesAt ?? "")).toBe(
+        Date.parse(sla.slaStartedAt) + 12 * 3_600_000,
+      );
       const high = await gql<{ issueUpdate: { issue: { slaBreachesAt: string } } }>(
         "mutation($id: String!) { issueUpdate(id: $id, input: { priority: 2 }) { issue { slaBreachesAt } } }",
         { id: sla.id },
@@ -4884,6 +4899,56 @@ export function hubContract(
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ error: { code: -32600 } });
       }
+    });
+
+    it("keeps archived issues in cycle and project progress", async () => {
+      const gql = async <T = Record<string, unknown>>(
+        query: string,
+        variables?: Record<string, unknown>,
+      ) => {
+        const result = await client.graphql<T>(query, variables);
+        if (result.errors) throw new Error(result.errors[0]?.message);
+        return result.data as T;
+      };
+      const { teamUpdate } = await gql<{
+        teamUpdate: {
+          team: { activeCycle: { id: string }; states: { nodes: { id: string; type: string }[] } };
+        };
+      }>(
+        `mutation($id: String!) {
+          teamUpdate(id: $id, input: { cyclesEnabled: true }) {
+            team { activeCycle { id } states { nodes { id type } } }
+          }
+        }`,
+        { id: teamId },
+      );
+      const cycleId = teamUpdate.team.activeCycle.id;
+      const done = teamUpdate.team.states.nodes.find((s) => s.type === "completed")?.id;
+      const { projectCreate } = await gql<{ projectCreate: { project: { id: string } } }>(
+        "mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { project { id } } }",
+        { input: { name: "Tax return", teamIds: [teamId] } },
+      );
+      const projectId = projectCreate.project.id;
+      const ids: string[] = [];
+      for (const stateId of [done, undefined]) {
+        const { issueCreate } = await gql<{ issueCreate: { issue: { id: string } } }>(
+          "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
+          { input: { teamId, title: "File the return", projectId, cycleId, stateId } },
+        );
+        ids.push(issueCreate.issue.id);
+      }
+      const read = () =>
+        gql<{ project: { progress: { scope: number; completed: number } }; cycle: unknown }>(
+          `query($projectId: String!, $cycleId: String!) {
+            project(id: $projectId) { progress { scope completed } }
+            cycle(id: $cycleId) { progress }
+          }`,
+          { projectId, cycleId },
+        );
+      const before = await read();
+      expect(before.project.progress).toEqual({ scope: 2, completed: 1 });
+      await gql("mutation($id: String!) { issueArchive(id: $id) { success } }", { id: ids[0] });
+      expect(await read()).toEqual(before);
     });
   });
 }

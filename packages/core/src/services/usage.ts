@@ -20,6 +20,7 @@ import { machineName, providerName } from "./machines.js";
 // don't publish their limits as token or dollar amounts, so neither does the hub.
 
 const HOUR = 3_600_000;
+const QUARTER = HOUR / 4;
 
 const text = (value: unknown, max = 200) =>
   typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null;
@@ -254,7 +255,8 @@ export interface UsagePoint {
 
 /**
  * Runs that ended in [from, to), summed per local day and per agent, model or machine. The
- * database sums per hour so local days stay right across time zones and clock changes.
+ * database sums per quarter hour, which every UTC offset is a multiple of, so local days stay
+ * right across time zones and clock changes.
  */
 export async function usageHistory(
   db: HubDb,
@@ -273,7 +275,7 @@ export async function usageHistory(
     companyTimeZone(db),
     db
       .select({
-        hour: sql<number>`cast(${runs.endedAt} / ${HOUR} as integer)`,
+        quarter: sql<number>`cast(${runs.endedAt} / ${QUARTER} as integer)`,
         key: sql<string | null>`${column}`,
         runs: sql<number>`count(*)`,
         inputTokens: sql<number>`sum(${runs.inputTokens})`,
@@ -308,7 +310,7 @@ export async function usageHistory(
     }
   const points = new Map<string, UsagePoint>();
   for (const r of rows) {
-    const date = localDate(Number(r.hour) * HOUR, timeZone);
+    const date = localDate(Number(r.quarter) * QUARTER, timeZone);
     const key = r.key ?? "";
     const id = `${date}|${key}`;
     let point = points.get(id);

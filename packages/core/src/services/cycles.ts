@@ -53,7 +53,7 @@ export async function updateCycle(
   return id;
 }
 
-/** Issue counts in each cycle: scope leaves out canceled issues, as Linear does. */
+/** Issue counts in each cycle: scope leaves out canceled issues, as Linear does, but keeps archived ones. */
 async function cycleCounts(db: HubDb, cycleIds: string[]) {
   const counts = new Map<string, { scope: number; completed: number; open: number }>();
   if (!cycleIds.length) return counts;
@@ -65,7 +65,7 @@ async function cycleCounts(db: HubDb, cycleIds: string[]) {
       canceled: count(issues.canceledAt),
     })
     .from(issues)
-    .where(and(inArray(issues.cycleId, cycleIds), isNull(issues.archivedAt)))
+    .where(inArray(issues.cycleId, cycleIds))
     .groupBy(issues.cycleId)
     .all();
   for (const id of cycleIds) {
@@ -77,14 +77,16 @@ async function cycleCounts(db: HubDb, cycleIds: string[]) {
   return counts;
 }
 
-/** Appends today's counts (and any missed days) to a running cycle's history. */
+/** Sets today's counts (and fills any missed days) in a running cycle's history. */
 function withHistory(cycle: CycleRow, at: number, point: { scope: number; completed: number }) {
   const days = Math.min(Math.floor((at - cycle.startsAt) / DAY_MS) + 1, 400);
   const history = { scope: [...cycle.history.scope], completed: [...cycle.history.completed] };
   if (history.scope.length >= days) {
-    history.scope[history.scope.length - 1] = point.scope;
-    history.completed[history.completed.length - 1] = point.completed;
-    return { history, changed: false };
+    const i = history.scope.length - 1;
+    const changed = history.scope[i] !== point.scope || history.completed[i] !== point.completed;
+    history.scope[i] = point.scope;
+    history.completed[i] = point.completed;
+    return { history, changed };
   }
   while (history.scope.length < days) {
     history.scope.push(point.scope);
@@ -96,9 +98,16 @@ function withHistory(cycle: CycleRow, at: number, point: { scope: number; comple
 /**
  * Keeps one team's cycles in step with the clock, like Linear's automation:
  * creates the current and upcoming cycles, closes ended ones (moving unfinished
- * issues into the next cycle) and records daily progress for the burn-up chart.
+ * issues into the next cycle) and records daily progress for the burn-up chart. With `relay`,
+ * cycles that haven't started yet move to the team's current cycle settings, keeping their ids.
  */
-export async function syncTeamCycles(db: HubDb, team: TeamRow, timeZone: string, at: number) {
+export async function syncTeamCycles(
+  db: HubDb,
+  team: TeamRow,
+  timeZone: string,
+  at: number,
+  relay = false,
+) {
   if (!team.cyclesEnabled || team.archivedAt) return;
   const existing = await db
     .select()
@@ -119,20 +128,35 @@ export async function syncTeamCycles(db: HubDb, team: TeamRow, timeZone: string,
   // 1. Make sure the current cycle (or the next, during a cooldown) and the upcoming ones exist.
   const weeks = Math.max(1, team.cycleDuration) * 7;
   const rest = Math.max(0, team.cycleCooldown) * 7;
-  const last = existing.at(-1);
+  const future = relay ? existing.filter((c) => c.startsAt > at) : [];
+  const last = existing.filter((c) => !future.includes(c)).at(-1);
   let start: string;
   if (last) {
     start = addDays(localDate(last.endsAt, timeZone), rest);
+    start = addDays(start, (team.cycleStartDay - weekday(start) + 7) % 7);
   } else {
     const today = localDate(at, timeZone);
     start = addDays(today, -((weekday(today) - team.cycleStartDay + 7) % 7));
   }
   // After a long pause, skip ahead to the cycle that includes today.
   while (zonedTime(addDays(start, weeks), timeZone) <= at) start = addDays(start, weeks + rest);
+  for (const cycle of future) {
+    const end = addDays(start, weeks);
+    cycle.startsAt = zonedTime(start, timeZone);
+    cycle.endsAt = zonedTime(end, timeZone);
+    ops.push(
+      db
+        .update(cycles)
+        .set({ startsAt: cycle.startsAt, endsAt: cycle.endsAt, updatedAt: at })
+        .where(eq(cycles.id, cycle.id)),
+    );
+    events.push(system("cycle.update", cycle.id, { startsAt: cycle.startsAt }));
+    start = addDays(end, rest);
+  }
   const ahead = existing.filter((c) => c.endsAt > at).length;
   const wanted = 1 + Math.max(0, Math.min(team.upcomingCycleCount, 10));
   const created: CycleRow[] = [];
-  let number = Math.max(team.cycleCount, last?.number ?? 0);
+  let number = Math.max(team.cycleCount, existing.at(-1)?.number ?? 0);
   for (let i = ahead; i < wanted; i++) {
     number += 1;
     const end = addDays(start, weeks);
@@ -206,7 +230,7 @@ export async function syncTeamCycles(db: HubDb, team: TeamRow, timeZone: string,
     );
   }
 
-  // 3. One history point per day for running cycles.
+  // 3. One history point per day for running cycles, kept up to date through the day.
   for (const cycle of running) {
     const point = counts.get(cycle.id) ?? { scope: 0, completed: 0, open: 0 };
     const { history, changed } = withHistory(cycle, at, point);

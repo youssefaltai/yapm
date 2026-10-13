@@ -8,6 +8,7 @@ import { DEFAULT_STATES, suggestKey } from "../seed.js";
 import { insertRows } from "../write.js";
 import { type Ctx, changes, cleanText, event } from "./common.js";
 import { companyTimeZone, syncTeamCycles } from "./cycles.js";
+import { retimeSlas } from "./issues.js";
 import { authorize, requireOwner } from "./requests.js";
 
 export interface TeamCreateInput {
@@ -210,6 +211,7 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
       .set({ ...next, updatedAt: now })
       .where(eq(teams.id, id)),
   ];
+  if (diff.slaHours) ops.push(...retimeSlas(db, id, next.slaHours ?? null, now));
   if (next.leadId) {
     ops.push(
       db
@@ -220,8 +222,10 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
   }
   ops.push(...audit(db, [event(ctx, "team.update", "team", id, diff)], now));
   await commit(db, ops);
-  // Turning cycles on (or changing their shape) creates the cycles straight away.
+  // Turning cycles on creates them straight away; changing their shape re-lays the upcoming ones.
   const updated = { ...team, ...next };
-  if (updated.cyclesEnabled) await syncTeamCycles(db, updated, await companyTimeZone(db), now);
+  const relay = !!(diff.cycleStartDay || diff.cycleDuration || diff.cycleCooldown);
+  if (updated.cyclesEnabled)
+    await syncTeamCycles(db, updated, await companyTimeZone(db), now, relay);
   return id;
 }

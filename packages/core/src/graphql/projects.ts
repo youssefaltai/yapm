@@ -82,7 +82,7 @@ const ProjectUpdateConnection = connection<UpdateRow>("ProjectUpdate", ProjectUp
 const InitiativeConnection = connection<InitiativeRow>("Initiative", Initiative);
 const DocumentConnection = connection<DocumentRow>("Document", Document);
 
-/** Issue counts for progress: Linear counts scope without canceled issues. */
+/** Issue counts for progress: Linear counts scope without canceled issues, with archived ones. */
 async function issueCounts(ctx: Parameters<typeof db>[0], where: SQL) {
   return progressOf(
     await db(ctx)
@@ -93,7 +93,7 @@ async function issueCounts(ctx: Parameters<typeof db>[0], where: SQL) {
         started: count(issues.startedAt),
       })
       .from(issues)
-      .where(and(where, isNull(issues.archivedAt)))
+      .where(where)
       .get(),
   );
 }

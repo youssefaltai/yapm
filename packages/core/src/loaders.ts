@@ -98,7 +98,7 @@ export function createLoaders(db: HubDb) {
           .all(),
       "projectId",
     ),
-    /** Unarchived issue counts per project, one row each (none when it has no issues). */
+    /** Issue counts per project, archived ones included, one row each (none when it has no issues). */
     issueCountsByProject: groupBy(
       async (ids) =>
         (
@@ -111,7 +111,7 @@ export function createLoaders(db: HubDb) {
               started: count(issues.startedAt),
             })
             .from(issues)
-            .where(and(inArray(issues.projectId, ids), isNull(issues.archivedAt)))
+            .where(inArray(issues.projectId, ids))
             .groupBy(issues.projectId)
             .all()
         ).map((row) => ({ ...row, projectId: row.projectId ?? "" })),

@@ -484,7 +484,11 @@ export const notifications = sqliteTable(
     dispatchedAt: integer("dispatched_at", { mode: "number" }),
     ...timestamps,
   },
-  (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("notifications_user_idx").on(t.userId, t.createdAt),
+    // The dispatcher sweeps these; they're few, so the sweep stays cheap however many are done.
+    index("notifications_undispatched_idx").on(t.createdAt).where(sql`${t.dispatchedAt} is null`),
+  ],
 );
 
 /** Who follows an issue: they're notified of its comments and status changes. */

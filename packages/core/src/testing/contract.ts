@@ -96,6 +96,8 @@ export interface ContractOptions {
   liveLog?: unknown[];
   /** Database statements run so far, where the adapter can count them (Node can). */
   queryCount?: () => number;
+  /** Runs the scheduler's tick at `at`, as the platform's timer would. */
+  tick: (at: number) => Promise<void>;
 }
 
 /** A hex colour with no visible hue. */
@@ -107,7 +109,7 @@ export const neutral = (hex: string) => {
 export function hubContract(
   platform: string,
   makeFetch: () => Promise<FetchLike>,
-  options: ContractOptions = {},
+  options: ContractOptions,
 ) {
   describe(`hub contract (${platform})`, () => {
     let client: TestClient;
@@ -1276,8 +1278,18 @@ export function hubContract(
           },
           token: ceoToken,
         });
-        for (let i = 0; i < 100 && !outbox.length; i++) await new Promise((r) => setTimeout(r, 20));
-        const sent = outbox[0];
+        // Recent news from before the phone subscribed goes out too; find the ask.
+        const ask = async () => {
+          for (const r of outbox) {
+            const payload = await receiver.decrypt(new Uint8Array(await r.clone().arrayBuffer()));
+            if ((payload as { body?: string }).body === "Buy running shoes") return r;
+          }
+        };
+        let sent = await ask();
+        for (let i = 0; i < 100 && !sent; i++) {
+          await new Promise((r) => setTimeout(r, 20));
+          sent = await ask();
+        }
         expect(sent?.url).toBe(receiver.endpoint);
         expect(sent?.headers.get("content-encoding")).toBe("aes128gcm");
         expect(sent?.headers.get("urgency")).toBe("high");
@@ -1665,6 +1677,8 @@ export function hubContract(
         { kind: "work", status: "stopped", stopReason: "Wrong race, pause this", logCount: 0 },
         { kind: "work", status: "completed", stopReason: null, logCount: 1 },
         { kind: "decision", status: "completed", stopReason: null, logCount: 0 },
+        // The failed decision's one retry, cleared with the queue.
+        { kind: "decision", status: "canceled", stopReason: "Not needed", logCount: 0 },
         { kind: "decision", status: "failed", stopReason: null, logCount: 1 },
       ]);
       const transcript = await gql<{
@@ -4464,14 +4478,12 @@ export function hubContract(
       const lost = await enrolBox();
       const token = await start(lost);
       expect(await acts(token)).toBe(true);
-      // The machine stops checking in; the next claim fails its run as lost.
+      // The machine stops checking in; the next tick fails its run as lost.
       const later = Date.now() + 4 * 60 * 1000;
       const clock = vi.spyOn(Date, "now").mockReturnValue(later);
       try {
-        const other = await enrolBox();
-        await client.request("/api/runner/claim", { method: "POST", json: {}, token: other.token });
+        await options.tick(later);
         expect(await acts(token)).toBe(false);
-        await revoke(other.id);
       } finally {
         clock.mockRestore();
       }
@@ -5084,6 +5096,253 @@ export function hubContract(
       await post("atRisk");
       await post();
       expect(await health()).toBe("atRisk");
+    });
+
+    describe("waking agents reliably", () => {
+      type Claim = {
+        run: { id: string; kind: string; modelTier: string; sessionId: string | null };
+        agent: { name: string };
+      };
+      type RunRow = {
+        id: string;
+        kind: string;
+        status: string;
+        modelTier: string;
+        routeRule: string | null;
+        notBefore: string | null;
+        queuedReason: string | null;
+        trigger: { retryOf?: string; notes?: unknown[] } | null;
+      };
+      const claim = async (token: string) => {
+        const response = await client.request("/api/runner/claim", {
+          method: "POST",
+          json: {},
+          token,
+        });
+        const text = await response.text();
+        return { status: response.status, body: (text ? JSON.parse(text) : null) as Claim };
+      };
+      /** Scout's next run on the machine; others who heard the same news let it be. */
+      const next = async (token: string): Promise<Awaited<ReturnType<typeof claim>>> => {
+        const claimed = await claim(token);
+        if (claimed.status !== 200 || claimed.body.agent.name === "Scout") return claimed;
+        await complete(token, claimed.body.run.id, {
+          status: "completed",
+          result: { action: "ignore", reason: "Not mine" },
+        });
+        return next(token);
+      };
+      const complete = (token: string, id: string, json: unknown) =>
+        client.json(`/api/runner/runs/${id}/complete`, { method: "POST", json, token });
+      const runsOf = async (filter: Record<string, unknown>) =>
+        (
+          await client.graphql<{ runs: { nodes: RunRow[] } }>(
+            "query($f: RunFilter) { runs(filter: $f) { nodes { id kind status modelTier routeRule notBefore queuedReason trigger } } }",
+            { f: filter },
+          )
+        ).data?.runs.nodes ?? [];
+      const startWork = (agentId: string, issueId?: string) =>
+        client.graphql(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+          { input: { agentId, goal: "Scout the pass", ...(issueId ? { issueId } : {}) } },
+        );
+      const newIssue = async (title: string, assigneeId?: string) => {
+        const made = await client.graphql<{ issueCreate: { issue: { id: string } } }>(
+          "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id } } }",
+          { input: { teamId, title, ...(assigneeId ? { assigneeId } : {}) } },
+        );
+        return made.data?.issueCreate.issue.id ?? "";
+      };
+      const comment = (issueId: string, body: string) =>
+        client.graphql(
+          "mutation($id: String!, $b: String!) { commentCreate(input: { issueId: $id, body: $b }) { success } }",
+          { id: issueId, b: body },
+        );
+      const hire = async (name: string) =>
+        (
+          await client.graphql<{ agentHire: { user: { id: string } } }>(
+            "mutation($n: String!) { agentHire(input: { name: $n }) { user { id } } }",
+            { n: name },
+          )
+        ).data?.agentHire.user.id ?? "";
+      /** Runs `action` as if `ms` had passed. */
+      const later = async <T>(ms: number, action: (at: number) => Promise<T>) => {
+        const at = Date.now() + ms;
+        const clock = vi.spyOn(Date, "now").mockReturnValue(at);
+        try {
+          return await action(at);
+        } finally {
+          clock.mockRestore();
+        }
+      };
+
+      it("wakes agents on the next tick for notifications a request didn't get to", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const ids = [];
+        for (let i = 0; i < 12; i++) ids.push(await newIssue(`Ridge ${i}`));
+        await client.graphql(
+          "mutation($ids: [String!]!, $a: String) { issueBatchUpdate(ids: $ids, input: { assigneeId: $a }) { success } }",
+          { ids, a: scout.id },
+        );
+        const decisions = async () =>
+          (await runsOf({ agentId: scout.id, kind: "decision", status: ["queued"] })).length;
+        // One request wakes a bounded number; the rest wait for the tick rather than being lost.
+        expect(await decisions()).toBeLessThan(12);
+        await options.tick(Date.now());
+        expect(await decisions()).toBe(12);
+        await clearRuns();
+      });
+
+      it("retries a failed decision once, after a pause", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const box = await enrolBox();
+        const issue = await newIssue("Map the creek", scout.id);
+        const first = await next(box.token);
+        expect(first.body.run.kind).toBe("decision");
+        await complete(box.token, first.body.run.id, { status: "failed", error: "Usage limit" });
+        expect((await next(box.token)).status).toBe(204);
+        const retry = await later(2 * 60_000, () => next(box.token));
+        expect(retry.body.run.kind).toBe("decision");
+        await later(2 * 60_000, () =>
+          complete(box.token, retry.body.run.id, { status: "failed", error: "Again" }),
+        );
+        expect((await later(4 * 60_000, () => next(box.token))).status).toBe(204);
+        const runs = await runsOf({ agentId: scout.id, issueId: issue });
+        expect(runs.map((r) => r.status)).toEqual(["failed", "failed"]);
+        expect(runs.find((r) => r.id === retry.body.run.id)?.trigger?.retryOf).toBe(
+          first.body.run.id,
+        );
+        await revoke(box.id);
+      });
+
+      it("fails lost runs on the tick, not on claims, and retries them a tier up", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const box = await enrolBox();
+        const issue = await newIssue("Cross the pass");
+        await startWork(scout.id, issue);
+        const run = (await next(box.token)).body.run;
+        expect(run.modelTier).toBe("standard");
+        await later(4 * 60_000, async (at) => {
+          const other = await enrolBox();
+          expect((await next(other.token)).status).toBe(204);
+          expect((await runsOf({ agentId: scout.id, issueId: issue }))[0]?.status).toBe("running");
+          await options.tick(at);
+          await revoke(other.id);
+        });
+        const runs = await runsOf({ agentId: scout.id, issueId: issue });
+        expect(runs.find((r) => r.id === run.id)?.status).toBe("failed");
+        expect(runs.find((r) => r.id !== run.id)).toMatchObject({
+          kind: "work",
+          status: "queued",
+          modelTier: "top",
+          routeRule: "retry",
+          trigger: { retryOf: run.id },
+        });
+        await clearRuns();
+        await revoke(box.id);
+      });
+
+      it("holds a comment during work for a decision once the work ends", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const box = await enrolBox();
+        const issue = await newIssue("Pack for the summit", scout.id);
+        expect((await next(box.token)).body.run.kind).toBe("decision");
+        await clearRuns();
+        await startWork(scout.id, issue);
+        const work = (await next(box.token)).body.run;
+        expect(work.kind).toBe("work");
+        await comment(issue, "Bring the ice axe");
+        expect(
+          await runsOf({ agentId: scout.id, issueId: issue, kind: "decision", status: ["queued"] }),
+        ).toHaveLength(1);
+        expect((await next(box.token)).status).toBe(204);
+        await complete(box.token, work.id, {
+          status: "completed",
+          result: { outcome: "done", summary: "Packed." },
+        });
+        expect((await next(box.token)).body.run.kind).toBe("decision");
+        await clearRuns();
+        await revoke(box.id);
+      });
+
+      it("claims a runnable run past any number that can't run here", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const box = await enrolBox();
+        const retiring = await hire("Drifter");
+        const faraway = await hire("Lookout");
+        await client.graphql(
+          'mutation($id: String!) { userUpdate(id: $id, input: { runnerTags: ["far-mac"] }) { success } }',
+          { id: faraway },
+        );
+        for (let i = 0; i < 26; i++) {
+          await startWork(retiring);
+          await startWork(faraway);
+        }
+        await client.graphql("mutation($id: String!) { agentRetire(id: $id) { success } }", {
+          id: retiring,
+        });
+        // Retiring an agent cancels what it had queued.
+        const left = await runsOf({ agentId: retiring });
+        expect(new Set(left.map((r) => r.status))).toEqual(new Set(["canceled"]));
+        await startWork(scout.id);
+        const claimed = await next(box.token);
+        expect(claimed.body.agent.name).toBe("Scout");
+        await clearRuns();
+        await revoke(box.id);
+      });
+
+      it("waits for an exhausted plan to reset", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const machines = await client.graphql<{ machines: { id: string; status: string }[] }>(
+          "{ machines { id status } }",
+        );
+        for (const m of machines.data?.machines ?? [])
+          if (m.status === "active") await revoke(m.id);
+        const resetsAt = Date.now() + 60 * 60_000;
+        const box = await enrolBox({
+          planUsage: {
+            observedAt: Date.now(),
+            source: "usage",
+            available: true,
+            limits: [{ kind: "five_hour", utilization: 100, resetsAt }],
+          },
+        });
+        await startWork(scout.id);
+        expect((await next(box.token)).status).toBe(204);
+        const [queued] = await runsOf({ agentId: scout.id, status: ["queued"] });
+        expect(queued?.queuedReason).toContain("Claude's usage limit resets");
+        const claimed = await later(resetsAt - Date.now() + 1000, () => next(box.token));
+        expect(claimed.body.run.id).toBe(queued?.id);
+        await clearRuns();
+        await revoke(box.id);
+      });
+
+      it("starts a paused session afresh elsewhere when its machine is removed", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const home = await enrolBox();
+        const issue = await newIssue("Name the peak");
+        await startWork(scout.id, issue);
+        const work = (await next(home.token)).body.run;
+        await complete(home.token, work.id, {
+          status: "completed",
+          sessionId: "session-peak",
+          result: { outcome: "needs_input", question: "Which name?" },
+        });
+        await comment(issue, "Call it Kestrel");
+        await revoke(home.id);
+        const away = await enrolBox();
+        const resumed = await next(away.token);
+        expect(resumed.body.run).toMatchObject({ kind: "work", sessionId: null });
+        await clearRuns();
+        await revoke(away.id);
+      });
     });
   });
 }

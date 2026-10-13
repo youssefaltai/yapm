@@ -6,6 +6,7 @@ import { migrate } from "drizzle-orm/libsql/migrator";
 import { describe, expect, it } from "vitest";
 import { commit, type HubDb } from "../src/db.js";
 import type { HubEvent } from "../src/realtime.js";
+import { dispatch } from "../src/runs/service.js";
 import { tick } from "../src/scheduler.js";
 import { seedCompany } from "../src/seed.js";
 import { syncCycles } from "../src/services/cycles.js";
@@ -429,6 +430,9 @@ describe("tick", () => {
       config: { platform: "node" as const, version: "test" },
       realtime: { connect: () => new Response(), publish: (e: HubEvent) => void events.push(e) },
     };
+    // The requests that made these issues woke whoever they concern.
+    await dispatch(deps, start);
+    events.length = 0;
 
     await tick(deps, start + 10 * DAY);
     expect(events).toEqual([]);

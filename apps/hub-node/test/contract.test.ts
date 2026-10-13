@@ -1,3 +1,4 @@
+import { type HubDeps, tick } from "@yapm/core";
 import { hubContract } from "@yapm/core/testing";
 import { createNodeApp } from "../src/app.js";
 import { openDatabase } from "../src/db.js";
@@ -12,6 +13,7 @@ const pushOutbox: Request[] = [];
 
 // Statements the hub runs, to check list queries don't grow with the list.
 let queries = 0;
+let deps: HubDeps;
 const recordPush: typeof fetch = async (input, init) => {
   const request = new Request(input, init);
   if (new URL(request.url).hostname !== "fcm.googleapis.com") return fetch(request);
@@ -29,7 +31,7 @@ hubContract(
       return execute(...args);
     }) as typeof client.execute;
     const realtime = createNodeRealtime();
-    const app = createNodeApp({
+    deps = {
       db,
       config: { platform: "node", version: "test", secret: "test secret" },
       realtime: {
@@ -40,8 +42,9 @@ hubContract(
         },
       },
       fetch: recordPush,
-    });
+    };
+    const app = createNodeApp(deps);
     return async (request) => app.fetch(request);
   },
-  { pushOutbox, liveLog, queryCount: () => queries },
+  { pushOutbox, liveLog, queryCount: () => queries, tick: (at) => tick(deps, at) },
 );

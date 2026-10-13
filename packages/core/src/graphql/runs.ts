@@ -156,7 +156,7 @@ Run.implement({
     queuedReason: t.string({
       nullable: true,
       description:
-        "Why a queued run hasn't started: no machine online, or none with the agent's tags or signed in to the run's provider. Null otherwise.",
+        "Why a queued run hasn't started: no machine online, or none with the agent's tags, signed in to the run's provider or with room on its plan. Null otherwise.",
       resolve: async (r, _args, ctx) => {
         if (r.status !== "queued" || (r.notBefore ?? 0) > now(ctx)) return null;
         const agent = await ctx.loaders.user.load(r.agentId);
@@ -168,7 +168,7 @@ Run.implement({
             now(ctx) - m.lastSeenAt < ONLINE_WINDOW &&
             (!r.machineId || m.id === r.machineId),
         );
-        return waitingFor(agent, r.provider ?? "anthropic", online);
+        return waitingFor(agent, r.provider ?? "anthropic", online, now(ctx));
       },
     }),
     createdAt: t.field({ type: "DateTime", resolve: (r) => r.createdAt }),

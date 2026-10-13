@@ -3,7 +3,7 @@ import { gte } from "drizzle-orm";
 import type { HubDeps } from "./context.js";
 import { deliverPush } from "./push.js";
 import { announce } from "./realtime.js";
-import { dispatch, failLostRuns } from "./runs/service.js";
+import { DISPATCH_BATCH, dispatch, failLostRuns } from "./runs/service.js";
 import { syncCycles } from "./services/cycles.js";
 import { autoArchive, checkSlas } from "./services/maintenance.js";
 import { snapshotMetrics } from "./services/metrics.js";
@@ -36,13 +36,12 @@ export async function tick(deps: HubDeps, at = deps.now?.() ?? Date.now()) {
   } catch (error) {
     console.error("Lost-run check failed", error);
   }
-  let notified = false;
   for (const [name, step] of [
     ["Recurring issues", () => createRecurringIssues(deps, at)],
     ["SLA check", () => checkSlas(deps.db, at)],
   ] as const) {
     try {
-      if (await step()) notified = true;
+      await step();
     } catch (error) {
       console.error(`${name} failed`, error);
     }
@@ -51,13 +50,14 @@ export async function tick(deps: HubDeps, at = deps.now?.() ?? Date.now()) {
   if (lost || (await changedSince(deps, at))) {
     await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
   }
-  // New issues and breaches wake their assignees and reach the owner's phone like any change.
-  if (notified) {
-    await dispatch(deps, at);
-    await deliverPush(deps, at, deps.config.origin ?? "").catch((error) =>
-      console.error("Push failed", error),
-    );
-  }
+  // New issues, breaches and anything a request didn't get to wake their agents and reach
+  // the owner's phone like any change.
+  await dispatch(deps, at, 10 * DISPATCH_BATCH).catch((error) =>
+    console.error("Dispatch failed", error),
+  );
+  await deliverPush(deps, at, deps.config.origin ?? "").catch((error) =>
+    console.error("Push failed", error),
+  );
 }
 
 async function changedSince(deps: HubDeps, at: number) {

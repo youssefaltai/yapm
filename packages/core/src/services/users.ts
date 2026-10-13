@@ -1,4 +1,4 @@
-import { apiTokens, teamMemberships, users } from "@yapm/schema";
+import { apiTokens, runs, teamMemberships, users } from "@yapm/schema";
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
@@ -220,6 +220,11 @@ export async function retireAgent(ctx: Ctx, id: string): Promise<string> {
       .set({ revokedAt: now })
       .where(and(eq(apiTokens.userId, id), isNull(apiTokens.revokedAt))),
     db.delete(teamMemberships).where(eq(teamMemberships.userId, id)),
+    // Nobody will run what it had queued.
+    db
+      .update(runs)
+      .set({ status: "canceled", updatedAt: now })
+      .where(and(eq(runs.agentId, id), eq(runs.status, "queued"))),
     // Their reports move up to their manager.
     db
       .update(users)

@@ -14,6 +14,7 @@ import {
   type AnyColumn,
   and,
   asc,
+  desc,
   eq,
   gte,
   inArray,
@@ -239,29 +240,29 @@ export async function metricsFor(
 
 /**
  * After each local day ends, keeps its counts for every scope that had activity, so trends
- * survive and retros can compare weeks. Idempotent: a day is taken once.
+ * survive and retros can compare weeks. Idempotent: a day is taken once, and days the hub
+ * missed are filled in, up to 30 back.
  */
 export async function snapshotMetrics(db: HubDb, at: number) {
   const timeZone = await companyTimeZone(db);
   const today = localDate(at, timeZone);
-  const day = addDays(today, -1);
-  const taken = await db
-    .select({ id: metricSnapshots.id })
+  const last = await db
+    .select({ date: metricSnapshots.date })
     .from(metricSnapshots)
-    .where(
-      and(
-        eq(metricSnapshots.scope, "company"),
-        eq(metricSnapshots.scopeId, ""),
-        eq(metricSnapshots.date, day),
-      ),
-    )
+    .where(and(eq(metricSnapshots.scope, "company"), eq(metricSnapshots.scopeId, "")))
+    .orderBy(desc(metricSnapshots.date))
     .get();
-  if (taken) return false;
-  const all = await countAll(db, zonedTime(day, timeZone), zonedTime(today, timeZone));
-  const rows = [...all].map(([key, counts]) => {
-    const [scope, scopeId = ""] = key.split(":") as [MetricScope, string];
-    return { id: newId(), date: day, scope, scopeId, counts, createdAt: at };
-  });
+  let day = last ? addDays(last.date, 1) : addDays(today, -1);
+  if (day < addDays(today, -30)) day = addDays(today, -30);
+  if (day >= today) return false;
+  const rows = [];
+  for (; day < today; day = addDays(day, 1)) {
+    const all = await countAll(db, zonedTime(day, timeZone), zonedTime(addDays(day, 1), timeZone));
+    for (const [key, counts] of all) {
+      const [scope, scopeId = ""] = key.split(":") as [MetricScope, string];
+      rows.push({ id: newId(), date: day, scope, scopeId, counts, createdAt: at });
+    }
+  }
   await commit(db, insertRows(db, metricSnapshots, rows));
   return true;
 }

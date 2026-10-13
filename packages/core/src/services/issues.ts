@@ -208,6 +208,43 @@ export function slaDeadline(
   return hours && hours > 0 ? startedAt + hours * HOUR : null;
 }
 
+/**
+ * Moves the SLA deadlines of a team's open issues to new SLA hours, counted from when each
+ * issue's SLA first started (or now), with one statement per priority.
+ */
+export function retimeSlas(
+  db: HubDb,
+  teamId: string,
+  slaHours: Record<string, number> | null,
+  now: number,
+): WriteOp[] {
+  const start = sql`coalesce(${issues.slaStartedAt}, ${now})`;
+  return [0, 1, 2, 3, 4].map((priority) => {
+    const hours = slaDeadline({ slaHours }, priority, 0);
+    const deadline = sql`${start} + ${hours}`;
+    return db
+      .update(issues)
+      .set(
+        hours
+          ? {
+              slaStartedAt: start,
+              slaBreachesAt: deadline,
+              slaBreachedAt: sql`case when ${deadline} <= ${now} then ${issues.slaBreachedAt} end`,
+            }
+          : { slaStartedAt: null, slaBreachesAt: null, slaBreachedAt: null },
+      )
+      .where(
+        and(
+          eq(issues.teamId, teamId),
+          eq(issues.priority, priority),
+          isNull(issues.completedAt),
+          isNull(issues.canceledAt),
+          isNull(issues.archivedAt),
+        ),
+      );
+  });
+}
+
 /** Timestamps for a new issue created directly in a state. */
 function stateTimestamps(type: WorkflowStateType, now: number) {
   return {

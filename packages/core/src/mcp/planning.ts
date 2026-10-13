@@ -72,7 +72,7 @@ async function projectSummary(c: McpContext, p: ProjectRow) {
         canceled: count(issues.canceledAt),
       })
       .from(issues)
-      .where(and(eq(issues.projectId, p.id), isNull(issues.archivedAt)))
+      .where(eq(issues.projectId, p.id))
       .get(),
     c.db
       .select({ health: projectUpdates.health })

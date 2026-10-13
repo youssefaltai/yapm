@@ -1,5 +1,5 @@
 import { customViews, cycles, issues, workspaces } from "@yapm/schema";
-import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, or } from "drizzle-orm";
 import { coerceInputValue, type GraphQLInputType, type GraphQLResolveInfo } from "graphql";
 import { createGraphQLError } from "graphql-yoga";
 import { badRequest } from "../errors.js";
@@ -64,7 +64,7 @@ Cycle.implement({
             canceled: count(issues.canceledAt),
           })
           .from(issues)
-          .where(and(eq(issues.cycleId, c.id), isNull(issues.archivedAt)))
+          .where(eq(issues.cycleId, c.id))
           .get();
         const scope = (row?.total ?? 0) - (row?.canceled ?? 0);
         return scope > 0 ? (row?.completed ?? 0) / scope : 0;

@@ -367,7 +367,7 @@ export function IssuesView({
           )}
         </div>
       </div>
-      {selected.size > 0 && (
+      {selectedIssues.length > 0 && (
         <BulkBar issues={selectedIssues} onClear={() => setSelected(new Set())} />
       )}
     </div>
@@ -521,7 +521,7 @@ function IssueRow({
         checked={selected}
         onClick={(e) => e.stopPropagation()}
         onChange={onToggle}
-        className={`size-3.5 shrink-0 accent-accent ${selected ? "" : "opacity-0 group-hover:opacity-100"} max-md:hidden`}
+        className={`size-3.5 shrink-0 accent-accent ${selected ? "" : "opacity-0 group-hover:opacity-100 max-md:opacity-100"}`}
       />
       <PriorityIcon priority={issue.priority} />
       <span className="w-14 shrink-0 text-faint max-sm:hidden">{issue.identifier}</span>

@@ -190,7 +190,8 @@ export function hubContract(
         "/api/setup/options",
         {
           method: "POST",
-          json: { companyName: "Youssef Inc", ownerName: "Youssef" },
+          // The browser's time zone, so cycles and rituals follow the owner's clock.
+          json: { companyName: "Youssef Inc", ownerName: "Youssef", timezone: "Etc/UTC" },
         },
       );
       expect(options.status).toBe(200);
@@ -220,7 +221,7 @@ export function hubContract(
 
     it("starts with the owner, the CEO and one team named after the company", async () => {
       const result = await client.graphql<{
-        organization: { name: string; urlKey: string };
+        organization: { name: string; urlKey: string; timezone: string };
         viewer: { kind: string; isMe: boolean; directReports: { nodes: { name: string }[] } };
         teams: { nodes: { key: string; name: string; members: { nodes: { name: string }[] } }[] };
         issueLabels: { nodes: unknown[] };
@@ -233,7 +234,7 @@ export function hubContract(
           }[];
         };
       }>(`{
-        organization { name urlKey }
+        organization { name urlKey timezone }
         viewer { kind isMe directReports { nodes { name } } }
         teams { nodes { key name members { nodes { name } } } }
         issueLabels { nodes { id } }
@@ -242,7 +243,11 @@ export function hubContract(
       expect(result.errors).toBeUndefined();
       const data = result.data;
       if (!data) throw new Error("no data");
-      expect(data.organization).toEqual({ name: "Youssef Inc", urlKey: "youssef-inc" });
+      expect(data.organization).toEqual({
+        name: "Youssef Inc",
+        urlKey: "youssef-inc",
+        timezone: "Etc/UTC",
+      });
       expect(data.viewer).toMatchObject({
         kind: "owner",
         isMe: true,

@@ -194,6 +194,63 @@ test.describe
       expect(sent).toHaveLength(2);
     });
 
+    test("leaves keys to what has focus: text, buttons and open menus", async () => {
+      const tariff = page.getByRole("button", { name: /Find a cheaper tariff/ });
+      await page.keyboard.press("Escape");
+      await expect(page.getByText(/\d+ selected/)).toBeHidden();
+      // Cmd+A in a text box selects its text, not every issue.
+      await page.keyboard.press("Control+k");
+      const search = page.getByPlaceholder("Type a command or search…");
+      await search.fill("tariff");
+      await search.press("ControlOrMeta+a");
+      await search.pressSequentially("bill");
+      await expect(search).toHaveValue("bill");
+      await page.keyboard.press("Escape");
+      await expect(page.getByText(/\d+ selected/)).toBeHidden();
+
+      // Enter on a focused button presses it, rather than opening the hovered issue.
+      await tariff.hover();
+      await page.getByRole("button", { name: "Filter" }).focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("option", { name: "Status" })).toBeVisible();
+      await expect(page).toHaveURL(/\/team\/PF$/);
+      await page.keyboard.press("Escape");
+
+      // The status menu's number hints pick a status.
+      await page.mouse.move(0, 0);
+      await tariff.hover();
+      await page.keyboard.press("s");
+      await page.keyboard.press("3");
+      await expect(
+        page
+          .getByRole("region", { name: "Todo" })
+          .getByRole("button", { name: /Find a cheaper tariff/ }),
+      ).toBeVisible();
+      await page.keyboard.press("s");
+      await page.keyboard.press("2");
+      await expect(
+        page
+          .getByRole("region", { name: "Backlog" })
+          .getByRole("button", { name: /Find a cheaper tariff/ }),
+      ).toBeVisible();
+
+      // A selection the filter hides leaves no empty bulk bar behind.
+      await tariff.hover();
+      await page.keyboard.press("x");
+      await expect(page.getByText("1 selected")).toBeVisible();
+      await page.getByRole("button", { name: "Filter" }).click();
+      await page.getByRole("option", { name: "Status" }).click();
+      await page.getByRole("option", { name: "In Progress" }).click();
+      await expect(tariff).toBeHidden();
+      await expect(page.getByText(/\d+ selected/)).toBeHidden();
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Remove Status filter" }).click();
+      await expect(page.getByText("1 selected")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByText("1 selected")).toBeHidden();
+    });
+
     test("suggests what to ask the CEO from the work at hand", async () => {
       await page.reload();
       await page.getByRole("link", { name: "Ask CEO", exact: true }).click();
@@ -217,6 +274,22 @@ test.describe
       await page.getByLabel("Leave a comment").fill("Paid through the bank app.");
       await page.getByRole("button", { name: "Comment", exact: true }).click();
       await expect(page.getByText("Paid through the bank app.")).toBeVisible();
+
+      // A failed edit keeps the editor and the text, to try again.
+      await page.route("**/graphql", (route) =>
+        (route.request().postData() ?? "").includes("commentUpdate")
+          ? route.fulfill({ json: { errors: [{ message: "The hub is unreachable" }] } })
+          : route.fallback(),
+      );
+      await page.getByText("Paid through the bank app.").hover();
+      await page.getByRole("button", { name: "Edit", exact: true }).click();
+      await page.getByLabel("Edit comment").pressSequentially("Receipt saved. ");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByRole("status")).toContainText("The hub is unreachable");
+      await expect(page.getByLabel("Edit comment")).toContainText("Receipt saved.");
+      await page.unroute("**/graphql");
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(page.getByLabel("Edit comment")).toBeHidden();
 
       await page.getByRole("button", { name: "+ Add sub-issue" }).click();
       await page
@@ -389,6 +462,10 @@ test.describe
         hasText: "the bill is paid, receipt attached.",
       });
       await expect(agentComment.locator("[data-mention=user]")).toHaveText(/Youssef/);
+      // Escape closes the issue and stays in the Inbox.
+      await page.keyboard.press("Escape");
+      await expect(page.getByText("Select a notification")).toBeVisible();
+      await expect(page).toHaveURL(/\/inbox$/);
       await page.getByRole("button", { name: "Mark all read" }).click();
       await expect(list.getByRole("img", { name: "Unread" })).toHaveCount(0);
 
@@ -596,6 +673,16 @@ test.describe
       await page.waitForTimeout(1000);
       const doc = await mcp("list_documents", { query: "payment" });
       expect(doc.documents[0]).toMatchObject({ title: "Payment plan", project: "Pay off the car" });
+      // Leaving right after typing, by closing the page or going elsewhere, keeps the edit.
+      await page.keyboard.type(" until spring");
+      await page.reload();
+      await expect(page.getByLabel("Content")).toContainText("200 extra a month until spring");
+      await page.getByLabel("Content").locator("li").click();
+      await page.keyboard.press("End");
+      await page.keyboard.type(" or sooner");
+      await page.getByRole("link", { name: /Inbox/ }).click();
+      await page.goBack();
+      await expect(page.getByLabel("Content")).toContainText("until spring or sooner");
 
       await page.getByRole("link", { name: /Inbox/ }).click();
       await expect(
@@ -1468,5 +1555,40 @@ test.describe
       await page.locator("dt:text-is('Assignee') + dd").getByRole("button").click();
       await page.getByPlaceholder("Assign PF-1 to…").fill("Zz 50");
       await expect(page.getByRole("option", { name: /Zz 50/ })).toBeVisible();
+    });
+
+    test("selects issues and rethinks a rejection on the phone", async () => {
+      await page.goto("/team/PF");
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
+      // Phones can't hover, so the checkbox shows without it.
+      await page.mouse.move(0, 0);
+      await expect(page.getByRole("checkbox", { name: "Select PF-1" })).toHaveCSS("opacity", "1");
+      await page.getByRole("checkbox", { name: "Select PF-1" }).click();
+      await expect(page.getByText("1 selected")).toBeVisible();
+      await page.keyboard.press("Escape");
+
+      const asked = await mcp("create_request", {
+        title: "Delete last year's statements",
+        action: "tool:Bash",
+        resource: "rm -r statements/2025",
+        reason: "They're archived at the bank.",
+      });
+      await page.goto(new URL(asked.url).pathname);
+      await page.getByRole("button", { name: "Reject", exact: true }).click();
+      await page.getByLabel("Why not?").pressSequentially("Keep them");
+      await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page.getByRole("button", { name: "Reject", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeDisabled();
+      await page.setViewportSize({ width: 1280, height: 720 });
+    });
+
+    test("returns to sign-in when the session expires", async () => {
+      await page.context().clearCookies();
+      await page.getByRole("link", { name: "Company" }).click();
+      await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+      await page.getByRole("button", { name: "Sign in with passkey" }).click();
+      await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
     });
   });

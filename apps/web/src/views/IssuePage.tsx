@@ -137,7 +137,14 @@ const ISSUE_QUERY = `query($id: String!) { issue(id: $id) {
   runs(first: 20) { nodes { ${RUN_SUMMARY} } }
 } } ${ISSUE_FIELDS}`;
 
-export function IssuePage({ identifier }: { identifier: string }) {
+export function IssuePage({
+  identifier,
+  onClose = () => history.back(),
+}: {
+  identifier: string;
+  /** Where Escape goes: back to where the issue was opened from, unless a pane says otherwise. */
+  onClose?: () => void;
+}) {
   const { data, error } = useQuery<{ issue: IssueDetail }>(ISSUE_QUERY, { id: identifier });
   const feedback = useQuery<{ feedbacks: IssueFeedback[] }>(FEEDBACK_QUERY, { id: identifier });
   const issue = data?.issue;
@@ -160,7 +167,7 @@ export function IssuePage({ identifier }: { identifier: string }) {
     e: open(estimateMenu),
     "shift+p": () => issue && void projectMenu([issue]).then(openMenu),
     "shift+c": () => issue && void cycleMenu([issue]).then((spec) => spec && openMenu(spec)),
-    Escape: () => issue && navigate(paths.team(issue.team.key)),
+    Escape: onClose,
   });
 
   if (error) {
@@ -847,11 +854,13 @@ function CommentBody({
   const [text, setText] = useState(comment.body);
   async function saveEdit() {
     if (!text.trim()) return;
-    await mutate(
-      "mutation($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success } }",
-      { id: comment.id, body: text },
-    );
-    setEditing(false);
+    if (
+      await mutate(
+        "mutation($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success } }",
+        { id: comment.id, body: text },
+      )
+    )
+      setEditing(false);
   }
   const startEditing = () => {
     setText(comment.body);

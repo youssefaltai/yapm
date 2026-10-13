@@ -27,14 +27,21 @@ export function useStore<T>(store: Store<T>): T {
   return useSyncExternalStore(store.subscribe, store.get);
 }
 
-function isTyping(target: EventTarget | null) {
+/** Whether the key belongs to what has focus: text being typed, or a button Enter presses. */
+function isTyping(event: KeyboardEvent) {
+  const target = event.target;
   if (!(target instanceof HTMLElement)) return false;
+  if (["Enter", " "].includes(event.key) && target.matches("button, a[href], [role=button]"))
+    return true;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
+/** `mod` combos that work while typing or in a menu, like opening the command menu. */
+const GLOBAL = new Set(["mod+k"]);
+
 /**
  * Linear-style single-key shortcuts. Keys are like "c", "mod+k", "shift+?".
- * Plain keys are ignored while typing; `mod` combos work everywhere.
+ * They're ignored while typing or with a menu or modal open, except the `GLOBAL` ones.
  */
 export function useHotkeys(
   bindings: Record<string, (event: KeyboardEvent) => void>,
@@ -48,10 +55,10 @@ export function useHotkeys(
       // The editor already handled it, like Cmd+B for bold or Cmd+K for a link.
       if (event.defaultPrevented) return;
       const mod = event.metaKey || event.ctrlKey;
-      if (!mod && (isTyping(event.target) || menuStore.get() || modalOpen())) return;
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
       const shift = event.shiftKey && /^[a-z]$/i.test(event.key) ? "shift+" : "";
       const combo = `${mod ? "mod+" : ""}${event.altKey ? "alt+" : ""}${shift}${key}`;
+      if (!GLOBAL.has(combo) && (isTyping(event) || menuStore.get() || modalOpen())) return;
       const handler = ref.current[combo];
       if (handler) {
         event.preventDefault();
@@ -479,6 +486,10 @@ function CommandMenu({ spec, depth }: { spec: MenuSpec; depth: number }) {
       menuStore.set(stack.length > 1 ? stack.slice(0, -1) : null);
     } else if (event.key === "Backspace" && !query && depth > 1) {
       menuStore.set((menuStore.get() ?? []).slice(0, -1));
+    } else if (/^\d$/.test(event.key) && !query && visible.some((i) => i.hint === event.key)) {
+      // Number hints pick directly, like the status menu's 1–7.
+      event.preventDefault();
+      void choose(visible.find((i) => i.hint === event.key));
     }
   }
 

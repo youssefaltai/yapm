@@ -133,10 +133,15 @@ export function DocumentPage({ id }: { id: string }) {
     }
   }, [doc]);
 
+  // The save waiting on a pause, run at once when leaving so the last edit isn't lost.
+  const pending = useRef<((keepalive?: boolean) => void) | null>(null);
   useEffect(() => {
+    pending.current = null;
     if (!loaded.current) return;
     if (title === saved.current.title && content === saved.current.content) return;
-    const timer = setTimeout(() => {
+    // Keepalive lets the request outlive a closing page, but only up to 64 KB, so only then.
+    const save = (keepalive = false) => {
+      pending.current = null;
       const input: Record<string, string> = {};
       if (title.trim() && title !== saved.current.title) input.title = title;
       if (content !== saved.current.content) input.content = content;
@@ -145,10 +150,21 @@ export function DocumentPage({ id }: { id: string }) {
       void mutate(
         "mutation($id: String!, $input: DocumentUpdateInput!) { documentUpdate(id: $id, input: $input) { success } }",
         { id, input },
+        { keepalive },
       );
-    }, 800);
+    };
+    pending.current = save;
+    const timer = setTimeout(() => save(), 800);
     return () => clearTimeout(timer);
   }, [title, content, id]);
+  useEffect(() => {
+    const flush = () => pending.current?.(true);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      pending.current?.();
+    };
+  }, []);
 
   if (error) return <p className="px-6 py-10 text-center text-muted">{error}</p>;
   if (!doc) return <PageSkeleton />;

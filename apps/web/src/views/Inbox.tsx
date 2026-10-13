@@ -286,7 +286,11 @@ export function InboxView() {
         ) : current?.request ? (
           <RequestPage key={current.request.id} id={current.request.id} />
         ) : current?.issue ? (
-          <IssuePage key={current.issue.identifier} identifier={current.issue.identifier} />
+          <IssuePage
+            key={current.issue.identifier}
+            identifier={current.issue.identifier}
+            onClose={() => setSelected(null)}
+          />
         ) : (
           items.length > 0 && (
             <EmptyState

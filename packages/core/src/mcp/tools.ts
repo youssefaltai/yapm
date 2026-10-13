@@ -152,12 +152,15 @@ async function resolveLabels(c: McpContext, teamId: string, refs: string[]) {
 }
 
 export async function resolveProject(c: McpContext, ref: string) {
-  const row = await c.db
+  const rows = await c.db
     .select()
     .from(projects)
     .where(or(eq(projects.id, ref), sql`lower(${projects.name}) = ${ref.toLowerCase()}`))
-    .get();
+    .all();
+  const row = rows.find((p) => p.id === ref) ?? rows[0];
   if (!row) throw new ToolError(`No project matches "${ref}". Use list_projects to see them.`);
+  if (rows.length > 1 && row.id !== ref)
+    throw new ToolError(`Several projects are called "${ref}"; give its id from list_projects.`);
   return row;
 }
 
@@ -306,7 +309,7 @@ async function issueDetail(c: McpContext, issue: IssueRow) {
 
 const issueFields = {
   title: { type: "string", description: "Issue title" },
-  description: { type: "string", description: "Markdown description" },
+  description: { type: ["string", "null"], description: "Markdown description" },
   assignee: { type: ["string", "null"], description: 'Member name, id, or "me"; null to unassign' },
   state: {
     type: "string",
@@ -320,6 +323,7 @@ const issueFields = {
   labels: {
     type: "array",
     items: { type: "string" },
+    maxItems: 90,
     description: "Label names or ids; replaces all labels",
   },
   parentId: {
@@ -357,8 +361,11 @@ async function issueInput(c: McpContext, args: Args, teamId: string) {
     input.projectId = args.project ? (await resolveProject(c, String(args.project))).id : null;
   if (args.milestone !== undefined) {
     const projectId =
-      (input.projectId as string | null | undefined) ??
-      (args.issueId ? (await requireIssue(c, String(args.issueId))).projectId : null);
+      "projectId" in input
+        ? (input.projectId as string | null)
+        : args.issueId
+          ? (await requireIssue(c, String(args.issueId))).projectId
+          : null;
     input.projectMilestoneId = args.milestone
       ? (await resolveMilestone(c, String(args.milestone), projectId ?? null)).id
       : null;
@@ -766,7 +773,7 @@ export const tools: Tool<McpContext>[] = [
         includeArchived: { type: "boolean" },
         orderBy: { type: "string", enum: ["createdAt", "updatedAt"] },
         limit: limitArg,
-        cursor: { type: "string", description: "nextCursor from a previous page" },
+        cursor: { type: ["string", "null"], description: "nextCursor from a previous page" },
       },
     },
     async run(args, c) {
@@ -785,10 +792,14 @@ export const tools: Tool<McpContext>[] = [
       if (args.state) {
         const s = String(args.state);
         and_.push({
-          or: [{ state: { name: { eq: s } } }, { state: { type: { eq: s.toLowerCase() } } }],
+          or: [
+            { state: { name: { eqIgnoreCase: s } } },
+            { state: { type: { eq: s.toLowerCase() } } },
+          ],
         });
       }
-      if (args.label) and_.push({ labels: { some: { name: { eq: String(args.label) } } } });
+      if (args.label)
+        and_.push({ labels: { some: { name: { eqIgnoreCase: String(args.label) } } } });
       if (args.priority !== undefined)
         and_.push({ priority: { eq: priority(args.priority) ?? 0 } });
       if (args.parentId)
@@ -915,7 +926,7 @@ export const tools: Tool<McpContext>[] = [
       properties: {
         issueId: { type: "string" },
         limit: limitArg,
-        cursor: { type: "string", description: "nextCursor from a previous page" },
+        cursor: { type: ["string", "null"], description: "nextCursor from a previous page" },
       },
       required: ["issueId"],
     },
@@ -1110,13 +1121,13 @@ export const tools: Tool<McpContext>[] = [
       properties: {
         user: { type: "string", description: 'Name, id or "me"' },
         name: { type: "string" },
-        title: { type: "string" },
+        title: { type: ["string", "null"] },
         charter: { type: "string" },
         lessons: {
           type: "string",
           description: "What the agent has learned, in markdown. Read on every run.",
         },
-        manager: { type: "string" },
+        manager: { type: ["string", "null"] },
         models: {
           type: ["object", "null"],
           description:
@@ -1135,10 +1146,10 @@ export const tools: Tool<McpContext>[] = [
       await c.act((s) =>
         updateUser(s, user.id, {
           ...(str(args.name) !== undefined ? { name: str(args.name) } : {}),
-          ...(str(args.title) !== undefined ? { title: str(args.title) } : {}),
+          ...(args.title !== undefined ? { title: str(args.title) ?? null } : {}),
           ...(str(args.charter) !== undefined ? { charter: str(args.charter) } : {}),
           ...(str(args.lessons) !== undefined ? { lessons: str(args.lessons) } : {}),
-          ...(manager ? { managerId: manager.id } : {}),
+          ...(args.manager !== undefined ? { managerId: manager?.id ?? null } : {}),
           ...(args.models !== undefined ? { models: args.models } : {}),
           reason: str(args.reason) ?? null,
         }),

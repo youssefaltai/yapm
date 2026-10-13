@@ -169,6 +169,7 @@ async function checkAssignee(db: HubDb, assigneeId: string) {
 
 async function checkLabels(db: HubDb, teamId: string, labelIds: string[]) {
   if (!labelIds.length) return;
+  if (labelIds.length > 90) throw badRequest("An issue takes at most 90 labels");
   const found = await db
     .select({ id: labels.id })
     .from(labels)

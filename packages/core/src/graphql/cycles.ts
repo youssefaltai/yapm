@@ -1,6 +1,8 @@
 import { customViews, cycles, issues, workspaces } from "@yapm/schema";
 import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
+import { coerceInputValue, type GraphQLInputType, type GraphQLResolveInfo } from "graphql";
 import { createGraphQLError } from "graphql-yoga";
+import { badRequest } from "../errors.js";
 import { activeCycle, requireCycle, updateCycle } from "../services/cycles.js";
 import { updateOrganization } from "../services/organization.js";
 import { canSeeView, createView, deleteView, requireView, updateView } from "../services/views.js";
@@ -270,6 +272,20 @@ const OrganizationUpdateInput = builder.inputType("OrganizationUpdateInput", {
   }),
 });
 
+/** A view's filter as `issues(filter:)` would take it, so a bad one is rejected, not ignored. */
+function issueFilter(info: GraphQLResolveInfo, value: unknown) {
+  if (value == null) return value;
+  return coerceInputValue(
+    value,
+    info.schema.getType("IssueFilter") as GraphQLInputType,
+    (path, _value, error) => {
+      throw badRequest(
+        `Invalid filter${path.length ? ` at ${path.join(".")}` : ""}: ${error.message}`,
+      );
+    },
+  ) as Record<string, unknown>;
+}
+
 builder.mutationFields((t) => ({
   cycleUpdate: t.field({
     type: CyclePayload,
@@ -297,8 +313,10 @@ builder.mutationFields((t) => ({
   customViewCreate: t.field({
     type: CustomViewPayload,
     args: { input: t.arg({ type: CustomViewCreateInput, required: true }) },
-    resolve: async (_root, args, ctx) => {
-      const id = await act(ctx, (s) => createView(s, args.input));
+    resolve: async (_root, args, ctx, info) => {
+      const id = await act(ctx, (s) =>
+        createView(s, { ...args.input, filterData: issueFilter(info, args.input.filterData) }),
+      );
       return { entity: await requireView(db(ctx), id) };
     },
   }),
@@ -308,8 +326,13 @@ builder.mutationFields((t) => ({
       id: t.arg.string({ required: true }),
       input: t.arg({ type: CustomViewUpdateInput, required: true }),
     },
-    resolve: async (_root, args, ctx) => {
-      const id = await act(ctx, (s) => updateView(s, args.id, args.input));
+    resolve: async (_root, args, ctx, info) => {
+      const id = await act(ctx, (s) =>
+        updateView(s, args.id, {
+          ...args.input,
+          filterData: issueFilter(info, args.input.filterData),
+        }),
+      );
       return { entity: await requireView(db(ctx), id) };
     },
   }),

@@ -17,15 +17,25 @@ export class ApiError extends Error {
 /** Identifies this tab, so live updates can skip the echo of its own changes. */
 export const CLIENT_ID = crypto.randomUUID();
 
-export async function api<T>(path: string, body?: unknown): Promise<T> {
+/** Called when the session has ended, like after it expires, so the app can ask to sign in. */
+export const session = { onEnd: () => {} };
+
+export async function api<T>(
+  path: string,
+  body?: unknown,
+  /** Lets the request finish after the page closes, for a last save. */
+  { keepalive = false } = {},
+): Promise<T> {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     headers:
       body === undefined ? {} : { "content-type": "application/json", "x-yapm-client": CLIENT_ID },
     body: body === undefined ? null : JSON.stringify(body),
     credentials: "same-origin",
+    keepalive,
   });
   const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (response.status === 401 && !path.startsWith("/api/auth/")) session.onEnd();
   if (!response.ok) throw new ApiError(data.error ?? response.statusText, response.status);
   return data;
 }
@@ -51,15 +61,17 @@ export const waitingStore = {
 export async function graphql<T>(
   query: string,
   variables?: Record<string, unknown>,
-  { quiet = false } = {},
+  { quiet = false, keepalive = false } = {},
 ): Promise<T> {
   if (!quiet) setWaiting(1);
-  const result = await api<{ data?: T; errors?: { message: string }[] }>("/graphql", {
-    query,
-    variables,
-  }).finally(() => {
+  const result = await api<{
+    data?: T;
+    errors?: { message: string; extensions?: { code?: string } }[];
+  }>("/graphql", { query, variables }, { keepalive }).finally(() => {
     if (!quiet) setWaiting(-1);
   });
+  // GraphQL answers 200 even when signed out, and says so in the error.
+  if (result.errors?.some((e) => e.extensions?.code === "UNAUTHENTICATED")) session.onEnd();
   if (result.errors?.length)
     throw new ApiError(result.errors.map((e) => e.message).join("\n"), 200);
   if (!result.data) throw new ApiError("Empty response", 200);

@@ -10,7 +10,7 @@ import {
 } from "./actions.js";
 import { type Viewer, waitingStore } from "./api.js";
 import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
-import { mutate, type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
+import { type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
 import { EmojiPickerHost } from "./emoji/EmojiPicker.js";
 import { AppIcon, type IconName, icon } from "./icons.js";
 import { eyebrow, TabLink, TabRow } from "./layout.js";
@@ -53,17 +53,6 @@ export function Shell({ viewer, onSignOut }: { viewer: Viewer; onSignOut: () => 
   useEffect(() => {
     if (workspace) workspaceStore.set(workspace);
   }, [workspace]);
-  // Cycles and rituals follow the owner's clock: adopt the browser's time zone the first time.
-  const timezone = workspace?.organization.timezone;
-  useEffect(() => {
-    const local = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (timezone === "UTC" && viewer.kind === "owner" && local && local !== "UTC") {
-      void mutate(
-        "mutation($tz: String!) { organizationUpdate(input: { timezone: $tz }) { success } }",
-        { tz: local },
-      );
-    }
-  }, [timezone, viewer.kind]);
   // Close the mobile drawer on navigation.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs on path change
   useEffect(() => setDrawer(false), [path]);

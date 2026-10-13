@@ -1,6 +1,6 @@
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
-import { ApiError, api, type Viewer } from "./api.js";
+import { ApiError, api, session, type Viewer } from "./api.js";
 import { Shell } from "./Shell.js";
 
 type State =
@@ -30,6 +30,7 @@ export function App() {
 
   useEffect(() => {
     void load();
+    session.onEnd = () => setState({ screen: "login" });
   }, [load]);
 
   switch (state.screen) {
@@ -138,7 +139,8 @@ function SetupScreen({ onDone }: { onDone: (viewer: Viewer) => void }) {
     try {
       const { challengeId, options } = await api<{ challengeId: string; options: never }>(
         "/api/setup/options",
-        { companyName, ownerName },
+        // Cycles and rituals follow the owner's clock.
+        { companyName, ownerName, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
       );
       const response = await startRegistration({ optionsJSON: options });
       const { viewer } = await api<{ viewer: Viewer }>("/api/setup/verify", {

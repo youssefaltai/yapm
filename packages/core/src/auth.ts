@@ -14,6 +14,7 @@ import type { HubDeps, HubEnv, User } from "./context.js";
 import { fromBase64Url, newId, randomToken, sha256Hex, toBase64Url } from "./crypto.js";
 import { commit, type HubDb } from "./db.js";
 import { seedCompany } from "./seed.js";
+import { isTimeZone } from "./time.js";
 
 export const SESSION_COOKIE = "yapm_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -207,7 +208,11 @@ export const authRoutes = new Hono<HubEnv>()
     const { db } = c.var.deps;
     if (await ownerExists(db))
       throw new HTTPException(409, { message: "Setup is already complete" });
-    const body = await c.req.json<{ companyName?: string; ownerName?: string }>();
+    const body = await c.req.json<{
+      companyName?: string;
+      ownerName?: string;
+      timezone?: string;
+    }>();
     const companyName = body.companyName?.trim();
     const ownerName = body.ownerName?.trim();
     if (!companyName || !ownerName) {
@@ -228,6 +233,8 @@ export const authRoutes = new Hono<HubEnv>()
       ownerId,
       ownerName,
       companyName,
+      // The owner's browser's, so cycles and rituals follow their clock.
+      timezone: body.timezone && isTimeZone(body.timezone) ? body.timezone : "UTC",
     });
     return c.json({ challengeId, options });
   })
@@ -252,14 +259,17 @@ export const authRoutes = new Hono<HubEnv>()
     if (!result.verified)
       throw new HTTPException(400, { message: "Passkey could not be verified" });
 
-    const { ownerId, ownerName, companyName } = challenge.payload as Record<string, string>;
+    const { ownerId, ownerName, companyName, timezone } = challenge.payload as Record<
+      string,
+      string
+    >;
     if (!ownerId || !ownerName || !companyName)
       throw new HTTPException(400, { message: "Bad challenge" });
     const at = now(c);
     const { credential } = result.registrationInfo;
     const session = await startSession(c, ownerId);
     await commit(db, [
-      ...seedCompany(db, { ownerId, ownerName, companyName, now: at }),
+      ...seedCompany(db, { ownerId, ownerName, companyName, timezone, now: at }),
       db.insert(passkeys).values({
         id: credential.id,
         userId: ownerId,

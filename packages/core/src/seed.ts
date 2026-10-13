@@ -40,6 +40,7 @@ export interface SeedInput {
   ownerId: string;
   ownerName: string;
   companyName: string;
+  timezone?: string;
   now: number;
 }
 
@@ -72,6 +73,7 @@ export function seedCompany(db: HubDb, input: SeedInput): WriteOp[] {
       id: workspaceId,
       name: input.companyName,
       urlKey: slugify(input.companyName) || "company",
+      timezone: input.timezone,
       ...stamp,
     },
   ];

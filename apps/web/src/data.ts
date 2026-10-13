@@ -250,9 +250,10 @@ export function useQuery<T>(
 export async function mutate<T>(
   query: string,
   variables?: Record<string, unknown>,
+  { keepalive = false } = {},
 ): Promise<T | null> {
   try {
-    const data = await graphql<T>(query, variables);
+    const data = await graphql<T>(query, variables, { keepalive });
     invalidate();
     return data;
   } catch (error) {

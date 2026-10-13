@@ -41,3 +41,30 @@ self.addEventListener("notificationclick", (event) => {
     })(),
   );
 });
+
+// The browser may rotate a subscription; without telling the hub, pushes would silently stop.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const graphql = (query, variables) =>
+    fetch("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ query, variables }),
+    }).then((response) => response.json());
+  event.waitUntil(
+    (async () => {
+      let subscription = event.newSubscription;
+      if (!subscription) {
+        const { data } = await graphql("{ pushVapidPublicKey }");
+        subscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: data.pushVapidPublicKey,
+        });
+      }
+      await graphql(
+        "mutation($data: String!, $ua: String) { pushSubscriptionCreate(input: { data: $data, userAgent: $ua }) { success } }",
+        { data: JSON.stringify(subscription), ua: navigator.userAgent },
+      );
+    })(),
+  );
+});

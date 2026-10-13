@@ -345,7 +345,11 @@ export function RequestPage({ id }: { id: string }) {
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => setMode("reject")}
+                  onClick={() => {
+                    // The editor opens empty, so the reason starts afresh too.
+                    setReason("");
+                    setMode("reject");
+                  }}
                   className="rounded-lg border border-line px-3 py-3 font-medium text-critical hover:bg-raised"
                 >
                   Reject

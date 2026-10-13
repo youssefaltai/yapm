@@ -589,6 +589,21 @@ export async function createRelation(
     )
     .get();
   if (existing) return existing.id;
+  if (
+    input.type === "blocks" &&
+    (await db
+      .select({ id: issueRelations.id })
+      .from(issueRelations)
+      .where(
+        and(
+          eq(issueRelations.type, "blocks"),
+          eq(issueRelations.issueId, related.id),
+          eq(issueRelations.relatedIssueId, issue.id),
+        ),
+      )
+      .get())
+  )
+    throw badRequest("These issues would block each other");
   const id = newId();
   await commit(db, [
     db.insert(issueRelations).values({

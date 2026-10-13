@@ -28,6 +28,15 @@ export function checkColor(color: string) {
   if (!COLOR.test(color)) throw badRequest("Color must be a hex color like #5e6ad2");
 }
 
+async function checkClash({ db }: Ctx, name: string, teamId: string | null) {
+  const clash = await db
+    .select({ id: labels.id })
+    .from(labels)
+    .where(and(eq(labels.name, name), teamId ? eq(labels.teamId, teamId) : isNull(labels.teamId)))
+    .get();
+  if (clash) throw new ServiceError("CONFLICT", `A label named "${name}" already exists`);
+}
+
 export async function createLabel(ctx: Ctx, input: LabelInput & { name: string }): Promise<string> {
   const { db, now } = ctx;
   const name = cleanText(input.name, "Label name", 60);
@@ -40,12 +49,7 @@ export async function createLabel(ctx: Ctx, input: LabelInput & { name: string }
   ) {
     throw notFound("Team");
   }
-  const clash = await db
-    .select({ id: labels.id })
-    .from(labels)
-    .where(and(eq(labels.name, name), teamId ? eq(labels.teamId, teamId) : isNull(labels.teamId)))
-    .get();
-  if (clash) throw new ServiceError("CONFLICT", `A label named "${name}" already exists`);
+  await checkClash(ctx, name, teamId);
   const id = newId();
   await commit(db, [
     db.insert(labels).values({
@@ -75,6 +79,7 @@ export async function updateLabel(ctx: Ctx, id: string, input: LabelInput): Prom
   if (input.description !== undefined) next.description = input.description?.trim() || null;
   const diff = changes(label, next);
   if (!diff) return id;
+  if (next.name && next.name !== label.name) await checkClash(ctx, next.name, label.teamId);
   await commit(db, [
     db
       .update(labels)

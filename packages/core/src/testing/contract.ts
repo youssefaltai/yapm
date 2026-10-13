@@ -4950,5 +4950,135 @@ export function hubContract(
       await gql("mutation($id: String!) { issueArchive(id: $id) { success } }", { id: ids[0] });
       expect(await read()).toEqual(before);
     });
+
+    it("refuses renaming a label to a name another label has", async () => {
+      const create = async (name: string) =>
+        (
+          await client.graphql<{ issueLabelCreate: { issueLabel: { id: string } } }>(
+            "mutation($name: String!) { issueLabelCreate(input: { name: $name }) { issueLabel { id } } }",
+            { name },
+          )
+        ).data?.issueLabelCreate.issueLabel.id;
+      await create("Dupe target");
+      const id = await create("Dupe source");
+      const renamed = await client.graphql(
+        'mutation($id: String!) { issueLabelUpdate(id: $id, input: { name: "Dupe target" }) { success } }',
+        { id },
+      );
+      expect(renamed.errors?.[0]?.extensions?.code).toBe("CONFLICT");
+    });
+
+    it("tells members newly mentioned in an edited comment, once", async () => {
+      const people = await client.graphql<{ users: { nodes: { id: string; name: string }[] } }>(
+        "{ users { nodes { id name } } }",
+      );
+      const chef = (
+        await client.graphql<{ apiTokenCreate: { token: string } }>(
+          'mutation($u: String) { apiTokenCreate(name: "edit", userId: $u) { token } }',
+          { u: people.data?.users.nodes.find((u) => u.name === "Chef")?.id },
+        )
+      ).data?.apiTokenCreate.token;
+      const comment = await client.graphql<{ commentCreate: { comment: { id: string } } }>(
+        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "Draft" }) { comment { id } } }',
+        { id: issueId },
+      );
+      const commentId = comment.data?.commentCreate.comment.id;
+      for (const body of ["Draft, @Chef", "Draft, @Chef!"])
+        await client.graphql(
+          "mutation($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success } }",
+          { id: commentId, body },
+        );
+      const inbox = await client.graphql<{
+        notifications: { nodes: { type: string; comment: { id: string } | null }[] };
+      }>("{ notifications { nodes { type comment { id } } } }", undefined, chef);
+      expect(
+        inbox.data?.notifications.nodes.filter(
+          (n) => n.type === "issueCommentMention" && n.comment?.id === commentId,
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("refuses two issues blocking each other", async () => {
+      const block = (a: string, b: string) =>
+        client.graphql(
+          "mutation($a: String!, $b: String!) { issueRelationCreate(input: { issueId: $a, relatedIssueId: $b, type: blocks }) { success } }",
+          { a, b },
+        );
+      expect((await block(childId, issueId)).errors).toBeUndefined();
+      expect((await block(issueId, childId)).errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+    });
+
+    it("deletes the reactions on a deleted comment's replies", async () => {
+      const comment = async (parentId?: string) =>
+        (
+          await client.graphql<{ commentCreate: { comment: { id: string } } }>(
+            'mutation($id: String!, $p: String) { commentCreate(input: { issueId: $id, body: "Hi", parentId: $p }) { comment { id } } }',
+            { id: issueId, p: parentId },
+          )
+        ).data?.commentCreate.comment.id;
+      const top = await comment();
+      const reply = await comment(top);
+      const react = await client.graphql<{ reactionCreate: { reaction: { id: string } } }>(
+        'mutation($c: String) { reactionCreate(input: { emoji: "👍", commentId: $c }) { reaction { id } } }',
+        { c: reply },
+      );
+      await client.graphql("mutation($id: String!) { commentDelete(id: $id) { success } }", {
+        id: top,
+      });
+      const orphan = await client.graphql(
+        "mutation($id: String!) { reactionDelete(id: $id) { success } }",
+        { id: react.data?.reactionCreate.reaction.id },
+      );
+      expect(orphan.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
+    });
+
+    it("orders a new milestone last, after a middle one is deleted", async () => {
+      const { data } = await client.graphql<{ projectCreate: { project: { id: string } } }>(
+        'mutation { projectCreate(input: { name: "Milestone order" }) { project { id } } }',
+      );
+      const add = async (name: string) =>
+        (
+          await client.graphql<{
+            projectMilestoneCreate: { projectMilestone: { id: string; sortOrder: number } };
+          }>(
+            "mutation($p: String!, $name: String!) { projectMilestoneCreate(input: { projectId: $p, name: $name }) { projectMilestone { id sortOrder } } }",
+            { p: data?.projectCreate.project.id, name },
+          )
+        ).data?.projectMilestoneCreate.projectMilestone;
+      await add("First");
+      const middle = await add("Middle");
+      const last = await add("Last");
+      await client.graphql(
+        "mutation($id: String!) { projectMilestoneDelete(id: $id) { success } }",
+        {
+          id: middle?.id,
+        },
+      );
+      expect((await add("Next"))?.sortOrder).toBeGreaterThan(last?.sortOrder ?? 0);
+    });
+
+    it("keeps a project's health when an update leaves it out", async () => {
+      const { data } = await client.graphql<{ projectCreate: { project: { id: string } } }>(
+        'mutation { projectCreate(input: { name: "Health kept" }) { project { id } } }',
+      );
+      const p = data?.projectCreate.project.id;
+      const post = (health?: string) =>
+        client.graphql(
+          'mutation($p: String!, $h: ProjectUpdateHealthType) { projectUpdateCreate(input: { projectId: $p, body: "Status", health: $h }) { success } }',
+          { p, h: health },
+        );
+      const health = async () =>
+        (
+          await client.graphql<{ project: { health: string } }>(
+            "query($p: String!) { project(id: $p) { health } }",
+            { p },
+          )
+        ).data?.project.health;
+      await post();
+      expect(await health()).toBe("onTrack");
+      await post("atRisk");
+      await post();
+      expect(await health()).toBe("atRisk");
+    });
   });
 }

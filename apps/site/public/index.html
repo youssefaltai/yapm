@@ -6,7 +6,7 @@
     <title>yapm: open-source Linear alternative staffed by AI agents</title>
     <meta
       name="description"
-      content="Open-source, self-hosted Linear alternative where AI agents do the work and ask before they use your tools. Runs on Cloudflare, Docker or Node."
+      content="An open-source Linear alternative where AI agents do the work and ask before they act. Self-host it on Cloudflare, Docker or Node."
     />
     <meta name="theme-color" content="#0d0d0e" />
     <meta name="color-scheme" content="dark" />
@@ -19,7 +19,7 @@
     <meta property="og:title" content="yapm: open-source Linear alternative staffed by AI agents" />
     <meta
       property="og:description"
-      content="An open-source alternative to Linear, for running your life like a company staffed by AI agents."
+      content="An open-source Linear alternative where AI agents do the work."
     />
     <meta property="og:image" content="https://yapm.app/og.png" />
     <meta property="og:image:width" content="1200" />
@@ -29,7 +29,7 @@
     <meta name="twitter:title" content="yapm: open-source Linear alternative staffed by AI agents" />
     <meta
       name="twitter:description"
-      content="An open-source alternative to Linear, for running your life like a company staffed by AI agents."
+      content="An open-source Linear alternative where AI agents do the work."
     />
     <meta name="twitter:image" content="https://yapm.app/og.png" />
     <link rel="stylesheet" href="/style.css" />
@@ -42,7 +42,7 @@
           "name": "yapm",
           "alternateName": "Yet Another Project Manager",
           "url": "https://yapm.app/",
-          "description": "Open-source, self-hosted Linear alternative where AI agents do the work and ask before they use your tools. Runs on Cloudflare, Docker or Node.",
+          "description": "An open-source Linear alternative where AI agents do the work and ask before they act. Self-host it on Cloudflare, Docker or Node.",
           "image": "https://yapm.app/og.png",
           "applicationCategory": "BusinessApplication",
           "operatingSystem": "Cloudflare Workers, Docker, Node.js",
@@ -69,7 +69,7 @@
               "name": "Is yapm free?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own AI plan or API usage."
+                "text": "Yes. It’s open source (AGPL-3.0) and you host it, on Cloudflare’s free plan if you want. You only pay for your own AI."
               }
             },
             {
@@ -77,7 +77,7 @@
               "name": "How is it different from Linear?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "It has the same shape, with teams, issues, projects, cycles and a GraphQL API that uses Linear’s names. But the assignees are AI agents, and it is built for one person running their life, not a team shipping software."
+                "text": "Same shape: teams, issues, projects, cycles and Linear’s API names. But the assignees are AI agents, and it’s for your life, not a software team."
               }
             },
             {
@@ -85,7 +85,7 @@
               "name": "Which AI does it use?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Yours, mixed as you like: Claude, with your Claude subscription or an Anthropic API key, or ChatGPT, Copilot and more, with a ChatGPT or GitHub Copilot plan or an API key from 75+ providers. Pick a model for each size of task, for the whole company or per agent, say ChatGPT for quick decisions and Claude for the work. Agents run on your own machines with your own sign-ins and keys, so usage counts against your plan, and they ask before they use a tool. Under the hood, the runner uses the Claude Agent SDK and OpenCode. Any MCP client can pick up issues too."
+                "text": "Yours. Claude with your subscription or an Anthropic key, or ChatGPT, Copilot and 75+ other providers with your plan or key. Pick a model per task size, or per agent. Under the hood it’s the Claude Agent SDK and OpenCode. Any MCP client can work issues too."
               }
             },
             {
@@ -93,7 +93,7 @@
               "name": "Will agents act without asking?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "No. Agents ask before they use a tool. Approve once, always allow for one agent, a team or every agent, or reject with a reason. Revoke any grant from an agent’s or team’s Access panel."
+                "text": "No. They read and search on their own and ask before anything else, like running commands, sending emails or paying. Approve once or always, or say no with a reason. Revoke anytime."
               }
             }
           ]
@@ -111,9 +111,7 @@
         <span>yapm</span>
       </a>
       <nav class="links" aria-label="Primary">
-        <a href="#features">Features</a>
-        <a href="#self-host">Self-host</a>
-        <a href="#faq">FAQ</a>
+        <a href="/self-host">Self-host</a>
         <a class="nav-gh" href="https://github.com/youssefaltai/yapm"
           ><svg class="gh" width="16" height="16" viewBox="0 0 98 96" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>GitHub</a
         >
@@ -123,18 +121,15 @@
     <main id="main">
       <section class="hero wrap" aria-labelledby="hero-title">
         <h1 id="hero-title">
-          <span class="eyebrow">The open-source Linear alternative</span>
+          <span class="eyebrow">An open-source Linear alternative</span>
           Yet Another<br />Project Manager.
         </h1>
         <p class="lede">
-          An open-source alternative to Linear, for running your life like a company staffed by AI
-          agents, on your own Claude, ChatGPT or Copilot plan, or an API key. Runs on Cloudflare,
-          Docker or Node.
+          AI agents do the work, you approve. Runs on your own
+          Claude, ChatGPT or Copilot plan.
         </p>
         <div class="ctas">
-          <a class="btn btn-primary" href="https://github.com/youssefaltai/yapm#self-host"
-            >Self-host</a
-          >
+          <a class="btn btn-primary" href="/self-host">Self-host</a>
           <a class="btn btn-ghost" href="https://github.com/youssefaltai/yapm"
             ><svg class="gh" width="16" height="16" viewBox="0 0 98 96" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>GitHub</a
           >
@@ -142,7 +137,7 @@
       </section>
 
       <section class="demo wrap" aria-labelledby="demo-title">
-        <h2 id="demo-title" class="demo-h">Try it: ask for something, and watch your company handle it.</h2>
+        <h2 id="demo-title" class="demo-h">Try it.</h2>
         <div class="stage">
           <div class="window">
             <div class="chrome" aria-hidden="true">
@@ -220,10 +215,10 @@
           <div class="sheet" data-sheet aria-live="polite"></div>
         </div>
         <ol class="rail" data-rail>
-          <li><b>You yap</b><span>Ask in plain words, from any device.</span></li>
-          <li><b>It runs itself</b><span>The CEO files it, builds a team and hires for the job.</span></li>
-          <li><b>You approve</b><span>Anything that acts for you waits for two taps.</span></li>
-          <li><b>It learns</b><span>Lessons, feedback and grants mean it needs you less next time.</span></li>
+          <li><b>You yap</b><span>Ask for anything, from any device.</span></li>
+          <li><b>It runs itself</b><span>The CEO files it and hires agents for it.</span></li>
+          <li><b>You approve</b><span>Anything that acts for you waits for you.</span></li>
+          <li><b>It learns</b><span>It asks less over time.</span></li>
         </ol>
       </section>
 
@@ -234,29 +229,26 @@
         <ul class="grid">
           <li>
             <span class="n">01</span>
-            <h3>A CEO agent and a team</h3>
+            <h3>A CEO and a team</h3>
             <p>
-              Ask the CEO and it files an issue and works on it, replying in comments and push
-              notifications. It creates teams and hires agents as your life calls for them, and they
-              report through issues, projects and cycles. <a href="/how-it-works">How it works →</a>
+              Ask the CEO. It files an issue, hires agents and keeps you posted.
+              <a href="/how-it-works">How it works →</a>
             </p>
           </li>
           <li>
             <span class="n">02</span>
-            <h3>Access you control</h3>
+            <h3>Approvals</h3>
             <p>
-              Agents ask before they use a tool. Approve once, or always allow a tool, a server or its
-              read-only tools, for one agent, a team or every agent. Edit or revoke grants in each
-              agent’s and team’s Access panel.
+              Agents read and search on their own and ask before anything else. Approve once or
+              always, for one agent or all of them. Revoke anytime.
             </p>
           </li>
           <li>
             <span class="n">03</span>
             <h3>Bring your own AI</h3>
             <p>
-              Claude, ChatGPT, Copilot, or an API key from 75+ providers, picked per agent. A one-line
-              runner puts agents on your own machines, with your own sign-ins. Watch any run live, or
-              stop it with a reason.
+              Claude, ChatGPT, Copilot, or an API key from 75+ providers. Agents run on your
+              machines, on your plan. Pick a model per task size or per agent.
             </p>
           </li>
         </ul>
@@ -264,7 +256,7 @@
 
       <section id="self-host" class="host wrap" aria-labelledby="host-title">
         <h2 id="host-title" class="section-title">
-          Self-host it.<br /><span>From a checkout of the repo.</span>
+          Self-host it.<br /><span>It’s free.</span>
         </h2>
         <ul class="hosts">
           <li>
@@ -278,20 +270,20 @@ pnpm run deploy</code></pre>
           </li>
           <li>
             <h3>Docker</h3>
-            <p>Any VPS. Data is one SQLite file.</p>
+            <p>Any server. Data is one SQLite file.</p>
             <pre><code>ORIGIN=https://hub.example.com \
   docker compose up -d</code></pre>
           </li>
           <li>
             <h3>Node</h3>
-            <p>Node 22+ and pnpm, to try it locally.</p>
+            <p>To try it locally.</p>
             <pre><code>pnpm install
 pnpm dev</code></pre>
           </li>
         </ul>
         <p class="host-more">
-          Prefer GitHub Actions, or want agents on your machines?
-          <a href="/self-host">The self-host guide has the rest →</a>
+          Deploy from GitHub or connect your machines:
+          <a href="/self-host">self-host guide →</a>
         </p>
       </section>
       <section id="faq" class="faq wrap" aria-labelledby="faq-title">
@@ -299,19 +291,19 @@ pnpm dev</code></pre>
         <dl class="faqs">
           <div>
             <dt>Is yapm free?</dt>
-            <dd>Yes. It is open source under AGPL-3.0 and you host it yourself, on the Cloudflare free plan if you like. You only pay for your own AI plan or API usage.</dd>
+            <dd>Yes. It’s open source (AGPL-3.0) and you host it, on Cloudflare’s free plan if you want. You only pay for your own AI.</dd>
           </div>
           <div>
             <dt>How is it different from Linear?</dt>
-            <dd>It has the same shape, with teams, issues, projects, cycles and a GraphQL API that uses Linear’s names. But the assignees are AI agents, and it is built for one person running their life, not a team shipping software. <a href="/vs-linear">yapm vs Linear →</a></dd>
+            <dd>Same shape: teams, issues, projects, cycles and Linear’s API names. But the assignees are AI agents, and it’s for your life, not a software team. <a href="/vs-linear">yapm vs Linear →</a></dd>
           </div>
           <div>
             <dt>Which AI does it use?</dt>
-            <dd>Yours, mixed as you like: Claude, with your Claude subscription or an Anthropic API key, or ChatGPT, Copilot and more, with a ChatGPT or GitHub Copilot plan or an API key from 75+ providers. Pick a model for each size of task, for the whole company or per agent, say ChatGPT for quick decisions and Claude for the work. Agents run on your own machines with your own sign-ins and keys, so usage counts against your plan, and they ask before they use a tool. Under the hood, the runner uses the Claude Agent SDK and OpenCode. Any MCP client can pick up issues too.</dd>
+            <dd>Yours. Claude with your subscription or an Anthropic key, or ChatGPT, Copilot and 75+ other providers with your plan or key. Pick a model per task size, or per agent. Under the hood it’s the Claude Agent SDK and OpenCode. Any MCP client can work issues too.</dd>
           </div>
           <div>
             <dt>Will agents act without asking?</dt>
-            <dd>No. Agents ask before they use a tool. Approve once, always allow for one agent, a team or every agent, or reject with a reason. Revoke any grant from an agent’s or team’s Access panel.</dd>
+            <dd>No. They read and search on their own and ask before anything else, like running commands, sending emails or paying. Approve once or always, or say no with a reason. Revoke anytime.</dd>
           </div>
         </dl>
       </section>
@@ -324,7 +316,6 @@ pnpm dev</code></pre>
       <a href="/self-host">Self-host</a>
       <a href="https://github.com/youssefaltai/yapm/blob/main/LICENSE">Open source, AGPL-3.0</a>
       <a href="https://youssefaltai.com">Made by Youssef Al-Tai</a>
-      <a href="https://github.com/youssefaltai/yapm"><svg class="gh" width="14" height="14" viewBox="0 0 98 96" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>GitHub</a>
       <p class="fine">
         Linear, Claude, ChatGPT and GitHub Copilot are trademarks of Linear Orbit, Inc., Anthropic,
         PBC, OpenAI and GitHub, Inc. yapm is not affiliated with or endorsed by any of them.

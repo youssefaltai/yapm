@@ -27,7 +27,11 @@ test("structured data describes the app and answers the FAQ on the page", () => 
   const app = graph.find((node) => node["@type"] === "SoftwareApplication");
   assert.equal(app.offers.price, "0");
   const faq = graph.find((node) => node["@type"] === "FAQPage");
-  for (const { name } of faq.mainEntity) assert.ok(html.includes(`>${name}</`), name);
+  const text = (markup) => markup.replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+  for (const { name, acceptedAnswer } of faq.mainEntity) {
+    const answer = html.split(`<dt>${name}</dt>`)[1]?.match(/<dd>([\s\S]*?)<\/dd>/)?.[1];
+    assert.ok(answer && text(answer).startsWith(acceptedAnswer.text), name);
+  }
 });
 
 test("pages lead with the AI owners bring, naming the engines only in the FAQ and self-host guide", () => {
@@ -72,14 +76,29 @@ for (const path of pages.filter(Boolean)) {
 }
 
 const nav = (page) => page.match(/<header class="nav[\s\S]*?<\/header>/)[0];
+const foot = (page) => page.match(/<footer class="foot[\s\S]*?<\/footer>/)[0];
 
-for (const path of pages.filter(Boolean)) {
-  test(`/${path} has the home page's nav, and it turns to glass on scroll`, () => {
-    const page = read(`${path}.html`);
-    assert.equal(nav(page), nav(html).replaceAll('href="#', 'href="/#'));
+for (const file of [...pages.filter(Boolean).map((p) => `${p}.html`), "404.html"]) {
+  test(`${file} has the home page's nav and footer, and the nav turns to glass on scroll`, () => {
+    const page = read(file);
+    assert.equal(nav(page), nav(html));
+    assert.equal(foot(page), foot(html));
     assert.match(page, /<script src="\/nav\.js" defer><\/script>/);
   });
 }
+
+test("the footer links every page", () => {
+  for (const path of pages.filter(Boolean)) assert.ok(foot(html).includes(`href="/${path}"`), path);
+});
+
+test("the hero's Self-host button opens the self-host guide", () => {
+  assert.match(html, /<a class="btn btn-primary" href="\/self-host">/);
+});
+
+test("llms.txt links every page", () => {
+  for (const path of pages)
+    assert.ok(read("llms.txt").includes(`(https://yapm.app/${path})`), `/${path}`);
+});
 
 test("the home page loads the nav script too", () => {
   assert.match(html, /<script src="\/nav\.js" defer><\/script>/);

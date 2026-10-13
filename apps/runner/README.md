@@ -58,7 +58,7 @@ subscription), in `yapm-runner login`: the runner installs its own OpenCode 1.19
 and keeps the sign-in in OpenCode's own store; Claude stays set up. Then
 `yapm-runner service install` to restart.
 
-Which model each tier of work runs on is picked in yapm (Settings, or an agent's page), not here.
+Which model each tier of work runs on is picked in yapm (the Company page, or an agent's page), not here.
 The runner tells the hub which providers it's signed in to and their models (Claude's from Claude
 Code, the rest from OpenCode, listed again every 10 minutes), and the hub gives a run only to a
 machine signed in to its model's provider. Claude's models run on the Claude Agent SDK, the rest on

@@ -43,28 +43,29 @@ it("says why a run waits: no machine online, none with its tags, none signed in 
     name: "ChatGPT",
     models: [{ id: "gpt-6-luna", name: "GPT-6 Luna", efforts: [] }],
   };
-  const mac = { tags: ["home"], engines: null, providers: null };
+  const at = Date.parse("2026-10-08T12:00:00Z");
+  const mac = { tags: ["home"], engines: null, providers: null, planUsage: null, plans: null };
   const agent = { runnerTags: ["home"] };
-  expect(waitingFor(agent, "openai", [])).toBe("Waiting for a machine to come online");
-  expect(waitingFor({ runnerTags: ["gym", "home"] }, "openai", [mac])).toBe(
+  expect(waitingFor(agent, "openai", [], at)).toBe("Waiting for a machine to come online");
+  expect(waitingFor({ runnerTags: ["gym", "home"] }, "openai", [mac], at)).toBe(
     "Waiting for a machine tagged gym, home",
   );
   // Runners before 0.7 don't list providers: with no engines they run Claude only.
-  expect(waitingFor(agent, "openai", [mac])).toBe("Waiting for a machine signed in to ChatGPT");
-  expect(waitingFor({ runnerTags: null }, "anthropic", [mac])).toBeNull();
+  expect(waitingFor(agent, "openai", [mac], at)).toBe("Waiting for a machine signed in to ChatGPT");
+  expect(waitingFor({ runnerTags: null }, "anthropic", [mac], at)).toBeNull();
   // An older runner with OpenCode runs whatever its own settings say.
-  expect(waitingFor(agent, "openai", [{ ...mac, engines: ["opencode"] }])).toBeNull();
+  expect(waitingFor(agent, "openai", [{ ...mac, engines: ["opencode"] }], at)).toBeNull();
   // Newer ones say which providers they're signed in to.
   const signedIn = {
     ...mac,
     engines: ["claude" as const, "opencode" as const],
     providers: [chatgpt],
   };
-  expect(waitingFor(agent, "openai", [signedIn])).toBeNull();
-  expect(waitingFor(agent, "anthropic", [signedIn])).toBe(
+  expect(waitingFor(agent, "openai", [signedIn], at)).toBeNull();
+  expect(waitingFor(agent, "anthropic", [signedIn], at)).toBe(
     "Waiting for a machine signed in to Claude",
   );
-  expect(waitingFor(agent, "openrouter", [signedIn])).toBe(
+  expect(waitingFor(agent, "openrouter", [signedIn], at)).toBe(
     "Waiting for a machine signed in to openrouter",
   );
 });

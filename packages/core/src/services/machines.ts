@@ -7,7 +7,20 @@ import {
   runs,
   users,
 } from "@yapm/schema";
-import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  type SQLWrapper,
+  sql,
+} from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId, randomToken, sha256Hex } from "../crypto.js";
 import { commit, type HubDb } from "../db.js";
@@ -61,6 +74,7 @@ const KNOWN_CLAUDE: MachineProvider = {
 };
 
 type Reports = Pick<MachineRow, "engines" | "providers">;
+type Plans = Pick<MachineRow, "planUsage" | "plans">;
 
 /**
  * The providers a machine reports, named as owners know them. A runner that couldn't list
@@ -105,21 +119,71 @@ export async function loadCatalog(db: HubDb) {
   );
 }
 
+/** The OpenCode plan each provider's models run on; Claude's is the machine's planUsage. */
+const PLANS: Record<string, string> = { openai: "chatgpt", "github-copilot": "copilot" };
+
+/** When a machine's plan for `provider` has room again, or null while it has room now. */
+function resetsAt(m: Plans, provider: string, at: number) {
+  const usage =
+    provider === "anthropic"
+      ? m.planUsage
+      : m.plans?.find((p) => p.provider === PLANS[provider])?.usage;
+  const spent = (usage?.limits ?? []).flatMap((l) =>
+    (l.utilization ?? 0) >= 100 && l.resetsAt && l.resetsAt > at ? [l.resetsAt] : [],
+  );
+  return spent.length ? Math.max(...spent) : null;
+}
+
+/**
+ * The claim's side of `waitingFor`, as a condition on a run's provider and its agent's tags:
+ * the machine has every tag, may run the provider, and the provider's plan isn't spent.
+ */
+export function runnableOn(
+  m: Reports & Plans & Pick<MachineRow, "tags">,
+  provider: SQLWrapper,
+  tags: SQLWrapper,
+  at: number,
+) {
+  const spent = ["anthropic", ...Object.keys(PLANS)].filter((p) => resetsAt(m, p, at));
+  return and(
+    sql`not exists (select 1 from json_each(coalesce(${tags}, '[]')) where value not in (select value from json_each(${JSON.stringify(m.tags)})))`,
+    m.providers
+      ? inArray(
+          provider,
+          m.providers.map((p) => p.id),
+        )
+      : or(
+          sql`0`, // no engines: nothing
+          ...(m.engines ?? ["claude"]).map((e) =>
+            e === "claude" ? eq(provider, "anthropic") : ne(provider, "anthropic"),
+          ),
+        ),
+    notInArray(provider, spent),
+  );
+}
+
 /**
  * Why a run on `provider`'s model waits for these machines, or null when one of them may run
- * it: it needs all the agent's tags and a sign-in to the provider.
+ * it: it needs all the agent's tags, a sign-in to the provider and room on its plan.
  */
 export function waitingFor(
   agent: { runnerTags: string[] | null },
   provider: string,
-  online: Pick<MachineRow, "tags" | "engines" | "providers">[],
+  online: Pick<MachineRow, "tags" | "engines" | "providers" | "planUsage" | "plans">[],
+  at: number,
 ) {
   if (!online.length) return "Waiting for a machine to come online";
   const tags = agent.runnerTags ?? [];
   const tagged = online.filter((m) => tags.every((tag) => m.tags.includes(tag)));
   if (!tagged.length) return `Waiting for a machine tagged ${tags.join(", ")}`;
-  if (!tagged.some((m) => canRun(m, provider)))
-    return `Waiting for a machine signed in to ${providerName(provider)}`;
+  const signed = tagged.filter((m) => canRun(m, provider));
+  if (!signed.length) return `Waiting for a machine signed in to ${providerName(provider)}`;
+  const resets = signed.map((m) => resetsAt(m, provider, at) ?? 0);
+  if (resets.every(Boolean)) {
+    const minutes = Math.ceil((Math.min(...resets) - at) / 60_000);
+    const when = minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`;
+    return `Waiting: ${providerName(provider)}'s usage limit resets in ${when}`;
+  }
   return null;
 }
 
@@ -368,6 +432,11 @@ export async function revokeMachine(ctx: Ctx, id: string) {
       .update(runs)
       .set({ status: "failed", error: "The machine was removed", endedAt: now, updatedAt: now })
       .where(and(eq(runs.machineId, id), eq(runs.status, "running"))),
+    // Runs waiting for this machine, like a paused session's answer, start afresh elsewhere.
+    db
+      .update(runs)
+      .set({ machineId: null, sessionId: null, updatedAt: now })
+      .where(and(eq(runs.machineId, id), eq(runs.status, "queued"))),
     ...audit(
       db,
       [event(ctx, "machine.revoke", "machine", id, { name: machineName(machine) })],

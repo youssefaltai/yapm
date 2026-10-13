@@ -6,7 +6,7 @@ import {
   teams,
   users,
 } from "@yapm/schema";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
 import type { HubDeps } from "./context.js";
 import { fromBase64Url, toBase64Url } from "./crypto.js";
 import type { HubDb } from "./db.js";
@@ -291,18 +291,22 @@ export async function sendPush(deps: HubDeps, userId: string, origin: string, ms
   return sendToDevices(deps, devices, origin, msg, "normal");
 }
 
+/** Notifications older than this aren't pushed: news that late is noise on a phone. */
+const PUSH_WINDOW = 10 * 60 * 1000;
+
 /**
- * Sends the notifications created at `at` as Web Push to members who turned it on. Each
- * notification is claimed (pushedAt) before sending, so two deliveries never double up.
+ * Sends recent notifications not yet pushed as Web Push to members who turned it on. Each is
+ * claimed (pushedAt) just before sending, so two deliveries never double up and a delivery
+ * that dies part way leaves the rest for the next.
  */
 export async function deliverPush(deps: HubDeps, at: number, origin: string): Promise<void> {
   const { db } = deps;
-  const claimed = await db
-    .update(notifications)
-    .set({ pushedAt: at })
+  const due = await db
+    .select()
+    .from(notifications)
     .where(
       and(
-        eq(notifications.createdAt, at),
+        gte(notifications.createdAt, at - PUSH_WINDOW),
         isNull(notifications.pushedAt),
         inArray(
           notifications.userId,
@@ -310,15 +314,23 @@ export async function deliverPush(deps: HubDeps, at: number, origin: string): Pr
         ),
       ),
     )
-    .returning()
+    .orderBy(asc(notifications.createdAt))
+    .limit(50)
     .all();
-  if (!claimed.length) return;
+  if (!due.length) return;
   const devices = await db
     .select()
     .from(pushSubscriptions)
-    .where(inArray(pushSubscriptions.userId, [...new Set(claimed.map((n) => n.userId))]))
+    .where(inArray(pushSubscriptions.userId, [...new Set(due.map((n) => n.userId))]))
     .all();
-  for (const n of claimed) {
+  for (const n of due) {
+    const mine = await db
+      .update(notifications)
+      .set({ pushedAt: at })
+      .where(and(eq(notifications.id, n.id), isNull(notifications.pushedAt)))
+      .returning({ id: notifications.id })
+      .get();
+    if (!mine) continue;
     await sendToDevices(
       deps,
       devices.filter((d) => d.userId === n.userId),

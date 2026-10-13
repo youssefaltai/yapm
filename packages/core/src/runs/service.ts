@@ -12,7 +12,23 @@ import {
   runs,
   users,
 } from "@yapm/schema";
-import { and, asc, count, desc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  notExists,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { audit } from "../audit.js";
 import { API_TOKEN_PREFIX } from "../auth.js";
 import type { HubDeps } from "../context.js";
@@ -25,7 +41,7 @@ import type { Ctx } from "../services/common.js";
 import { event } from "../services/common.js";
 import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
-import { cleanTags, engineOf, waitingFor } from "../services/machines.js";
+import { cleanTags, engineOf, runnableOn } from "../services/machines.js";
 import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
 import { cleanAccount, cleanPlanUsage, mergePlans, runUsageSet } from "../services/usage.js";
 import { isAbove } from "../services/users.js";
@@ -64,17 +80,23 @@ export const LIMITS = {
 
 const ACTIVE: RunRow["status"][] = ["queued", "running", "needs_input"];
 
-/** Who should wake for the notifications created at `at`. Runs after the change commits. */
-export async function dispatch(deps: HubDeps, at: number): Promise<number> {
+/** How many notifications a request wakes for at most; the next one or the tick takes the rest. */
+export const DISPATCH_BATCH = 10;
+
+/**
+ * Wakes agents for notifications nobody has looked at yet, oldest first. Each is claimed just
+ * before its wake, so a request that dies part way loses one at most; the tick sweeps the rest.
+ */
+export async function dispatch(deps: HubDeps, at: number, max = DISPATCH_BATCH): Promise<number> {
   const { db } = deps;
-  const claimed = await db
+  // Only active agents wake; everyone else's notifications are done with here.
+  await db
     .update(notifications)
     .set({ dispatchedAt: at })
     .where(
       and(
-        eq(notifications.createdAt, at),
         isNull(notifications.dispatchedAt),
-        inArray(
+        notInArray(
           notifications.userId,
           db
             .select({ id: users.id })
@@ -83,11 +105,23 @@ export async function dispatch(deps: HubDeps, at: number): Promise<number> {
         ),
       ),
     )
-    .returning()
+    .run();
+  const due = await db
+    .select()
+    .from(notifications)
+    .where(isNull(notifications.dispatchedAt))
+    .orderBy(asc(notifications.createdAt))
+    .limit(max)
     .all();
   let queued = 0;
-  for (const note of claimed) {
-    if (await wake(db, note, at)) queued++;
+  for (const note of due) {
+    const mine = await db
+      .update(notifications)
+      .set({ dispatchedAt: at })
+      .where(and(eq(notifications.id, note.id), isNull(notifications.dispatchedAt)))
+      .returning({ id: notifications.id })
+      .get();
+    if (mine && (await wake(db, note, at))) queued++;
   }
   if (queued) await announceRuns(deps, at);
   return queued;
@@ -159,9 +193,6 @@ async function wake(
     const issue = issueId ? await findIssue(db, issueId) : null;
     if (issue?.assigneeId !== agentId) return false;
   }
-  // A live work session on the issue will see it through list_notifications.
-  if (onIssue.some((r) => r.kind === "work" && r.status === "running")) return false;
-
   if (paused && answers) {
     // A session only resumes on the engine that started it; if the agent's tier has moved to
     // another, the run starts afresh.
@@ -225,16 +256,61 @@ async function wake(
   return true;
 }
 
-/** Runs whose machine stopped reporting are failed, so their issues don't look busy forever. */
-/** Fails runs whose machine stopped checking in; true when there were any. */
+/** Fails runs whose machine stopped checking in, and retries them; true when there were any. */
 export async function failLostRuns(db: HubDb, at: number) {
   const lost = await db
     .update(runs)
     .set({ status: "failed", error: "Lost contact with the machine", endedAt: at, updatedAt: at })
     .where(and(eq(runs.status, "running"), lt(runs.heartbeatAt, at - LIMITS.heartbeatTimeout)))
-    .returning({ id: runs.id })
+    .returning()
     .all();
+  for (const run of lost) await retryRun(db, run, at);
   return lost.length > 0;
+}
+
+/** How long a failed run waits before its retry, so a passing problem can pass. */
+const RETRY_DELAY = 60 * 1000;
+
+/**
+ * A failed run gets one fresh try, a tier up for work (routing's retry rule). Retries, and runs
+ * someone stopped, don't.
+ */
+export async function retryRun(db: HubDb, run: RunRow, at: number) {
+  if (run.trigger?.retryOf || run.stopRequestedAt) return;
+  const routed = await routeRun(
+    db,
+    { kind: run.kind, agentId: run.agentId, issueId: run.issueId },
+    at,
+  );
+  const id = newId();
+  await commit(db, [
+    db.insert(runs).values({
+      id,
+      agentId: run.agentId,
+      kind: run.kind,
+      issueId: run.issueId,
+      goal: run.goal,
+      ...routed,
+      notBefore: at + RETRY_DELAY,
+      trigger: { ...run.trigger, retryOf: run.id },
+      createdAt: at,
+      updatedAt: at,
+    }),
+    ...audit(
+      db,
+      [
+        {
+          actorId: run.agentId,
+          runId: run.id,
+          action: "run.retry",
+          entityType: "run",
+          entityId: id,
+          data: { route: routed },
+        },
+      ],
+      at,
+    ),
+  ]);
 }
 
 export interface ClaimedRun {
@@ -267,12 +343,9 @@ export async function claimRun(
   machine: Machine,
   at: number,
 ): Promise<ClaimedRun | null> {
-  const { db } = deps;
-  const lost = await failLostRuns(db, at);
   const claimed = await claimNext(deps, machine, at);
-  // A run starting (or a lost one failing) shows on its issue and in Runs.
-  if (claimed || lost)
-    await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
+  // A run starting shows on its issue and in Runs.
+  if (claimed) await announce(deps.realtime, { type: "change", actorId: "", clientId: null, at });
   return claimed;
 }
 
@@ -284,12 +357,9 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
     .where(and(eq(runs.machineId, machine.id), eq(runs.status, "running")))
     .get();
   if ((busy?.n ?? 0) >= machine.capacity) return null;
+  const work = alias(runs, "work");
   const candidates = await db
-    .select({
-      run: runs,
-      agentTags: users.runnerTags,
-      agentActive: users.active,
-    })
+    .select({ run: runs })
     .from(runs)
     .innerJoin(users, eq(users.id, runs.agentId))
     .where(
@@ -297,15 +367,32 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
         eq(runs.status, "queued"),
         or(isNull(runs.notBefore), lte(runs.notBefore, at)),
         or(isNull(runs.machineId), eq(runs.machineId, machine.id)),
+        eq(users.active, true),
+        runnableOn(machine, sql`coalesce(${runs.provider}, 'anthropic')`, users.runnerTags, at),
+        // A decision waits for the agent's work on its issue to end, and so sees how it went.
+        or(
+          ne(runs.kind, "decision"),
+          notExists(
+            db
+              .select({ id: work.id })
+              .from(work)
+              .where(
+                and(
+                  eq(work.agentId, runs.agentId),
+                  eq(work.issueId, runs.issueId),
+                  eq(work.kind, "work"),
+                  eq(work.status, "running"),
+                ),
+              ),
+          ),
+        ),
       ),
     )
     .orderBy(asc(runs.createdAt))
     .limit(25)
     .all();
-  for (const { run, agentTags, agentActive } of candidates) {
-    if (!agentActive) continue;
+  for (const { run } of candidates) {
     const provider = run.provider ?? "anthropic";
-    if (waitingFor({ runnerTags: agentTags }, provider, [machine])) continue;
     const won = await db
       .update(runs)
       .set({
@@ -532,6 +619,7 @@ export async function completeRun(
       at,
     ),
   ]);
+  if (status === "failed") await retryRun(db, run, at);
   return { status, notified: !!ctx.notified };
 }
 
@@ -841,24 +929,21 @@ export async function heartbeat(
     );
   }
   await commit(db, ops);
-  const stopping = runIds.length
+  const listed = runIds.length
     ? await db
-        .select({ id: runs.id, reason: runs.stopReason })
+        .select({
+          id: runs.id,
+          reason: runs.stopReason,
+          stopping: sql<boolean>`${runs.stopRequestedAt} is not null`,
+          live: sql<boolean>`${runs.machineId} = ${machine.id} and ${runs.status} = 'running'`,
+        })
         .from(runs)
-        .where(and(inArray(runs.id, runIds), sql`${runs.stopRequestedAt} is not null`))
+        .where(inArray(runs.id, runIds))
         .all()
     : [];
+  const stopping = listed.filter((r) => r.stopping);
   // Runs the hub no longer thinks are running on this machine (failed as lost, or canceled).
-  const live = runIds.length
-    ? await db
-        .select({ id: runs.id })
-        .from(runs)
-        .where(
-          and(inArray(runs.id, runIds), eq(runs.machineId, machine.id), eq(runs.status, "running")),
-        )
-        .all()
-    : [];
-  const gone = runIds.filter((id) => !live.some((r) => r.id === id));
+  const gone = runIds.filter((id) => !listed.some((r) => r.id === id && r.live));
   return {
     /** The app shows whether a machine is online, so coming back is a change. */
     changed: !machine.lastSeenAt || machine.lastSeenAt < at - ONLINE_WINDOW,

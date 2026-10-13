@@ -88,20 +88,20 @@ export interface Workspace {
 export const WORKSPACE_QUERY = `{
   organization { name timezone }
   viewer { id name kind }
-  customViews { nodes { id name shared filterData team { id } } }
+  customViews(first: 250) { nodes { id name shared filterData team { id } } }
   teams {
     nodes {
       id key name description
       lead { id name }
       members { nodes { id } }
       states { nodes { id name type color position } }
-      labels { nodes { id name color } }
+      labels(first: 250) { nodes { id name color } }
       triageEnabled cyclesEnabled cycleDuration cycleStartDay cycleCooldownTime upcomingCycleCount
       slaHours autoArchivePeriod
       templates { id name templateData nextRunAt schedule { frequency time weekday monthDay description } }
     }
   }
-  users { nodes { id name kind title isMe manager { id } } }
+  users(first: 250) { nodes { id name kind title isMe manager { id } } }
 }`;
 
 export interface Issue {

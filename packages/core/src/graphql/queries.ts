@@ -15,6 +15,7 @@ import {
   builder,
   db,
   notFoundError,
+  olderThan,
   pageArgs,
   pageSize,
   paginate,
@@ -224,6 +225,7 @@ builder.queryType({
       description: "The company's history, newest first.",
       args: {
         first: t.arg.int({ required: false }),
+        after: t.arg.string({ required: false }),
         before: t.arg({
           type: "DateTime",
           required: false,
@@ -235,12 +237,12 @@ builder.queryType({
       },
       resolve: async (_root, args, ctx) => {
         requireViewer(ctx);
-        const first = pageSize(args.first);
         const rows = await db(ctx)
           .select()
           .from(auditEvents)
           .where(
             and(
+              olderThan(auditEvents, args.after),
               args.before ? lt(auditEvents.createdAt, args.before.getTime()) : undefined,
               args.entityType ? eq(auditEvents.entityType, args.entityType) : undefined,
               args.entityId ? eq(auditEvents.entityId, args.entityId) : undefined,
@@ -248,13 +250,9 @@ builder.queryType({
             ),
           )
           .orderBy(desc(auditEvents.createdAt), desc(auditEvents.id))
-          .limit(first + 1)
+          .limit(pageSize(args.first) + 1)
           .all();
-        const nodes = rows.slice(0, first);
-        return {
-          nodes,
-          pageInfo: { hasNextPage: rows.length > first, endCursor: nodes.at(-1)?.id ?? null },
-        };
+        return paginate(rows, { first: args.first });
       },
     }),
   }),

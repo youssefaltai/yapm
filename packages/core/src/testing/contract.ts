@@ -864,7 +864,7 @@ export function hubContract(
         commentCount: 1,
         url: expect.stringContaining("/issue/PF-3"),
       });
-      const comments = (await call("list_comments", { issueId: "PF-3" })).json();
+      const { comments } = (await call("list_comments", { issueId: "PF-3" })).json();
       expect(comments[0]).toMatchObject({
         author: "CEO",
         body: "Two quotes in, waiting on a third.",
@@ -3931,11 +3931,13 @@ export function hubContract(
       // Comments and reactions.
       const comment = await mcp("create_comment", { issueId: a.identifier, body: "Tpyo" });
       await mcp("update_comment", { id: comment.id, body: "Typo fixed" });
-      expect((await mcp("list_comments", { issueId: a.identifier }))[0].body).toBe("Typo fixed");
+      expect((await mcp("list_comments", { issueId: a.identifier })).comments[0].body).toBe(
+        "Typo fixed",
+      );
       const reaction = await mcp("create_reaction", { emoji: "👍", commentId: comment.id });
       await mcp("delete_reaction", { id: reaction.id });
       await mcp("delete_comment", { id: comment.id });
-      expect(await mcp("list_comments", { issueId: a.identifier })).toEqual([]);
+      expect((await mcp("list_comments", { issueId: a.identifier })).comments).toEqual([]);
 
       // Labels.
       const label = await mcp("create_issue_label", { name: "Visa", team: "TRV" });
@@ -4670,6 +4672,104 @@ export function hubContract(
         model: chosen,
       });
       for (const { id } of [claudeOnly, both]) await revoke(id);
+    });
+
+    it("pages the log, history and Inbox across same-moment batches, past 250", async () => {
+      const owner = await client.graphql<{ viewer: { id: string } }>("{ viewer { id } }");
+      const team = await client.graphql<{ teamCreate: { team: { id: string } } }>(
+        'mutation { teamCreate(input: { name: "Paging", key: "PG" }) { team { id } } }',
+      );
+      const ids: string[] = [];
+      for (let n = 0; n < 50; n++) {
+        const made = await client.graphql<{ issueCreate: { issue: { id: string } } }>(
+          "mutation($teamId: String!, $title: String!) { issueCreate(input: { teamId: $teamId, title: $title }) { issue { id } } }",
+          { teamId: team.data?.teamCreate.team.id, title: `Page ${n}` },
+          ceoToken,
+        );
+        ids.push(made.data?.issueCreate.issue.id ?? "");
+      }
+      // Six batches of 50: each writes 50 audit entries and 50 notifications at one moment.
+      const me = owner.data?.viewer.id;
+      for (const assigneeId of [me, null, me, null, me, null]) {
+        await client.graphql(
+          "mutation($ids: [String!]!, $assigneeId: String) { issueBatchUpdate(ids: $ids, input: { assigneeId: $assigneeId }) { success } }",
+          { ids, assigneeId },
+          ceoToken,
+        );
+      }
+      const mine = new Set(ids);
+      const updates = (seen: { id: string; entityId: string | null; action?: string }[]) => {
+        expect(new Set(seen.map((e) => e.id)).size).toBe(seen.length);
+        return seen.filter((e) => mine.has(e.entityId ?? "") && e.action !== "issue.create").length;
+      };
+      type Page<T> = { nodes: T[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };
+
+      const log: { id: string; entityId: string; action: string }[] = [];
+      for (let after: string | null = null; ; ) {
+        const page: { data?: { auditEntries: Page<(typeof log)[number]> } } = await client.graphql(
+          'query($after: String) { auditEntries(first: 45, after: $after, entityType: "issue") { nodes { id entityId action } pageInfo { hasNextPage endCursor } } }',
+          { after },
+        );
+        log.push(...(page.data?.auditEntries.nodes ?? []));
+        after = page.data?.auditEntries.pageInfo.endCursor ?? null;
+        if (!page.data?.auditEntries.pageInfo.hasNextPage) break;
+      }
+      expect(updates(log)).toBe(300);
+
+      const history: { id: string; entityId: string; action: string }[] = [];
+      for (let cursor: string | null = null; ; ) {
+        const page = (
+          await callTool(ceoToken, "get_history", { entityType: "issue", limit: 45, cursor })
+        ).json() as {
+          entries: { id: string; entityId: string; action: string }[];
+          nextCursor: string | null;
+        };
+        history.push(...page.entries);
+        cursor = page.nextCursor;
+        if (!cursor) break;
+      }
+      expect(updates(history)).toBe(300);
+
+      const inbox: { id: string; entityId: string | null }[] = [];
+      for (let after: string | null = null; ; ) {
+        const page: {
+          data?: { notifications: Page<{ id: string; issue: { id: string } | null }> };
+        } = await client.graphql(
+          "query($after: String) { notifications(first: 100, after: $after) { nodes { id issue { id } } pageInfo { hasNextPage endCursor } } }",
+          { after },
+        );
+        for (const n of page.data?.notifications.nodes ?? [])
+          inbox.push({ id: n.id, entityId: n.issue?.id ?? null });
+        after = page.data?.notifications.pageInfo.endCursor ?? null;
+        if (!page.data?.notifications.pageInfo.hasNextPage) break;
+      }
+      expect(updates(inbox)).toBe(300);
+    });
+
+    it("reads an issue's newest comments with last, and pages them through MCP", async () => {
+      const made = await client.graphql<{ issueCreate: { issue: { id: string } } }>(
+        'mutation($teamId: String!) { issueCreate(input: { teamId: $teamId, title: "Chatty" }) { issue { id } } }',
+        { teamId },
+      );
+      const id = made.data?.issueCreate.issue.id ?? "";
+      for (const body of ["One", "Two", "Three"]) {
+        await client.graphql(
+          "mutation($id: String!, $body: String!) { commentCreate(input: { issueId: $id, body: $body }) { success } }",
+          { id, body },
+        );
+      }
+      const newest = await client.graphql<{ issue: { comments: { nodes: { body: string }[] } } }>(
+        "query($id: String!) { issue(id: $id) { comments(last: 2) { nodes { body } } } }",
+        { id },
+      );
+      expect(newest.data?.issue.comments.nodes.map((c) => c.body)).toEqual(["Two", "Three"]);
+
+      const first = (await callTool(ceoToken, "list_comments", { issueId: id, limit: 2 })).json();
+      expect(first.comments.map((c: { body: string }) => c.body)).toEqual(["One", "Two"]);
+      const rest = (
+        await callTool(ceoToken, "list_comments", { issueId: id, cursor: first.nextCursor })
+      ).json();
+      expect(rest).toMatchObject({ comments: [{ body: "Three" }], nextCursor: null });
     });
   });
 }

@@ -6,6 +6,7 @@ import {
   workspaces,
 } from "@yapm/schema";
 import { and, desc, eq, lt } from "drizzle-orm";
+import { olderThan, paginate } from "../graphql/builder.js";
 import {
   addressFeedback,
   createFeedback,
@@ -375,6 +376,7 @@ export const learningTools: Tool<McpContext>[] = [
         entityId: { type: "string" },
         before: { type: "string", description: "ISO time; only older changes" },
         limit: { type: "number" },
+        cursor: { type: "string", description: "nextCursor from a previous page" },
       },
     },
     async run(args, c) {
@@ -392,13 +394,16 @@ export const learningTools: Tool<McpContext>[] = [
             entityId ? eq(auditEvents.entityId, entityId) : undefined,
             actor ? eq(auditEvents.actorId, actor.id) : undefined,
             Number.isNaN(before) ? undefined : lt(auditEvents.createdAt, before),
+            olderThan(auditEvents, str(args.cursor)),
           ),
         )
         .orderBy(desc(auditEvents.createdAt), desc(auditEvents.id))
-        .limit(limit(args.limit, 100))
+        .limit(limit(args.limit, 100) + 1)
         .all();
-      return Promise.all(
-        rows.map(async (e) => ({
+      const page = paginate(rows, { first: limit(args.limit, 100) });
+      const entries = await Promise.all(
+        page.nodes.map(async (e) => ({
+          id: e.id,
           at: iso(e.createdAt),
           by: await nameOf(c, e.actorId),
           action: e.action,
@@ -409,6 +414,7 @@ export const learningTools: Tool<McpContext>[] = [
           runId: e.runId,
         })),
       );
+      return { entries, nextCursor: page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null };
     },
   },
 ];

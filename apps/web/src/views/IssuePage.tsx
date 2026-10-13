@@ -131,9 +131,9 @@ const ISSUE_QUERY = `query($id: String!) { issue(id: $id) {
   children(first: 250) { nodes { ...IssueFields } }
   relations { nodes { id type relatedIssue { ${MINI} } } }
   inverseRelations { nodes { id type issue { ${MINI} } } }
-  comments(first: 250) { nodes { id body createdAt editedAt parent { id } user { id name kind isMe } ${REACTIONS} } }
+  comments(last: 250) { nodes { id body createdAt editedAt parent { id } user { id name kind isMe } ${REACTIONS} } }
   ${REACTIONS}
-  history(first: 250) { nodes { id action createdAt reason data actor { id name kind } } }
+  history(last: 250) { nodes { id action createdAt reason data actor { id name kind } } }
   runs(first: 20) { nodes { ${RUN_SUMMARY} } }
 } } ${ISSUE_FIELDS}`;
 

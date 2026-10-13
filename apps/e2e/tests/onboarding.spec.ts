@@ -1447,4 +1447,26 @@ test.describe
       await page.keyboard.press("Escape");
       await page.unroute("**/graphql");
     });
+
+    test("assigns any member and shows an issue's newest comments, past one page", async () => {
+      const gql = async (query: string, variables?: unknown) =>
+        (await (await page.request.post("/graphql", { data: { query, variables } })).json()).data;
+      for (let n = 1; n <= 50; n++) {
+        await gql("mutation($name: String!) { agentHire(input: { name: $name }) { success } }", {
+          name: `Zz ${String(n).padStart(2, "0")}`,
+        });
+      }
+      const { issue } = await gql('{ issue(id: "PF-1") { id } }');
+      for (let n = 1; n <= 251; n++) {
+        await gql(
+          "mutation($id: String!, $body: String!) { commentCreate(input: { issueId: $id, body: $body }) { success } }",
+          { id: issue.id, body: `Note ${n}` },
+        );
+      }
+      await page.goto("/issue/PF-1");
+      await expect(page.getByText("Note 251", { exact: true })).toBeVisible();
+      await page.locator("dt:text-is('Assignee') + dd").getByRole("button").click();
+      await page.getByPlaceholder("Assign PF-1 to…").fill("Zz 50");
+      await expect(page.getByRole("option", { name: /Zz 50/ })).toBeVisible();
+    });
   });

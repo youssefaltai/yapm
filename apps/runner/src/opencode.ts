@@ -141,10 +141,14 @@ export async function withOpencodeServer<T>(
 
 const clip = (text: string, max = 4000) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
-/** Keeps agents off the owner's own OpenCode settings, project files and database. */
+/**
+ * Keeps agents off the owner's own OpenCode settings, project files and database, and off the
+ * runner's Claude API key, which OpenCode would count as an Anthropic sign-in.
+ */
 export function opencodeEnv(home: string, config: Record<string, unknown> = {}) {
+  const { ANTHROPIC_API_KEY: _, ...env } = process.env;
   return {
-    ...process.env,
+    ...env,
     // OpenCode fills `{env:…}` and `{file:…}` in config text; escaped, ours stays text.
     OPENCODE_CONFIG_CONTENT: JSON.stringify(config).replace(/\{(env|file):/g, "\\u007b$1:"),
     XDG_CONFIG_HOME: join(home, "opencode", "config"),
@@ -364,7 +368,10 @@ function serve(bin: string, cwd: string, env: NodeJS.ProcessEnv, onPlan: (line: 
     const read = (chunk: unknown) => {
       out += String(chunk);
       const listening = /listening on (https?:\/\/\S+)/.exec(out);
-      if (listening?.[1]) resolve(listening[1]);
+      if (!listening?.[1]) return;
+      resolve(listening[1]);
+      proc.stdout?.off("data", read);
+      proc.stderr?.off("data", read);
     };
     proc.stdout?.on("data", read);
     proc.stderr?.on("data", read);
@@ -375,6 +382,30 @@ function serve(bin: string, cwd: string, env: NodeJS.ProcessEnv, onPlan: (line: 
   });
   return { url, close: () => proc.kill() };
 }
+
+/** How long `opencode serve` may take to listen. */
+const STARTUP_TIMEOUT = 60_000;
+
+/** Resolves once `signal` aborts, at once if it has. */
+const aborted = (signal: AbortSignal) =>
+  new Promise<void>((resolve) =>
+    signal.aborted ? resolve() : signal.addEventListener("abort", () => resolve(), { once: true }),
+  );
+
+/** A stream's events until `signal` aborts. */
+async function* until<T>(stream: AsyncIterable<T>, signal: AbortSignal) {
+  const events = stream[Symbol.asyncIterator]();
+  const end = aborted(signal).then(() => ({ done: true as const, value: undefined }));
+  for (;;) {
+    const next = await Promise.race([events.next(), end]);
+    if (next.done) return;
+    yield next.value;
+  }
+}
+
+/** What OpenCode's `{ error }` answer says. */
+const errorText = (error: unknown) =>
+  String((error as { data?: { message?: unknown } }).data?.message ?? JSON.stringify(error));
 
 /** Runs a session on OpenCode, with whatever provider the owner signed in to. */
 export function opencodeEngine(options: OpencodeOptions): Engine {
@@ -404,13 +435,32 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
         if (plan) run.onPlan?.({ plan });
       } catch {}
     });
+    process.on("exit", server.close);
     const result: EngineResult = { output: null, sessionId: run.resume, usage: {} };
     let sessionID = "";
     let steps = 0;
+    // Ends the event loop: the run stopped, or OpenCode can't go on.
+    const end = new AbortController();
+    const fail = (error: string) => {
+      result.error ??= error;
+      end.abort();
+    };
     const abort = () => void client?.session.abort({ sessionID });
+    const stop = () => {
+      abort();
+      end.abort();
+    };
+    run.signal.addEventListener("abort", stop);
     let client: ReturnType<typeof createOpencodeClient> | undefined;
     try {
-      client = createOpencodeClient({ baseUrl: await server.url, directory: run.cwd });
+      const startup = AbortSignal.any([run.signal, AbortSignal.timeout(STARTUP_TIMEOUT)]);
+      const baseUrl = await Promise.race([
+        server.url,
+        aborted(startup).then(() => {
+          throw new Error("OpenCode didn't start in time");
+        }),
+      ]);
+      client = createOpencodeClient({ baseUrl, directory: run.cwd });
       const { stream } = await client.event.subscribe();
       sessionID =
         run.resume ??
@@ -472,16 +522,19 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
         return { behavior: "allow" };
       };
       const answer = async (ask: PermissionRequest) => {
-        const key = ask.tool?.callID ?? ask.id;
+        // Call ids are only unique within a message.
+        const key = ask.tool ? `${ask.tool.messageID}/${ask.tool.callID}` : ask.id;
         if (!decisions.has(key)) decisions.set(key, decide(ask));
         const decision = await decisions
           .get(key)
           ?.catch((error): ToolDecision => ({ behavior: "deny", message: String(error) }));
-        await client?.permission.reply(
+        const replied = await client?.permission.reply(
           decision?.behavior === "allow"
             ? { requestID: ask.id, reply: "once" }
             : { requestID: ask.id, reply: "reject", message: decision?.message ?? "" },
         );
+        // Unanswered, the call would wait forever.
+        if (replied?.error) fail(errorText(replied.error));
       };
 
       // Older hubs name no provider: OpenCode's own default model runs.
@@ -494,20 +547,20 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
               modelID
             ]?.variants
           : undefined;
-      run.signal.addEventListener("abort", abort);
       if (run.signal.aborted) throw new Error("Stopped");
-      await client.session.promptAsync({
+      const prompted = await client.session.promptAsync({
         sessionID,
         ...(providerID ? { model: { providerID, modelID } } : {}),
         ...(run.effort && variants?.[run.effort] ? { variant: run.effort } : {}),
         format: { type: "json_schema", schema: run.input.outputSchema },
         parts: [{ type: "text", text: run.input.prompt }],
       });
+      if (prompted.error) throw new Error(errorText(prompted.error));
 
       const maxTurns = run.input.tools ? run.input.maxTurns : 3;
       const seen = new Set<string>();
       const started = new Set<string>();
-      for await (const event of stream as AsyncIterable<Event>) {
+      for await (const event of until(stream as AsyncIterable<Event>, end.signal)) {
         // Subagents run in sessions of their own, under ours.
         if (event.type === "session.created" || event.type === "session.updated") {
           const { id, parentID } = event.properties.info;
@@ -575,6 +628,7 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
               ("statusCode" in error.data && error.data.statusCode === 401);
             if (signedOut) result.error += ` ${LOGIN_HINT}`;
           }
+          break;
         }
       }
       // Claude's totals include its subagents', so these do too.
@@ -595,8 +649,9 @@ export function opencodeEngine(options: OpencodeOptions): Engine {
       if (!run.signal.aborted)
         result.error = error instanceof Error ? error.message : String(error);
     } finally {
-      run.signal.removeEventListener("abort", abort);
+      run.signal.removeEventListener("abort", stop);
       server.close();
+      process.off("exit", server.close);
     }
     // As the Claude SDK does, a run ends with its result, failed or not, unless it was stopped.
     if (!run.signal.aborted)

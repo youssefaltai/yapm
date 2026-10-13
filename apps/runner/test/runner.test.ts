@@ -22,6 +22,8 @@ describe("runner daemon", () => {
   };
   let runner: Runner;
   const lines: string[] = [];
+  // Calls this says fail get a 502, as a proxy's blip would.
+  let blip: (url: string) => boolean = () => false;
 
   const gql = async <T>(query: string, variables?: Record<string, unknown>) => {
     const result = await owner.graphql<T>(query, variables);
@@ -41,8 +43,13 @@ describe("runner daemon", () => {
     const app = createNodeApp({ db, config: { platform: "node", version: "test" } });
     const send = async (request: Request) => app.fetch(request);
     owner = new TestClient(send);
-    hub = new HubClient("http://localhost", (input, init) =>
-      Promise.resolve(app.fetch(new Request(input, init))),
+    hub = new HubClient(
+      "http://localhost",
+      async (input, init) =>
+        blip(String(input))
+          ? new Response("Bad gateway", { status: 502 })
+          : app.fetch(new Request(input, init)),
+      { retryMs: 1 },
     );
     const options = await owner.json<{ challengeId: string; options: never }>(
       "/api/setup/options",
@@ -267,6 +274,53 @@ describe("runner daemon", () => {
     expect(sent).toMatchObject({ model: "claude-opus-5-5", effort: "high" });
   });
 
+  it("keeps reporting a result until the hub takes it", async () => {
+    let blips = 5;
+    blip = (url) => url.endsWith("/complete") && blips-- > 0;
+    script = async () => ({
+      output: { outcome: "done", summary: "Done." },
+      sessionId: null,
+      usage: {},
+    });
+    const created = await gql<{ runCreate: { run: { id: string } } }>(
+      "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
+      { input: { agentId, goal: "Report through a blip" } },
+    );
+    expect(await runner.claim()).toBe(1);
+    await runner.idle();
+    blip = () => false;
+    const run = await gql<{ run: { status: string } }>(
+      "query($id: String!) { run(id: $id) { status } }",
+      { id: created.runCreate.run.id },
+    );
+    expect(run.run.status).toBe("completed");
+  });
+
+  it("uploads the whole transcript before reporting", async () => {
+    const logs = hub.logs.bind(hub);
+    let offline = true;
+    let sent = 0;
+    const upload = vi.spyOn(hub, "logs").mockImplementation(async (token, runId, body) => {
+      if (offline) throw new Error("offline");
+      sent += body.events.length;
+      return logs(token, runId, body);
+    });
+    script = async (run) => {
+      for (let i = 0; i < 1200; i++) run.onEvent({ type: "text", text: `Line ${i}` });
+      // Every upload while it runs fails, so all of it is left for the end.
+      await new Promise((r) => setTimeout(r, 50));
+      offline = false;
+      return { output: { summary: "ok" }, sessionId: null, usage: {} };
+    };
+    await gql("mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }", {
+      input: { agentId, goal: "Say a lot" },
+    });
+    expect(await runner.claim()).toBe(1);
+    await runner.idle();
+    upload.mockRestore();
+    expect(sent).toBe(1200);
+  });
+
   it("reports the plan's limits from sessions, and reads them while idle", async () => {
     const enrolment = await hub.enrol({
       name: "Plan machine",
@@ -457,6 +511,8 @@ describe("runner daemon", () => {
       ["openai", "gpt-6-luna", "high"],
       ["anthropic", "claude-opus-5-5", "medium"],
     ]);
+    // Only Claude sessions read the Claude plan; OpenCode's would spend the reading for nothing.
+    expect(sessions.slice(-2).map((r) => r.readUsage)).toEqual([false, true]);
     await gql(
       "mutation($id: String!) { userUpdate(id: $id, input: { models: null }) { success } }",
       { id: agentId },

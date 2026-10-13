@@ -42,6 +42,9 @@ const stdioMcp = (bin: string, args: string[], env: Record<string, string>) => {
   });
 };
 let authList = "";
+// A server that never says it listens, and an answer OpenCode refuses.
+let hangs = false;
+let replyError: unknown;
 
 vi.mock("node:child_process", () => ({
   spawnSync: (command: string, args: string[]) => {
@@ -59,9 +62,10 @@ vi.mock("node:child_process", () => ({
     });
     const record = { args, env: options.env, killed: false, stderr: proc.stderr };
     spawned.push(record);
-    setTimeout(() =>
-      proc.stdout.emit("data", "opencode server listening on http://127.0.0.1:4096\n"),
-    );
+    if (!hangs)
+      setTimeout(() =>
+        proc.stdout.emit("data", "opencode server listening on http://127.0.0.1:4096\n"),
+      );
     return proc;
   },
 }));
@@ -95,18 +99,30 @@ vi.mock("@opencode-ai/sdk/v2", () => ({
       },
       session: {
         create: log("create", () => ({ id: "ses_1" })),
-        promptAsync: log("prompt", ({ sessionID }: { sessionID: string }) => {
-          if (sessionID === "ses_gone") throw new Error("Session not found");
+        // Like the real SDK, a failed call answers `{ error }` and doesn't throw.
+        promptAsync: async (args: { sessionID: string }) => {
+          calls.prompt = [...(calls.prompt ?? []), args];
+          if (args.sessionID === "ses_gone")
+            return { error: { name: "NotFoundError", data: { message: "Session not found" } } };
           setTimeout(() => script(push));
-        }),
+          return { data: {} };
+        },
         message: log("message", () => ({ parts })),
-        abort: log("abort", () => push(idle)),
+        // Only a session OpenCode has goes idle when aborted.
+        abort: log("abort", ({ sessionID }: { sessionID: string }) => {
+          if (sessionID === "ses_1") push(idle);
+        }),
         get: log("get", () => ({
           cost: 0.02,
           tokens: { input: 100, output: 10, reasoning: 5, cache: { read: 50, write: 0 } },
         })),
       },
-      permission: { reply: log("reply") },
+      permission: {
+        reply: async (args: never) => {
+          calls.reply = [...(calls.reply ?? []), args];
+          return replyError ? { error: replyError } : { data: true };
+        },
+      },
       provider: {
         list: log("providers", () => ({
           all: [
@@ -138,9 +154,15 @@ const part = (p: Record<string, unknown>, sessionID = "ses_1") => ({
   type: "message.part.updated",
   properties: { sessionID, part: { sessionID, ...p } },
 });
-const ask = (id: string, permission: string, callID: string, sessionID = "ses_1") => ({
+const ask = (
+  id: string,
+  permission: string,
+  callID: string,
+  sessionID = "ses_1",
+  messageID = "msg_1",
+) => ({
   type: "permission.asked",
-  properties: { id, sessionID, permission, tool: { messageID: "msg_1", callID } },
+  properties: { id, sessionID, permission, tool: { messageID, callID } },
 });
 const created = (id: string, parentID?: string) => ({
   type: "session.created",
@@ -227,6 +249,14 @@ describe("opencode engine", () => {
     expect(env.OPENCODE_PURE).toBeUndefined();
     expect(config().plugin).toEqual(["file:///h/opencode/plan.js"]);
     expect(env.PATH).toBe(process.env.PATH);
+  });
+
+  it("keeps the Claude API key from OpenCode, which would count it as signed in", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-api03-abc");
+    start((push) => push(idle));
+    await engine()(run());
+    vi.unstubAllEnvs();
+    expect(spawned[0]?.env).not.toHaveProperty("ANTHROPIC_API_KEY");
   });
 
   it("passes on the plan readings its plugin prints", async () => {
@@ -392,6 +422,58 @@ describe("opencode engine", () => {
     expect(spawned[0]?.killed).toBe(true);
   });
 
+  it("stops even when OpenCode never says the session ended", async () => {
+    const stop = new AbortController();
+    start(() => stop.abort());
+    const result = await engine()(run({ resume: "ses_lost", signal: stop.signal }));
+    expect(calls.abort).toEqual([{ sessionID: "ses_lost" }]);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("stops while OpenCode is still starting", async () => {
+    const stop = new AbortController();
+    start(() => {});
+    hangs = true;
+    setTimeout(() => stop.abort(), 10);
+    await engine()(run({ signal: stop.signal })).finally(() => {
+      hangs = false;
+    });
+    expect(spawned[0]?.killed).toBe(true);
+  });
+
+  it("asks again about a call id another message reuses", async () => {
+    const seen: string[] = [];
+    start((push) => {
+      parts = [
+        { type: "tool", callID: "call_0", tool: "bash", state: { input: { command: "x" } } },
+      ];
+      push(ask("p1", "bash", "call_0", "ses_1", "msg_1"));
+      push(ask("p2", "bash", "call_0", "ses_1", "msg_2"));
+      setTimeout(() => push(idle), 20);
+    });
+    await engine()(
+      run({
+        canUseTool: async (tool) => {
+          seen.push(tool);
+          return { behavior: "allow" };
+        },
+      }),
+    );
+    expect(seen).toEqual(["Bash", "Bash"]);
+  });
+
+  it("fails the run when OpenCode refuses its answer to an ask", async () => {
+    start((push) => {
+      parts = [{ type: "tool", callID: "c1", tool: "bash", state: { input: { command: "x" } } }];
+      push(ask("p1", "bash", "c1"));
+    });
+    replyError = { name: "NotFoundError", data: { message: "Permission not found" } };
+    const result = await engine()(run()).finally(() => {
+      replyError = undefined;
+    });
+    expect(result.error).toBe("Permission not found");
+  });
+
   it("stops a session that runs past its turns", async () => {
     start((push) => {
       for (const id of ["s1", "s2"]) push(part({ id, type: "step-finish" }));
@@ -453,7 +535,6 @@ describe("opencode engine", () => {
           error: { name: "APIError", data: { message: "No credit" } },
         },
       });
-      push(idle);
     });
     const result = await engine()(run());
     expect(result.error).toBe("No credit");

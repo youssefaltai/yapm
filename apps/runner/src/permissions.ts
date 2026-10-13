@@ -1,4 +1,4 @@
-import type { HubClient } from "./hub.js";
+import { type HubClient, transient } from "./hub.js";
 
 /** Tools an agent may use without asking: they only read, or only touch the hub (which checks). */
 export const SAFE_TOOLS = new Set([
@@ -169,21 +169,36 @@ export async function decideTool(
   }
   ctx.onEvent({ type: "permission", tool, action, resource, requestId, state: "waiting" });
 
+  // Set when a use of the approval got no answer: it may have gone through.
+  let tried = false;
   while (!ctx.signal.aborted) {
-    const data = await ctx.hub.graphql<{
-      request: { status: string; answer: string | null } | null;
-    }>(ctx.token, "query($id: String!) { request(id: $id) { status answer } }", {
-      id: requestId,
-    });
-    const request = data.request;
-    if (!request) return { behavior: "deny", message: "The request disappeared." };
-    if (request.status === "approved") {
-      const granted = await use(ctx, action, resource);
-      ctx.onEvent({ type: "permission", tool, requestId, state: "approved" });
-      if (granted.allowed) return { behavior: "allow" };
-      return { behavior: "deny", message: "The approval was already used." };
-    }
-    if (request.status !== "pending") {
+    // A blip is waited out: the call is made again on the next turn.
+    const data = await ctx.hub
+      .graphql<{
+        request: { status: string; answer: string | null; used: boolean } | null;
+      }>(ctx.token, "query($id: String!) { request(id: $id) { status answer used } }", {
+        id: requestId,
+      })
+      .catch((error) => {
+        if (!transient(error)) throw error;
+      });
+    const request = data?.request;
+    if (data && !request) return { behavior: "deny", message: "The request disappeared." };
+    if (request?.status === "approved") {
+      const granted =
+        tried && request.used
+          ? { allowed: true }
+          : await use(ctx, action, resource).catch((error) => {
+              if (!transient(error)) throw error;
+              tried = true;
+              return null;
+            });
+      if (granted) {
+        ctx.onEvent({ type: "permission", tool, requestId, state: "approved" });
+        if (granted.allowed) return { behavior: "allow" };
+        return { behavior: "deny", message: "The approval was already used." };
+      }
+    } else if (request && request.status !== "pending") {
       ctx.onEvent({ type: "permission", tool, requestId, state: request.status });
       return {
         behavior: "deny",

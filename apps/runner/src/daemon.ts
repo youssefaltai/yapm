@@ -182,7 +182,8 @@ export class Runner {
 
     let completion: Completion;
     try {
-      const engine = this.options.engines[claim.run.engine ?? "claude"];
+      const engineName = claim.run.engine ?? "claude";
+      const engine = this.options.engines[engineName];
       if (!engine) throw new Error(`This machine has no ${claim.run.engine} engine`);
       const result = await engine({
         input: claim.input,
@@ -215,7 +216,8 @@ export class Runner {
           sessionId = id;
         },
         onPlan: (update) => this.plan.update(update),
-        readUsage: this.plan.claimReading(),
+        // OpenCode doesn't read the Claude plan; a reading claimed for it would be lost.
+        readUsage: engineName === "claude" && this.plan.claimReading(),
       });
       sessionId = result.sessionId ?? sessionId;
       usage = result.usage;
@@ -237,14 +239,18 @@ export class Runner {
       };
     }
     clearInterval(timer);
-    await flush();
-    await flush();
-    const answer = await hub.complete(token, claim.run.id, {
-      ...completion,
-      sessionId,
-      usage,
-      ...ran,
-    });
+    // All of it, in as many uploads as it takes, while the hub takes them.
+    for (let left = Number.POSITIVE_INFINITY; buffer.length && buffer.length < left; ) {
+      left = buffer.length;
+      await flush();
+    }
+    const answer = await hub
+      .complete(token, claim.run.id, { ...completion, sessionId, usage, ...ran })
+      .catch((error) => {
+        // An earlier try got through, and only its answer was lost.
+        if (error instanceof HubError && error.status === 409) return null;
+        throw error;
+      });
     const status = answer?.status ?? completion.status;
     this.log(
       `Finished ${label}: ${status}${completion.error && status !== "completed" ? ` (${completion.error})` : ""}`,

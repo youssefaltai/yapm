@@ -471,7 +471,8 @@ export const tools: Tool<McpContext>[] = [
   {
     name: "update_team",
     title: "Update team",
-    description: "Change a team's name, key, lead, triage, cycles, SLAs or auto-archive.",
+    description:
+      "Change a team's name, key, triage, cycles, SLAs or auto-archive. Needs team.update; only the owner picks its lead.",
     inputSchema: {
       type: "object",
       properties: {

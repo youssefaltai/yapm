@@ -163,6 +163,7 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
   const { db, now } = ctx;
   const team = await db.select().from(teams).where(eq(teams.id, id)).get();
   if (!team) throw notFound("Team");
+  const allowed = await authorize(ctx, "team.update", id);
 
   const next: Partial<typeof teams.$inferInsert> = {};
   if (input.name !== undefined && input.name !== null)
@@ -174,7 +175,9 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
   if (input.description !== undefined) next.description = input.description?.trim() || null;
   if (input.icon !== undefined) next.icon = input.icon;
   if (input.color !== undefined) next.color = input.color;
-  if (input.leadId !== undefined) {
+  if (input.leadId !== undefined && input.leadId !== team.leadId) {
+    // The lead joins the team, so this is a membership change too.
+    await requireOwner(ctx, "choose a team's lead");
     if (input.leadId) await assertActiveUser(db, input.leadId, "Team lead");
     next.leadId = input.leadId;
   }
@@ -201,6 +204,7 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
   else delete next.slaHours;
   if (!Object.keys(diff).length) return id;
   const ops: WriteOp[] = [
+    ...allowed,
     db
       .update(teams)
       .set({ ...next, updatedAt: now })

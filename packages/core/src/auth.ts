@@ -4,7 +4,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
-import { apiTokens, authChallenges, passkeys, sessions, users } from "@yapm/schema";
+import { apiTokens, authChallenges, passkeys, runs, sessions, users } from "@yapm/schema";
 import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -90,11 +90,14 @@ async function userForToken(
     })
     .from(apiTokens)
     .innerJoin(users, eq(users.id, apiTokens.userId))
+    .leftJoin(runs, eq(runs.id, apiTokens.runId))
     .where(
       and(
         eq(apiTokens.tokenHash, tokenHash),
         isNull(apiTokens.revokedAt),
         or(isNull(apiTokens.expiresAt), gt(apiTokens.expiresAt, at)),
+        // A run's token works only while its run does.
+        or(isNull(apiTokens.runId), eq(runs.status, "running")),
       ),
     )
     .get();

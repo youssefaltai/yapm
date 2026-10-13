@@ -614,7 +614,7 @@ export const planningTools: Tool<McpContext>[] = [
               and(
                 inArray(
                   issues.cycleId,
-                  rows.map((r) => r.id),
+                  c.db.select({ id: cycles.id }).from(cycles).where(eq(cycles.teamId, team.id)),
                 ),
                 isNull(issues.archivedAt),
               ),
@@ -704,7 +704,10 @@ export const planningTools: Tool<McpContext>[] = [
         team: { type: "string", description: "Team name, key or id (to create)" },
         name: { type: "string" },
         title: { type: "string", description: "The issue's title" },
-        description: { type: "string", description: "The issue's description, in markdown" },
+        description: {
+          type: ["string", "null"],
+          description: "The issue's description, in markdown",
+        },
         assignee: { type: ["string", "null"], description: 'Member name, id, or "me"' },
         priority: { type: "integer", description: "0 none, 1 urgent, 2 high, 3 medium, 4 low" },
         schedule: {

@@ -17,6 +17,7 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
+import { createGraphQLError } from "graphql-yoga";
 import type { HubDb } from "../db.js";
 import { builder, type Page, pageSize } from "./builder.js";
 
@@ -29,6 +30,7 @@ interface IDComparatorShape {
   nin?: string[] | null;
 }
 interface StringComparatorShape extends IDComparatorShape {
+  eqIgnoreCase?: string | null;
   containsIgnoreCase?: string | null;
 }
 interface NumberComparatorShape {
@@ -68,6 +70,7 @@ export const StringComparator = builder
       neq: t.string({ required: false }),
       in: t.stringList({ required: false }),
       nin: t.stringList({ required: false }),
+      eqIgnoreCase: t.string({ required: false }),
       containsIgnoreCase: t.string({ required: false }),
     }),
   });
@@ -246,13 +249,23 @@ export const IssueFilter = builder.inputRef<IssueFilterShape>("IssueFilter").imp
   }),
 });
 
+/** An IN list, kept under D1's 100 bound parameters per statement. */
+function within<T>(values: T[]) {
+  if (values.length > 90)
+    throw createGraphQLError("A filter's in and nin lists take at most 90 values", {
+      extensions: { code: "BAD_REQUEST" },
+    });
+  return values;
+}
+
 function compare(column: Column, c: StringComparatorShape | null | undefined): SQL | undefined {
   if (!c) return undefined;
   return and(
     c.eq != null ? eq(column, c.eq) : undefined,
     c.neq != null ? ne(column, c.neq) : undefined,
-    c.in ? (c.in.length ? inArray(column, c.in) : sql`0`) : undefined,
-    c.nin?.length ? notInArray(column, c.nin) : undefined,
+    c.in ? (c.in.length ? inArray(column, within(c.in)) : sql`0`) : undefined,
+    c.nin?.length ? notInArray(column, within(c.nin)) : undefined,
+    c.eqIgnoreCase != null ? sql`lower(${column}) = ${c.eqIgnoreCase.toLowerCase()}` : undefined,
     c.containsIgnoreCase != null
       ? sql`lower(${column}) like ${`%${c.containsIgnoreCase.toLowerCase().replace(/[%_\\]/g, "\\$&")}%`} escape '\\'`
       : undefined,
@@ -267,8 +280,8 @@ function compareNumber(
   return and(
     c.eq != null ? eq(column, c.eq) : undefined,
     c.neq != null ? ne(column, c.neq) : undefined,
-    c.in ? (c.in.length ? inArray(column, c.in) : sql`0`) : undefined,
-    c.nin?.length ? notInArray(column, c.nin) : undefined,
+    c.in ? (c.in.length ? inArray(column, within(c.in)) : sql`0`) : undefined,
+    c.nin?.length ? notInArray(column, within(c.nin)) : undefined,
     c.lt != null ? lt(column, c.lt) : undefined,
     c.lte != null ? lte(column, c.lte) : undefined,
     c.gt != null ? gt(column, c.gt) : undefined,

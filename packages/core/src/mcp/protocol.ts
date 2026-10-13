@@ -2,6 +2,8 @@
 // and gets a JSON answer. No sessions or server-sent streams, so it runs the same on Node and
 // on Workers within the free plan's CPU budget.
 
+import { ServiceError } from "../errors.js";
+
 export const PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 
 export interface JsonSchema {
@@ -48,17 +50,26 @@ function checkArgs(schema: JsonSchema, args: Record<string, unknown>) {
     }
   }
   for (const [key, value] of Object.entries(args)) {
-    const spec = schema.properties[key] as { type?: string | string[] } | undefined;
+    const spec = schema.properties[key] as
+      | { type?: string | string[]; enum?: unknown[]; maxItems?: number }
+      | undefined;
     if (!spec) throw new ToolError(`Unknown argument: ${key}`);
-    if (value === null || !spec.type) continue;
+    if (!spec.type) continue;
     const types = Array.isArray(spec.type) ? spec.type : [spec.type];
-    const actual = Array.isArray(value)
-      ? "array"
-      : Number.isInteger(value)
-        ? "integer"
-        : typeof value;
+    const actual =
+      value === null
+        ? "null"
+        : Array.isArray(value)
+          ? "array"
+          : Number.isInteger(value)
+            ? "integer"
+            : typeof value;
     const ok = types.some((t) => t === actual || (t === "number" && actual === "integer"));
     if (!ok) throw new ToolError(`Argument ${key} must be ${types.join(" or ")}`);
+    if (value !== null && spec.enum && !spec.enum.includes(value))
+      throw new ToolError(`Argument ${key} must be one of ${spec.enum.join(", ")}`);
+    if (Array.isArray(value) && value.length > (spec.maxItems ?? Infinity))
+      throw new ToolError(`Argument ${key} takes at most ${spec.maxItems} items`);
   }
 }
 
@@ -69,6 +80,8 @@ export async function handleMessage<Ctx>(
   info: ServerInfo,
   ctx: Ctx,
 ): Promise<JsonRpcResponse | null> {
+  if (typeof message !== "object" || !message || Array.isArray(message) || !message.method)
+    return { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } };
   const id = message.id ?? null;
   const ok = (result: unknown): JsonRpcResponse => ({ jsonrpc: "2.0", id, result });
   const fail = (code: number, msg: string): JsonRpcResponse => ({
@@ -111,7 +124,7 @@ export async function handleMessage<Ctx>(
         const result = await tool.run(args, ctx);
         return ok({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
       } catch (error) {
-        if (error instanceof ToolError || (error instanceof Error && "code" in error)) {
+        if (error instanceof ToolError || error instanceof ServiceError) {
           return ok({ content: [{ type: "text", text: error.message }], isError: true });
         }
         throw error;

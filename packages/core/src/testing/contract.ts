@@ -4771,5 +4771,119 @@ export function hubContract(
       ).json();
       expect(rest).toMatchObject({ comments: [{ body: "Three" }], nextCursor: null });
     });
+
+    it("checks inputs against the schemas it advertises", async () => {
+      const call = async (name: string, args: Record<string, unknown>, token = ceoToken) => {
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
+          token,
+        });
+        const body = (await response.json()) as {
+          result?: { content: { text: string }[]; isError?: boolean };
+          error?: { code: number };
+        };
+        expect(body.error).toBeUndefined();
+        const text = body.result?.content[0]?.text ?? "";
+        return { text, isError: body.result?.isError ?? false };
+      };
+      const mcp = async (name: string, args: Record<string, unknown>, token = ceoToken) => {
+        const { text, isError } = await call(name, args, token);
+        if (isError) throw new Error(text);
+        return JSON.parse(text);
+      };
+      const rejects = async (name: string, args: Record<string, unknown>, message: RegExp) => {
+        const { text, isError } = await call(name, args);
+        expect(isError).toBe(true);
+        expect(text).toMatch(message);
+      };
+
+      // Enums and null are checked, not passed through.
+      await rejects("create_issue_status", { team: teamId, name: "Wip", type: "wip" }, /type/);
+      await rejects("list_requests", { status: "bogus" }, /status/);
+      await rejects("list_issues", { orderBy: "x" }, /orderBy/);
+      await rejects("create_issue", { team: teamId, title: "Null labels", labels: null }, /labels/);
+
+      // A saved view's filter has the shape issues(filter:) takes.
+      for (const filterData of [{ foo: 1 }, { state: "x" }, { priority: 5 }, { or: "x" }]) {
+        const bad = await client.graphql(
+          "mutation($input: CustomViewCreateInput!) { customViewCreate(input: $input) { success } }",
+          { input: { name: "Bad filter", filterData } },
+        );
+        expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      }
+
+      // IN lists stay within D1's 100 bound parameters.
+      const ids = Array.from({ length: 91 }, (_, i) => `id-${i}`);
+      const wide = await client.graphql(
+        "query($ids: [ID!]) { issues(filter: { id: { in: $ids } }) { nodes { id } } }",
+        { ids },
+      );
+      expect(wide.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+      const labelled = await client.graphql(
+        "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success } }",
+        { input: { teamId, title: "Many labels", labelIds: ids } },
+      );
+      expect(labelled.errors?.[0]?.message).toMatch(/at most 90/);
+
+      // Dates that don't exist are rejected.
+      const overflow = await client.graphql(
+        'mutation($t: String!) { projectCreate(input: { name: "Leap", teamIds: [$t], targetDate: "2026-02-31" }) { success } }',
+        { t: teamId },
+      );
+      expect(overflow.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
+
+      // Statuses and labels match whatever their case.
+      await mcp("create_issue_label", { name: "Schema Errands", team: teamId });
+      const started = await mcp("create_issue", {
+        team: teamId,
+        title: "Mixed case",
+        state: "started",
+        labels: ["Schema Errands"],
+      });
+      const found = await mcp("list_issues", {
+        state: started.status.toUpperCase(),
+        label: "schema errands",
+      });
+      expect(found.issues.map((i: { id: string }) => i.id)).toEqual([started.id]);
+
+      // null clears a member's title and manager.
+      const owner = await client.graphql<{ apiTokenCreate: { token: string } }>(
+        'mutation { apiTokenCreate(name: "Schema check") { token } }',
+      );
+      const ownerToken = owner.data?.apiTokenCreate.token ?? "";
+      const hire = { name: "Scribe", title: "Note taker", charter: "Notes.", manager: "CEO" };
+      await mcp("hire_agent", hire, ownerToken);
+      await mcp("update_user", { user: "Scribe", title: null, manager: null }, ownerToken);
+      expect(await mcp("get_user", { query: "Scribe" })).toMatchObject({
+        title: null,
+        manager: null,
+      });
+
+      // Taking an issue out of its project doesn't find a milestone in the old one.
+      const project = await mcp("create_project", { name: "Schema twin", teams: [teamId] });
+      await mcp("save_milestone", { project: project.id, name: "Schema stage" });
+      const staged = await mcp("create_issue", {
+        team: teamId,
+        title: "Staged",
+        project: project.id,
+        milestone: "Schema stage",
+      });
+      await rejects(
+        "update_issue",
+        { id: staged.id, project: null, milestone: "Schema stage" },
+        /milestone/i,
+      );
+      // A name two projects share is ambiguous.
+      await mcp("create_project", { name: "Schema twin", teams: [teamId] });
+      await rejects("update_issue", { id: staged.id, project: "Schema twin" }, /projects/);
+
+      // Malformed JSON-RPC gets an invalid-request error.
+      for (const json of [5, null, []]) {
+        const response = await client.request("/mcp", { method: "POST", json, token: ceoToken });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ error: { code: -32600 } });
+      }
+    });
   });
 }

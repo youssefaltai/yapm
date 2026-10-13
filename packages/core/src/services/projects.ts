@@ -29,7 +29,13 @@ import { notify, ownerId } from "./notifications.js";
 // group projects, and documents.
 
 function checkDate(date: string, label: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date)))
+  // Date.parse rolls 2026-02-31 over into March, so the date must survive the round trip.
+  const time = Date.parse(date);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    Number.isNaN(time) ||
+    new Date(time).toISOString().slice(0, 10) !== date
+  )
     throw badRequest(`${label} must be a date like 2026-10-31`);
 }
 

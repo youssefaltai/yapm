@@ -376,7 +376,7 @@ export const learningTools: Tool<McpContext>[] = [
         entityId: { type: "string" },
         before: { type: "string", description: "ISO time; only older changes" },
         limit: { type: "number" },
-        cursor: { type: "string", description: "nextCursor from a previous page" },
+        cursor: { type: ["string", "null"], description: "nextCursor from a previous page" },
       },
     },
     async run(args, c) {

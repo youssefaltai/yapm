@@ -74,7 +74,8 @@ export async function mcpHandler(c: Context<HubEnv>) {
     },
   };
   const info = { name: "yapm", version: deps.config.version, instructions: INSTRUCTIONS };
-  const messages = Array.isArray(body) ? body : [body];
+  // An empty batch is one invalid request.
+  const messages = Array.isArray(body) && body.length ? body : [body];
   const responses = [];
   for (const message of messages) {
     try {
@@ -90,5 +91,5 @@ export async function mcpHandler(c: Context<HubEnv>) {
     }
   }
   if (!responses.length) return c.body(null, 202);
-  return c.json(Array.isArray(body) ? responses : responses[0]);
+  return c.json(messages === body ? responses : responses[0]);
 }

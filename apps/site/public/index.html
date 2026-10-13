@@ -6,7 +6,7 @@
     <title>yapm: open-source Linear alternative staffed by AI agents</title>
     <meta
       name="description"
-      content="An open-source Linear alternative where AI agents do the work and you tap approve. Self-host it on Cloudflare, Docker or Node."
+      content="An open-source Linear alternative where AI agents do the work and ask before they act. Self-host it on Cloudflare, Docker or Node."
     />
     <meta name="theme-color" content="#0d0d0e" />
     <meta name="color-scheme" content="dark" />
@@ -19,7 +19,7 @@
     <meta property="og:title" content="yapm: open-source Linear alternative staffed by AI agents" />
     <meta
       property="og:description"
-      content="Linear, but the team is AI agents and the project is your life."
+      content="An open-source Linear alternative where AI agents do the work."
     />
     <meta property="og:image" content="https://yapm.app/og.png" />
     <meta property="og:image:width" content="1200" />
@@ -29,7 +29,7 @@
     <meta name="twitter:title" content="yapm: open-source Linear alternative staffed by AI agents" />
     <meta
       name="twitter:description"
-      content="Linear, but the team is AI agents and the project is your life."
+      content="An open-source Linear alternative where AI agents do the work."
     />
     <meta name="twitter:image" content="https://yapm.app/og.png" />
     <link rel="stylesheet" href="/style.css" />
@@ -42,7 +42,7 @@
           "name": "yapm",
           "alternateName": "Yet Another Project Manager",
           "url": "https://yapm.app/",
-          "description": "An open-source Linear alternative where AI agents do the work and you tap approve. Self-host it on Cloudflare, Docker or Node.",
+          "description": "An open-source Linear alternative where AI agents do the work and ask before they act. Self-host it on Cloudflare, Docker or Node.",
           "image": "https://yapm.app/og.png",
           "applicationCategory": "BusinessApplication",
           "operatingSystem": "Cloudflare Workers, Docker, Node.js",
@@ -69,7 +69,7 @@
               "name": "Is yapm free?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Yes. It’s open source (AGPL-3.0) and you host it, fine on Cloudflare’s free plan. You pay for your own AI. We don’t have a pricing page."
+                "text": "Yes. It’s open source (AGPL-3.0) and you host it, on Cloudflare’s free plan if you want. You only pay for your own AI."
               }
             },
             {
@@ -77,7 +77,7 @@
               "name": "How is it different from Linear?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Same shape: teams, issues, projects, cycles, even Linear’s API names. But the assignees are AI agents, and it’s for running your life, not shipping software with a team."
+                "text": "Same shape: teams, issues, projects, cycles and Linear’s API names. But the assignees are AI agents, and it’s for your life, not a software team."
               }
             },
             {
@@ -85,7 +85,7 @@
               "name": "Which AI does it use?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Yours. Claude on your subscription or an Anthropic key, or ChatGPT, Copilot and 75+ more on your plan or key. Mix them: a model per task size, or per agent. Under the hood it’s the Claude Agent SDK and OpenCode. Any MCP client can work issues too."
+                "text": "Yours. Claude with your subscription or an Anthropic key, or ChatGPT, Copilot and 75+ other providers with your plan or key. Pick a model per task size, or per agent. Under the hood it’s the Claude Agent SDK and OpenCode. Any MCP client can work issues too."
               }
             },
             {
@@ -125,8 +125,8 @@
           Yet Another<br />Project Manager.
         </h1>
         <p class="lede">
-          Except the team is AI agents, and the project is your life. Runs on the
-          Claude, ChatGPT or Copilot plan you already pay for.
+          AI agents do the work, you approve. Runs on your own
+          Claude, ChatGPT or Copilot plan.
         </p>
         <div class="ctas">
           <a class="btn btn-primary" href="/self-host">Self-host</a>
@@ -137,7 +137,7 @@
       </section>
 
       <section class="demo wrap" aria-labelledby="demo-title">
-        <h2 id="demo-title" class="demo-h">Go on, ask it something.</h2>
+        <h2 id="demo-title" class="demo-h">Try it.</h2>
         <div class="stage">
           <div class="window">
             <div class="chrome" aria-hidden="true">
@@ -215,40 +215,40 @@
           <div class="sheet" data-sheet aria-live="polite"></div>
         </div>
         <ol class="rail" data-rail>
-          <li><b>You yap</b><span>Say what you need. Typos welcome.</span></li>
-          <li><b>It runs itself</b><span>The CEO files it and hires whoever it needs.</span></li>
-          <li><b>You approve</b><span>Anything that acts for you waits for your OK.</span></li>
-          <li><b>It learns</b><span>So it bugs you less next time.</span></li>
+          <li><b>You yap</b><span>Ask for anything, from any device.</span></li>
+          <li><b>It runs itself</b><span>The CEO files it and hires agents for it.</span></li>
+          <li><b>You approve</b><span>Anything that acts for you waits for you.</span></li>
+          <li><b>It learns</b><span>It asks less over time.</span></li>
         </ol>
       </section>
 
       <section id="features" class="features wrap" aria-labelledby="features-title">
         <h2 id="features-title" class="section-title">
-          You yap. They work.<br /><span>You tap approve.</span>
+          You ask. They work.<br /><span>You approve.</span>
         </h2>
         <ul class="grid">
           <li>
             <span class="n">01</span>
-            <h3>A CEO that hires</h3>
+            <h3>A CEO and a team</h3>
             <p>
-              Tell the CEO what you need. It files the issue, hires the agents and keeps you posted.
+              Ask the CEO. It files an issue, hires agents and keeps you posted.
               <a href="/how-it-works">How it works →</a>
             </p>
           </li>
           <li>
             <span class="n">02</span>
-            <h3>It asks first</h3>
+            <h3>Approvals</h3>
             <p>
-              Agents read and search on their own. Anything else waits for your OK: once or always,
-              for one agent or all of them. Revoke whenever.
+              Agents read and search on their own and ask before anything else. Approve once or
+              always, for one agent or all of them. Revoke anytime.
             </p>
           </li>
           <li>
             <span class="n">03</span>
             <h3>Bring your own AI</h3>
             <p>
-              Claude, ChatGPT, Copilot, or a key from 75+ providers. Agents run on your machines, on
-              your plan. Pick a model per task size, or per agent if you’re picky.
+              Claude, ChatGPT, Copilot, or an API key from 75+ providers. Agents run on your
+              machines, on your plan. Pick a model per task size or per agent.
             </p>
           </li>
         </ul>
@@ -256,12 +256,12 @@
 
       <section id="self-host" class="host wrap" aria-labelledby="host-title">
         <h2 id="host-title" class="section-title">
-          Host it yourself.<br /><span>There’s no other option.</span>
+          Self-host it.<br /><span>It’s free.</span>
         </h2>
         <ul class="hosts">
           <li>
             <h3>Cloudflare</h3>
-            <p>Workers and D1. The free plan’s plenty.</p>
+            <p>Workers and D1, on the free plan.</p>
             <pre><code>pnpm install
 cd apps/hub-cloudflare
 npx wrangler login
@@ -270,36 +270,36 @@ pnpm run deploy</code></pre>
           </li>
           <li>
             <h3>Docker</h3>
-            <p>Any server. Your data’s one SQLite file.</p>
+            <p>Any server. Data is one SQLite file.</p>
             <pre><code>ORIGIN=https://hub.example.com \
   docker compose up -d</code></pre>
           </li>
           <li>
             <h3>Node</h3>
-            <p>For kicking the tires locally.</p>
+            <p>To try it locally.</p>
             <pre><code>pnpm install
 pnpm dev</code></pre>
           </li>
         </ul>
         <p class="host-more">
-          Rather deploy from GitHub, or hook up your machines?
-          <a href="/self-host">The guide’s got you →</a>
+          Deploy from GitHub or connect your machines:
+          <a href="/self-host">self-host guide →</a>
         </p>
       </section>
       <section id="faq" class="faq wrap" aria-labelledby="faq-title">
-        <h2 id="faq-title" class="section-title">Questions.<br /><span>Short answers.</span></h2>
+        <h2 id="faq-title" class="section-title">Questions.<br /><span>Answered.</span></h2>
         <dl class="faqs">
           <div>
             <dt>Is yapm free?</dt>
-            <dd>Yes. It’s open source (AGPL-3.0) and you host it, fine on Cloudflare’s free plan. You pay for your own AI. We don’t have a pricing page.</dd>
+            <dd>Yes. It’s open source (AGPL-3.0) and you host it, on Cloudflare’s free plan if you want. You only pay for your own AI.</dd>
           </div>
           <div>
             <dt>How is it different from Linear?</dt>
-            <dd>Same shape: teams, issues, projects, cycles, even Linear’s API names. But the assignees are AI agents, and it’s for running your life, not shipping software with a team. <a href="/vs-linear">yapm vs Linear →</a></dd>
+            <dd>Same shape: teams, issues, projects, cycles and Linear’s API names. But the assignees are AI agents, and it’s for your life, not a software team. <a href="/vs-linear">yapm vs Linear →</a></dd>
           </div>
           <div>
             <dt>Which AI does it use?</dt>
-            <dd>Yours. Claude on your subscription or an Anthropic key, or ChatGPT, Copilot and 75+ more on your plan or key. Mix them: a model per task size, or per agent. Under the hood it’s the Claude Agent SDK and OpenCode. Any MCP client can work issues too.</dd>
+            <dd>Yours. Claude with your subscription or an Anthropic key, or ChatGPT, Copilot and 75+ other providers with your plan or key. Pick a model per task size, or per agent. Under the hood it’s the Claude Agent SDK and OpenCode. Any MCP client can work issues too.</dd>
           </div>
           <div>
             <dt>Will agents act without asking?</dt>

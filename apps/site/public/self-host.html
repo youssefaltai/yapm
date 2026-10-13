@@ -43,10 +43,10 @@
 
     <main id="main" class="doc wrap">
       <h1>Self-host yapm</h1>
-      <p class="lede">Pick one. Settle on your domain first, though: passkeys are tied to it.</p>
+      <p class="lede">Pick one. Choose your domain first: passkeys are tied to it.</p>
 
       <h2>Cloudflare</h2>
-      <p>Workers and D1, free plan. Deploys from GitHub, no terminal needed.</p>
+      <p>Workers and D1, on the free plan. Deploys from GitHub.</p>
       <ol>
         <li>Fork <a href="https://github.com/youssefaltai/yapm">the repo</a>.</li>
         <li>In Cloudflare, open <b>Workers &amp; Pages</b> once, so you get a workers.dev address.</li>
@@ -63,19 +63,19 @@ node scripts/ensure-d1.mjs
 pnpm run deploy</code></pre>
 
       <h2>Docker</h2>
-      <p>Any server with Docker, behind HTTPS (Caddy or a Cloudflare Tunnel will do). Your data’s one SQLite file.</p>
+      <p>Any server with Docker, behind HTTPS (Caddy or a Cloudflare Tunnel). Data is one SQLite file.</p>
       <pre><code>ORIGIN=https://hub.example.com \
   docker compose up -d</code></pre>
 
       <h2>Node</h2>
-      <p>For trying it on your computer. Needs Node 22+ and pnpm.</p>
+      <p>To try it on your computer. Needs Node 22+ and pnpm.</p>
       <pre><code>pnpm install
 pnpm dev</code></pre>
 
       <h2>Connect your agents</h2>
       <p>
         In the app, open <b>Runs → Machines</b>, click <b>Add machine</b>, and paste the command into
-        Terminal on your Mac or Linux box. It asks which AI to use, then gets out of your way.
+        Terminal on your Mac or Linux machine. It asks which AI to use, then runs in the background.
       </p>
 
       <h2>Agents: bring your own AI</h2>
@@ -91,7 +91,7 @@ pnpm dev</code></pre>
         OpenCode. Runs only go to machines signed in to the right provider, every tool call is
         checked against your grants, and the Usage page shows each plan’s limits.
       </p>
-      <p class="more"><a href="https://github.com/youssefaltai/yapm#self-host">Config and the rest are in the README →</a></p>
+      <p class="more"><a href="https://github.com/youssefaltai/yapm#self-host">Config and more in the README →</a></p>
     </main>
 
     <footer class="foot wrap">

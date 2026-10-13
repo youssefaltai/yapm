@@ -176,6 +176,7 @@ export async function createRequest(ctx: Ctx, input: RequestCreateInput): Promis
 export async function requestOps(
   ctx: Ctx,
   input: RequestCreateInput,
+  evenIfAllowed = false,
 ): Promise<{ id: string; ops: WriteOp[] }> {
   const { db, now } = ctx;
   const actor = await loadActor(db, ctx.actorId);
@@ -192,9 +193,10 @@ export async function requestOps(
     throw badRequest("Details must be at most 20000 characters");
 
   const permission = await checkPermission(db, actor.id, action, resource);
-  if (permission.allowed)
+  if (permission.allowed && !evenIfAllowed)
     throw new ServiceError("CONFLICT", "You can already do this; no need to ask");
-  if (permission.pendingRequestId) return { id: permission.pendingRequestId, ops: [] };
+  if (!permission.allowed && permission.pendingRequestId)
+    return { id: permission.pendingRequestId, ops: [] };
 
   let issueId: string | null = null;
   if (input.issueId) {
@@ -338,16 +340,26 @@ export async function approveRequest(
     if (!own.allowed || own.via !== "grant")
       throw forbidden("You can only approve what a grant already lets you do");
   }
+  const ops: WriteOp[] = [];
   if (request.action === "mcp.use") {
     const server = await db
-      .select({ status: mcpServers.status })
+      .select()
       .from(mcpServers)
       .where(eq(mcpServers.name, request.resource ?? ""))
       .get();
-    if (server && server.status !== "ready")
+    if (!server)
+      throw new ServiceError("CONFLICT", `There is no ${request.resource} MCP server yet`);
+    // With nothing to sign in to, the owner's approval is what connects it.
+    if (server.status === "pending" && server.auth === "none" && actor.kind === "owner")
+      ops.push(
+        db
+          .update(mcpServers)
+          .set({ status: "ready", updatedAt: now })
+          .where(eq(mcpServers.id, server.id)),
+      );
+    else if (server.status !== "ready")
       throw new ServiceError("CONFLICT", `Connect ${request.resource} first`);
   }
-  const ops: WriteOp[] = [];
   const events = [];
   let grantId: string | null = null;
   if (input.always) {

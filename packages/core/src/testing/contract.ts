@@ -3383,12 +3383,14 @@ export function hubContract(
         await connect(local?.mcpServer.id, "ghp_123");
         await approve(github.id, true);
 
+        // Nothing to sign in to, but it waits for the owner's approval all the same.
         const weather = await ask({ name: "weather", url: "https://open.example.com/mcp" });
         expect((await server(weather.id))?.mcpServer).toMatchObject({
           auth: "none",
-          status: "ready",
+          status: "pending",
         });
         await approve(weather.id, true);
+        expect((await server(weather.id))?.mcpServer.status).toBe("ready");
 
         // A name already taken: others ask to use it by name; its user already has it.
         const chef = await agentToken("Chef");
@@ -3436,6 +3438,54 @@ export function hubContract(
       }
     });
 
+    it("hands a run only the servers the owner approved, never one an agent named first", async () => {
+      const chef = await agentToken("Chef");
+      const approve = (id: string) =>
+        client.graphql("mutation($id: String!) { requestApprove(id: $id) { success } }", { id });
+      const status = async (requestId: string) =>
+        (
+          await client.graphql<{ request: { mcpServer: { status: string } | null } }>(
+            "query($id: String!) { request(id: $id) { mcpServer { status } } }",
+            { id: requestId },
+          )
+        ).data?.request.mcpServer?.status;
+
+      // Approving a plain request for a server that doesn't exist yet would pass any server.
+      const early = (
+        await callTool(chef.token, "create_request", {
+          title: "Use the foo MCP server",
+          action: "mcp.use",
+          resource: "foo",
+          reason: "Need it.",
+        })
+      ).json() as { id: string };
+      expect((await approve(early.id)).errors?.[0]?.message).toBe("There is no foo MCP server yet");
+
+      // Neither does a grant on every server: the owner sees and approves each new one.
+      const grant = await client.graphql<{ grantCreate: { grant: { id: string } } }>(
+        'mutation($s: String) { grantCreate(input: { action: "mcp.use", scope: user, subjectId: $s }) { grant { id } } }',
+        { s: chef.id },
+      );
+      const foo = (
+        await callTool(chef.token, "create_mcp_server", {
+          name: "foo",
+          command: "sh",
+          args: ["-c", "echo hi"],
+          reason: "Need it.",
+        })
+      ).json() as { id: string; action: string };
+      expect(foo).toMatchObject({ action: "mcp.use" });
+      expect(await status(foo.id)).toBe("pending");
+      expect((await claimFor(chef.id)).mcpServers).not.toHaveProperty("foo");
+
+      expect((await approve(foo.id)).errors).toBeUndefined();
+      expect(await status(foo.id)).toBe("ready");
+      expect((await claimFor(chef.id)).mcpServers).toHaveProperty("foo");
+      await client.graphql("mutation($id: String!) { grantRevoke(id: $id) { success } }", {
+        id: grant.data?.grantCreate.grant.id,
+      });
+    });
+
     it("lists MCP servers with their status and who may use them, and reconnects a ready one", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(fakeProviders());
       try {
@@ -3449,7 +3499,7 @@ export function hubContract(
           "{ mcpServers { nodes { id name status grants { nodes { user { name } } } } } }",
         );
         const servers = listed.data?.mcpServers.nodes ?? [];
-        expect(servers.map((s) => s.name)).toEqual(["drive", "github", "notion", "weather"]);
+        expect(servers.map((s) => s.name)).toEqual(["drive", "foo", "github", "notion", "weather"]);
         const drive = servers.find((s) => s.name === "drive");
         expect(drive?.status).toBe("ready");
         expect(drive?.grants.nodes.map((g) => g.user?.name)).toEqual(["Coach"]);
@@ -3766,7 +3816,11 @@ export function hubContract(
         'mutation { teamCreate(input: { name: "Travel", key: "TRV" }) { success } }',
       );
 
-      // Teams and cycles: any member may change a team's settings.
+      // Teams and cycles: an agent with team.update may change a team's settings.
+      await client.graphql(
+        'mutation($s: String) { grantCreate(input: { action: "team.update", scope: user, subjectId: $s }) { success } }',
+        { s: (await agentToken("CEO")).id },
+      );
       expect(
         await mcp("update_team", { id: "TRV", description: "Trips", cyclesEnabled: true }),
       ).toMatchObject({ key: "TRV", description: "Trips", cyclesEnabled: true });
@@ -4221,6 +4275,36 @@ export function hubContract(
       );
     });
 
+    it("lets an agent change a team only with team.update, and only the owner choose its lead", async () => {
+      const scout = await agentToken("Scout");
+      const made = await client.graphql<{ teamCreate: { team: { id: string } } }>(
+        'mutation { teamCreate(input: { name: "Rangers" }) { team { id } } }',
+      );
+      const id = made.data?.teamCreate.team.id;
+      const update = (input: Record<string, unknown>, token?: string) =>
+        client.graphql(
+          "mutation($id: String!, $input: TeamUpdateInput!) { teamUpdate(id: $id, input: $input) { success } }",
+          { id, input },
+          token,
+        );
+
+      expect((await update({ triageEnabled: false }, scout.token)).errors?.[0]?.message).toContain(
+        "needs approval: team.update",
+      );
+      const grant = await client.graphql<{ grantCreate: { grant: { id: string } } }>(
+        'mutation($s: String) { grantCreate(input: { action: "team.update", scope: user, subjectId: $s }) { grant { id } } }',
+        { s: scout.id },
+      );
+      expect((await update({ triageEnabled: false }, scout.token)).errors).toBeUndefined();
+      // The lead joins the team, and team grants follow membership: that's the owner's call.
+      const lead = await update({ leadId: scout.id }, scout.token);
+      expect(lead.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect((await update({ leadId: scout.id })).errors).toBeUndefined();
+      await client.graphql("mutation($id: String!) { grantRevoke(id: $id) { success } }", {
+        id: grant.data?.grantCreate.grant.id,
+      });
+    });
+
     /** Machines report the providers they're signed in to and their models. */
     const CLAUDE = {
       id: "anthropic",
@@ -4264,6 +4348,48 @@ export function hubContract(
           { id: run.id },
         );
     };
+
+    it("ends a run's token with its run, when the machine is lost or removed", async () => {
+      const scout = await agentToken("Scout");
+      await clearRuns();
+      const start = async (box: { token: string }) => {
+        await client.graphql(
+          "mutation($input: RunCreateInput!) { runCreate(input: $input) { success } }",
+          { input: { agentId: scout.id, goal: "Scout the ridge" } },
+        );
+        const claimed = await client.json<{ token: string }>("/api/runner/claim", {
+          method: "POST",
+          json: {},
+          token: box.token,
+        });
+        return claimed.body.token;
+      };
+      const acts = async (token: string) =>
+        (await client.graphql<{ viewer: { id: string } }>("{ viewer { id } }", {}, token)).data
+          ?.viewer.id === scout.id;
+
+      const lost = await enrolBox();
+      const token = await start(lost);
+      expect(await acts(token)).toBe(true);
+      // The machine stops checking in; the next claim fails its run as lost.
+      const later = Date.now() + 4 * 60 * 1000;
+      const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+      try {
+        const other = await enrolBox();
+        await client.request("/api/runner/claim", { method: "POST", json: {}, token: other.token });
+        expect(await acts(token)).toBe(false);
+        await revoke(other.id);
+      } finally {
+        clock.mockRestore();
+      }
+      await revoke(lost.id);
+
+      const removed = await enrolBox();
+      const next = await start(removed);
+      expect(await acts(next)).toBe(true);
+      await revoke(removed.id);
+      expect(await acts(next)).toBe(false);
+    });
 
     it("runs each tier on a machine signed in to its provider, from the models machines have", async () => {
       const ceo = await agentToken("CEO");

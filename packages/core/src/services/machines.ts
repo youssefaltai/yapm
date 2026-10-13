@@ -4,6 +4,7 @@ import {
   type MachineProvider,
   machineSetupTokens,
   machines,
+  runs,
   users,
 } from "@yapm/schema";
 import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
@@ -351,7 +352,10 @@ export async function upgradeMachine(ctx: Ctx, id: string) {
   return id;
 }
 
-/** Removes a machine: its secret stops working. A pending one is simply forgotten. */
+/**
+ * Removes a machine: its secret stops working, and its runs fail, which ends their tokens.
+ * A pending one is simply forgotten.
+ */
 export async function revokeMachine(ctx: Ctx, id: string) {
   const { db, now } = ctx;
   await requireOwner(ctx);
@@ -360,6 +364,10 @@ export async function revokeMachine(ctx: Ctx, id: string) {
     machine.status === "pending"
       ? db.delete(machines).where(eq(machines.id, id))
       : db.update(machines).set({ status: "revoked", updatedAt: now }).where(eq(machines.id, id)),
+    db
+      .update(runs)
+      .set({ status: "failed", error: "The machine was removed", endedAt: now, updatedAt: now })
+      .where(and(eq(runs.machineId, id), eq(runs.status, "running"))),
     ...audit(
       db,
       [event(ctx, "machine.revoke", "machine", id, { name: machineName(machine) })],

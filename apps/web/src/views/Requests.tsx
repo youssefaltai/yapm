@@ -191,8 +191,10 @@ export function RequestPage({ id }: { id: string }) {
   if (!r || !workspace) return <PageSkeleton />;
   const canAnswer = workspace.viewer.kind === "owner" && r.status === "pending";
   const tool = mcpTool(r.action);
-  // Only a server that isn't connected, or whose sign-in stopped working, needs signing in to.
-  const server = r.mcpServer?.status === "pending" ? r.mcpServer : null;
+  // Only a server that isn't connected, or whose sign-in stopped working, needs signing in to;
+  // one with no sign-in connects when approved.
+  const server =
+    r.mcpServer?.status === "pending" && r.mcpServer.auth !== "none" ? r.mcpServer : null;
 
   async function answer(query: string, variables: Record<string, unknown>, done: string) {
     setBusy(true);

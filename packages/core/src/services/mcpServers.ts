@@ -209,7 +209,7 @@ async function newServer(deps: HubDeps, input: McpServerCreateInput, name: strin
     auth,
     secretEnv: command ? secretEnv : null,
     howToConnect,
-    status: auth === "none" ? ("ready" as const) : ("pending" as const),
+    status: "pending" as const,
     oauth,
     createdAt: now,
     updatedAt: now,
@@ -218,8 +218,9 @@ async function newServer(deps: HubDeps, input: McpServerCreateInput, name: strin
 
 /**
  * An agent asks to connect an outside MCP server. It is stored and, in the same batch, a
- * request for `mcp.use` on it is filed. A name already taken only files the request. No request
- * (null) when the agent may already use it.
+ * request for `mcp.use` on it is filed, even when a grant already covers the name: the owner
+ * approves each new server. A name already taken only files the request. No request (null)
+ * when the agent may already use it.
  */
 export async function createMcpServer(
   ctx: Ctx,
@@ -232,21 +233,23 @@ export async function createMcpServer(
   const existing = await db.select().from(mcpServers).where(eq(mcpServers.name, name)).get();
   if (existing && permitted) return { serverId: existing.id, requestId: null };
   const server = existing ?? (await newServer(deps, input, name, now));
-  const request = permitted
-    ? null
-    : await requestOps(ctx, {
-        title: `Use the ${name} MCP server`,
-        action: "mcp.use",
-        resource: name,
-        reason: input.reason,
-        details: describe(server),
-        issueId: input.issueId ?? null,
-      });
+  const request = await requestOps(
+    ctx,
+    {
+      title: `Use the ${name} MCP server`,
+      action: "mcp.use",
+      resource: name,
+      reason: input.reason,
+      details: describe(server),
+      issueId: input.issueId ?? null,
+    },
+    true,
+  );
   await commit(db, [
     ...(existing
       ? []
       : [
-          db.insert(mcpServers).values({ ...server, requestId: request?.id ?? null }),
+          db.insert(mcpServers).values({ ...server, requestId: request.id }),
           ...audit(
             db,
             [
@@ -260,9 +263,9 @@ export async function createMcpServer(
             now,
           ),
         ]),
-    ...(request?.ops ?? []),
+    ...request.ops,
   ]);
-  return { serverId: server.id, requestId: request?.id ?? null };
+  return { serverId: server.id, requestId: request.id };
 }
 
 export async function requireMcpServer(db: HubDb, id: string) {

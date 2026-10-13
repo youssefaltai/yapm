@@ -1253,6 +1253,18 @@ test.describe
       });
     });
 
+    test("approves an agent's MCP server with no sign-in in one step", async () => {
+      const asked = await mcp("create_mcp_server", {
+        name: "weather",
+        url: "https://weather.example.com/mcp",
+        auth: "none",
+        reason: "I need the forecast.",
+      });
+      await page.goto(`/request/${asked.id}`);
+      await page.getByRole("button", { name: "Approve once" }).click();
+      await expect(page.getByText("Approved once by Youssef")).toBeVisible();
+    });
+
     test("sends the owner to the provider to sign in to an OAuth server", async () => {
       // The hub can't reach a provider from here, so the server is a token one that the page is
       // told signs in with OAuth, and the hub's answer to connecting is a fixed URL.

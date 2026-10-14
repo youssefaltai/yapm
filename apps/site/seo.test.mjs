@@ -105,7 +105,12 @@ test("the home page loads the nav script too", () => {
 });
 
 test("no page promises a built-in CEO: you organize your agents", () => {
-  for (const file of ["index.html", "site.js", "llms.txt", ...pages.filter(Boolean).map((p) => `${p}.html`)])
+  for (const file of [
+    "index.html",
+    "site.js",
+    "llms.txt",
+    ...pages.filter(Boolean).map((p) => `${p}.html`),
+  ])
     assert.doesNotMatch(read(file), /\bAsk CEO\b|\bthe CEO\b/i, file);
 });
 

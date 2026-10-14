@@ -104,7 +104,17 @@ test("the home page loads the nav script too", () => {
   assert.match(html, /<script src="\/nav\.js" defer><\/script>/);
 });
 
-test("no page offers a chat: you ask the CEO, and it files an issue", () => {
+test("no page promises a built-in CEO: you organize your agents", () => {
+  for (const file of [
+    "index.html",
+    "site.js",
+    "llms.txt",
+    ...pages.filter(Boolean).map((p) => `${p}.html`),
+  ])
+    assert.doesNotMatch(read(file), /\bAsk CEO\b|\bthe CEO\b/i, file);
+});
+
+test("no page offers a chat: you ask, and it files an issue", () => {
   const files = [
     "index.html",
     "site.js",

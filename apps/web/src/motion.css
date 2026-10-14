@@ -95,7 +95,7 @@
       transform: translateY(-3px);
     }
   }
-  /* The CEO at work: a slow, small breath. */
+  /* An agent at work: a slow, small breath. */
   @keyframes think {
     50% {
       opacity: 0.6;

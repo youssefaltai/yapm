@@ -1161,7 +1161,7 @@ export const tools: Tool<McpContext>[] = [
     name: "retire_agent",
     title: "Retire agent",
     description:
-      "Retire an agent: its tokens stop working and its reports move to its manager. Needs agent.retire.",
+      "Retire an agent: its tokens stop working and its reports move to its manager. Needs agent.retire, unless it's you.",
     inputSchema: {
       type: "object",
       properties: { user: { type: "string", description: "Name or id" } },

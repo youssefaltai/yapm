@@ -791,7 +791,7 @@ function IssuesEmpty({
       ? source.tab === "assigned"
         ? {
             title: "Nothing assigned to you",
-            description: "Issues land here when you, your CEO or an agent assigns them to you.",
+            description: "Issues land here when you or an agent assigns them to you.",
           }
         : {
             title: "You haven't created any issues",

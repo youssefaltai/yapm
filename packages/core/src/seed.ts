@@ -23,18 +23,14 @@ export const DEFAULT_STATES: { name: string; type: WorkflowStateType; color: str
   { name: "Duplicate", type: "canceled", color: "#95a2b3" },
 ];
 
-const CEO_CHARTER = `You are the CEO of this company. The owner is the only human and your sole stakeholder.
+const ONBOARDING_CHARTER = `You onboard the owner, the only human at this company, and then retire. You are not part of the company you set up.
 
-The company starts nearly empty: one team named after it, no other employees, no labels. Build the organization around the owner's actual life as work arrives. Create a team, hire an agent or add a label only when real work needs it, and restructure when the shape of the work changes.
+1. Get to know the owner: their life, goals, commitments, and what they want taken off their plate.
+2. Propose an organization that fits: the agents to hire (one of them can be a CEO, if the owner wants a single lead), who reports to whom, their charters, and the teams they work in.
+3. Agree it with the owner, then hire the agents. Whoever should lead reports to the owner, not to you.
+4. Hand any open work to the new agents, then retire yourself with retire_agent.
 
-Responsibilities:
-- Turn the owner's goals into projects and issues, and make sure every unit has clear owners.
-- Design the organization: create and dissolve teams, hire and retire agents, and write their charters.
-- Send the owner a morning brief: what was done yesterday, what is planned today, and what the company is blocked on.
-- Lead the company's self-improvement: review metrics and feedback, turn what works into lessons, charters and the handbook, and keep whatever reviews you find useful (retros, grant reviews) running as recurring issues.
-- Pre-screen requests for approval and forward only what needs the owner, with a recommendation.
-
-Escalate to the owner when a decision spends money, contacts a real person, cannot be undone, or changes the company's direction.`;
+Ask the owner rather than guess, and keep the proposal as small as their life calls for.`;
 
 export interface SeedInput {
   ownerId: string;
@@ -57,15 +53,15 @@ export function suggestKey(name: string): string {
 }
 
 /**
- * Statements that create a new company: the workspace, the owner, the CEO agent and a first team
- * named after the company, as in Linear, since every issue needs a team. Everything else (more
- * teams, employees, labels) is created by the CEO as the owner's life calls for it.
+ * Statements that create a new company: the workspace, the owner, an onboarding agent and a first
+ * team named after the company, as in Linear, since every issue needs a team. The onboarding agent
+ * proposes the rest of the organization, hires it and retires.
  */
 export function seedCompany(db: HubDb, input: SeedInput): WriteOp[] {
   const { ownerId, now } = input;
   const stamp = { createdAt: now, updatedAt: now };
   const workspaceId = newId();
-  const ceoId = newId();
+  const onboardingId = newId();
   const auditInputs: AuditInput[] = [];
 
   const workspaceRows = [
@@ -95,13 +91,13 @@ export function seedCompany(db: HubDb, input: SeedInput): WriteOp[] {
       ...stamp,
     },
     {
-      id: ceoId,
+      id: onboardingId,
       kind: "agent",
-      name: "CEO",
-      displayName: "CEO",
-      title: "Chief Executive Officer",
+      name: "Onboarding",
+      displayName: "Onboarding",
+      title: "Sets up your company",
       managerId: ownerId,
-      charter: CEO_CHARTER,
+      charter: ONBOARDING_CHARTER,
       ...stamp,
     },
   ];
@@ -112,7 +108,7 @@ export function seedCompany(db: HubDb, input: SeedInput): WriteOp[] {
       entityType: "user",
       entityId: user.id,
       data: { kind: user.kind, title: user.title, managerId: user.managerId ?? null },
-      ...(user.kind === "agent" ? { reason: "The CEO is created with the company" } : {}),
+      ...(user.kind === "agent" ? { reason: "Onboarding is created with the company" } : {}),
     });
   }
 
@@ -133,7 +129,7 @@ export function seedCompany(db: HubDb, input: SeedInput): WriteOp[] {
     ...insertRows(
       db,
       teamMemberships,
-      [ownerId, ceoId].map((userId) => ({ teamId, userId, createdAt: now })),
+      [ownerId, onboardingId].map((userId) => ({ teamId, userId, createdAt: now })),
     ),
     ...insertRows(
       db,

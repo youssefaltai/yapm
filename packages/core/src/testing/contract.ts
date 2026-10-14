@@ -116,7 +116,7 @@ export function hubContract(
     let send: FetchLike;
     const authenticator = new SoftwareAuthenticator();
     // Shared across the issue tests, which build on each other like a real session.
-    let ceoToken = "";
+    let onboardingToken = "";
     let teamId = "";
     let labelId = "";
     let issueId = "";
@@ -221,7 +221,7 @@ export function hubContract(
       expect(status).toBe(409);
     });
 
-    it("starts with the owner, the CEO and one team named after the company", async () => {
+    it("starts with the owner, the onboarding agent and one team named after the company", async () => {
       const result = await client.graphql<{
         organization: { name: string; urlKey: string; timezone: string };
         viewer: { kind: string; isMe: boolean; directReports: { nodes: { name: string }[] } };
@@ -253,21 +253,21 @@ export function hubContract(
       expect(data.viewer).toMatchObject({
         kind: "owner",
         isMe: true,
-        directReports: { nodes: [{ name: "CEO" }] },
+        directReports: { nodes: [{ name: "Onboarding" }] },
       });
       // Every issue needs a team, as in Linear, so the company starts with one.
       expect(data.teams.nodes).toEqual([
         {
           key: "YI",
           name: "Youssef Inc",
-          members: { nodes: expect.arrayContaining([{ name: "Youssef" }, { name: "CEO" }]) },
+          members: { nodes: expect.arrayContaining([{ name: "Youssef" }, { name: "Onboarding" }]) },
         },
       ]);
       expect(data.issueLabels.nodes).toEqual([]);
-      expect(data.users.nodes.map((u) => u.name).sort()).toEqual(["CEO", "Youssef"]);
-      const ceo = data.users.nodes.find((u) => u.name === "CEO");
-      expect(ceo).toMatchObject({ kind: "agent", manager: { name: "Youssef" } });
-      expect(ceo?.charter).toContain("one team named after it");
+      expect(data.users.nodes.map((u) => u.name).sort()).toEqual(["Onboarding", "Youssef"]);
+      const onboarding = data.users.nodes.find((u) => u.name === "Onboarding");
+      expect(onboarding).toMatchObject({ kind: "agent", manager: { name: "Youssef" } });
+      expect(onboarding?.charter).toContain("retire yourself");
     });
 
     it("records every founding change in the audit log", async () => {
@@ -320,23 +320,23 @@ export function hubContract(
       const users = await client.graphql<{ users: { nodes: { id: string; name: string }[] } }>(
         "{ users { nodes { id name } } }",
       );
-      const ceoId = users.data?.users.nodes.find((u) => u.name === "CEO")?.id;
+      const onboardingId = users.data?.users.nodes.find((u) => u.name === "Onboarding")?.id;
       const created = await client.graphql<{
         apiTokenCreate: { token: string; user: { name: string } };
       }>(
-        'mutation($userId: String) { apiTokenCreate(name: "CEO runner", userId: $userId) { token user { name } } }',
-        { userId: ceoId },
+        'mutation($userId: String) { apiTokenCreate(name: "Onboarding runner", userId: $userId) { token user { name } } }',
+        { userId: onboardingId },
       );
       expect(created.errors).toBeUndefined();
       const token = created.data?.apiTokenCreate.token ?? "";
       expect(token).toMatch(/^los_/);
 
-      const asCeo = await client.graphql<{ viewer: { name: string; kind: string } }>(
+      const asOnboarding = await client.graphql<{ viewer: { name: string; kind: string } }>(
         "{ viewer { name kind } }",
         undefined,
         token,
       );
-      expect(asCeo.data?.viewer).toEqual({ name: "CEO", kind: "agent" });
+      expect(asOnboarding.data?.viewer).toEqual({ name: "Onboarding", kind: "agent" });
 
       const forbidden = await client.graphql(
         'mutation { apiTokenCreate(name: "escalate") { token } }',
@@ -351,7 +351,7 @@ export function hubContract(
         token: "los_not-a-real-token",
       });
       expect(bad.status).toBe(401);
-      ceoToken = token;
+      onboardingToken = token;
     });
 
     it("creates a team with Linear's default workflow", async () => {
@@ -430,23 +430,26 @@ export function hubContract(
         labelIds: [labelId],
       });
       expect(first.errors).toBeUndefined();
-      // What the owner files without an assignee goes to the CEO.
+      // What the owner files without an assignee goes to the onboarding agent.
       expect(first.data?.issueCreate.issue).toMatchObject({
         identifier: "PF-1",
         priorityLabel: "High",
         state: { name: "Backlog" },
         creator: { name: "Youssef" },
-        assignee: { name: "CEO" },
+        assignee: { name: "Onboarding" },
         labels: { nodes: [{ name: "Bills" }] },
         parent: null,
       });
       issueId = first.data?.issueCreate.issue.id ?? "";
 
       // Agents act with their own token, and the history says so.
-      const second = await create({ title: "Find a cheaper tariff", parentId: issueId }, ceoToken);
+      const second = await create(
+        { title: "Find a cheaper tariff", parentId: issueId },
+        onboardingToken,
+      );
       expect(second.data?.issueCreate.issue).toMatchObject({
         identifier: "PF-2",
-        creator: { name: "CEO" },
+        creator: { name: "Onboarding" },
         assignee: null,
         parent: { identifier: "PF-1" },
       });
@@ -460,7 +463,7 @@ export function hubContract(
       const users = await client.graphql<{ users: { nodes: { id: string; name: string }[] } }>(
         "{ users { nodes { id name } } }",
       );
-      const ceoId = users.data?.users.nodes.find((u) => u.name === "CEO")?.id;
+      const onboardingId = users.data?.users.nodes.find((u) => u.name === "Onboarding")?.id;
       const states = await client.graphql<{
         team: { states: { nodes: { id: string; type: string }[] } };
       }>("query($id: String!) { team(id: $id) { states { nodes { id type } } } }", { id: "PF" });
@@ -475,11 +478,11 @@ export function hubContract(
         `mutation($input: IssueUpdateInput!) { issueUpdate(id: "pf-1", input: $input) {
           issue { assignee { name } state { type } startedAt }
         } }`,
-        { input: { assigneeId: ceoId, stateId: started } },
+        { input: { assigneeId: onboardingId, stateId: started } },
       );
       expect(update.errors).toBeUndefined();
       expect(update.data?.issueUpdate.issue).toMatchObject({
-        assignee: { name: "CEO" },
+        assignee: { name: "Onboarding" },
         state: { type: "started" },
       });
       expect(update.data?.issueUpdate.issue.startedAt).not.toBeNull();
@@ -510,7 +513,7 @@ export function hubContract(
       }>('{ issue(id: "PF-1") { history { nodes { action actor { name } data } } } }');
       const actions = history.data?.issue.history.nodes.map((n) => n.action);
       expect(actions).toEqual(["issue.create", "issue.update", "issue.update"]);
-      // The CEO had it from the start, so the update only moved it.
+      // The onboarding agent had it from the start, so the update only moved it.
       expect(history.data?.issue.history.nodes[1]?.data).toMatchObject({
         stateId: { to: started },
       });
@@ -573,7 +576,7 @@ export function hubContract(
       const reply = await client.graphql(
         'mutation($issueId: String!, $parentId: String) { commentCreate(input: { issueId: $issueId, body: "Noted.", parentId: $parentId }) { success } }',
         { issueId, parentId: commentId },
-        ceoToken,
+        onboardingToken,
       );
       expect(reply.errors).toBeUndefined();
       const react = await client.graphql<{
@@ -581,7 +584,7 @@ export function hubContract(
       }>(
         'mutation($commentId: String) { reactionCreate(input: { emoji: "👍", commentId: $commentId }) { reaction { id emoji } } }',
         { commentId },
-        ceoToken,
+        onboardingToken,
       );
       expect(react.data?.reactionCreate.reaction.emoji).toBe("👍");
 
@@ -591,7 +594,7 @@ export function hubContract(
       }>(
         'mutation($commentId: String) { reactionCreate(input: { emoji: ":+1:", commentId: $commentId }) { reaction { id emoji } } }',
         { commentId },
-        ceoToken,
+        onboardingToken,
       );
       expect(shortcode.data?.reactionCreate.reaction).toEqual(react.data?.reactionCreate.reaction);
       const tada = await client.graphql<{ reactionCreate: { reaction: { emoji: string } } }>(
@@ -615,7 +618,7 @@ export function hubContract(
       const forbidden = await client.graphql(
         'mutation($id: String!) { commentUpdate(id: $id, input: { body: "hijacked" }) { success } }',
         { id: commentId },
-        ceoToken,
+        onboardingToken,
       );
       expect(forbidden.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
 
@@ -643,9 +646,9 @@ export function hubContract(
         user: { name: "Youssef" },
         parent: null,
         children: { nodes: [{ body: "Noted." }] },
-        reactions: [{ emoji: "👍", user: { name: "CEO" } }],
+        reactions: [{ emoji: "👍", user: { name: "Onboarding" } }],
       });
-      expect(second).toMatchObject({ user: { name: "CEO" }, parent: { id: commentId } });
+      expect(second).toMatchObject({ user: { name: "Onboarding" }, parent: { id: commentId } });
 
       const deleted = await client.graphql<{ commentDelete: { success: boolean } }>(
         "mutation($id: String!) { commentDelete(id: $id) { success } }",
@@ -697,7 +700,7 @@ export function hubContract(
 
       const response = await client.request("/api/live", {
         headers: { upgrade: "websocket" },
-        token: ceoToken,
+        token: onboardingToken,
       });
       expect(response.status).toBe(101);
       const socket = options.liveSocket(response);
@@ -740,7 +743,7 @@ export function hubContract(
       const byAgent = await client.graphql(
         'mutation { agentHire(input: { name: "Rogue" }) { success } }',
         undefined,
-        ceoToken,
+        onboardingToken,
       );
       expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
 
@@ -768,9 +771,11 @@ export function hubContract(
         (await client.graphql("{ viewer { id } }", undefined, agentToken)).errors,
       ).toBeUndefined();
 
+      // An agent may retire itself without a grant, as onboarding does when it's done.
       const retire = await client.graphql<{ agentRetire: { user: { active: boolean } } }>(
         "mutation($id: String!) { agentRetire(id: $id) { user { active } } }",
         { id: agentId },
+        agentToken,
       );
       expect(retire.data?.agentRetire.user.active).toBe(false);
       const after = await client.request("/graphql", {
@@ -786,7 +791,7 @@ export function hubContract(
         const response = await client.request("/mcp", {
           method: "POST",
           json: { jsonrpc: "2.0", id: 1, method, params },
-          token: ceoToken,
+          token: onboardingToken,
           headers: { accept: "application/json, text/event-stream" },
         });
         expect(response.status).toBe(200);
@@ -815,7 +820,7 @@ export function hubContract(
       const note = await client.request("/mcp", {
         method: "POST",
         json: { jsonrpc: "2.0", method: "notifications/initialized" },
-        token: ceoToken,
+        token: onboardingToken,
       });
       expect(note.status).toBe(202);
       const list = await rpc("tools/list");
@@ -846,7 +851,7 @@ export function hubContract(
       ).json();
       expect(created).toMatchObject({
         identifier: "PF-3",
-        assignee: "CEO",
+        assignee: "Onboarding",
         priority: "High",
         status: "Backlog",
       });
@@ -867,13 +872,13 @@ export function hubContract(
       expect(mine.map((i) => i.identifier)).toEqual(["PF-3"]);
       const detail = (await call("get_issue", { id: "PF-3" })).json();
       expect(detail).toMatchObject({
-        creator: "CEO",
+        creator: "Onboarding",
         commentCount: 1,
         url: expect.stringContaining("/issue/PF-3"),
       });
       const { comments } = (await call("list_comments", { issueId: "PF-3" })).json();
       expect(comments[0]).toMatchObject({
-        author: "CEO",
+        author: "Onboarding",
         body: "Two quotes in, waiting on a third.",
       });
 
@@ -892,18 +897,18 @@ export function hubContract(
     });
 
     it("lets agents ask, and the owner approve once, always allow or reject", async () => {
-      const asCeo = <T = Record<string, unknown>>(
+      const asOnboarding = <T = Record<string, unknown>>(
         query: string,
         variables?: Record<string, unknown>,
-      ) => client.graphql<T>(query, variables, ceoToken);
+      ) => client.graphql<T>(query, variables, onboardingToken);
       const permission = (action: string) =>
-        asCeo<{
+        asOnboarding<{
           permission: { allowed: boolean; via: string | null; pendingRequestId: string | null };
         }>("query($a: String!) { permission(action: $a) { allowed via pendingRequestId } }", {
           a: action,
         }).then((r) => r.data?.permission);
       const createTeam = () =>
-        asCeo('mutation { teamCreate(input: { name: "Health" }) { team { key } } }');
+        asOnboarding('mutation { teamCreate(input: { name: "Health" }) { team { key } } }');
 
       expect(await permission("team.create")).toEqual({
         allowed: false,
@@ -915,7 +920,7 @@ export function hubContract(
       expect(refused.errors?.[0]?.message).toContain("requestCreate");
 
       const ask = () =>
-        asCeo<{
+        asOnboarding<{
           requestCreate: { request: { id: string; status: string; requester: { name: string } } };
         }>(
           'mutation { requestCreate(input: { title: "Start a Health team", action: "team.create", reason: "Your sleep and training need an owner." }) { request { id status requester { name } } } }',
@@ -923,13 +928,13 @@ export function hubContract(
       const first = await ask();
       expect(first.data?.requestCreate.request).toMatchObject({
         status: "pending",
-        requester: { name: "CEO" },
+        requester: { name: "Onboarding" },
       });
       const requestId = first.data?.requestCreate.request.id ?? "";
       expect((await ask()).data?.requestCreate.request.id).toBe(requestId);
       expect((await permission("team.create"))?.pendingRequestId).toBe(requestId);
 
-      const selfApprove = await asCeo(
+      const selfApprove = await asOnboarding(
         "mutation($id: String!) { requestApprove(id: $id) { success } }",
         {
           id: requestId,
@@ -961,7 +966,7 @@ export function hubContract(
         const response = await client.request("/mcp", {
           method: "POST",
           json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
-          token: ceoToken,
+          token: onboardingToken,
         });
         const { result } = (await response.json()) as {
           result: { isError?: boolean; content: { text: string }[] };
@@ -977,7 +982,7 @@ export function hubContract(
       const asked = (await call("create_request", hireAsk)).json();
       expect(asked).toMatchObject({
         status: "pending",
-        requester: "CEO",
+        requester: "Onboarding",
         url: expect.stringContaining("/request/"),
       });
       const noReason = await client.graphql(
@@ -1006,7 +1011,7 @@ export function hubContract(
       );
       expect(always.data?.requestApprove.request.grant).toEqual({
         scope: "user",
-        user: { name: "CEO" },
+        user: { name: "Onboarding" },
       });
       const standing = (
         await client.graphql<{ request: { used: boolean } }>(
@@ -1031,7 +1036,7 @@ export function hubContract(
       );
       expect(usedAfter.data?.request.used).toBe(true);
       expect((await call("list_grants", {})).json().grants[0]).toMatchObject({
-        for: "CEO",
+        for: "Onboarding",
         useCount: 2,
       });
 
@@ -1115,7 +1120,7 @@ export function hubContract(
       };
 
       expect((await inbox()).notes.map((n) => n.type)).toContain("requestCreated");
-      expect((await inbox(ceoToken)).notes[0]).toMatchObject({
+      expect((await inbox(onboardingToken)).notes[0]).toMatchObject({
         type: "requestAnswered",
         actor: { name: "Youssef" },
       });
@@ -1150,11 +1155,11 @@ export function hubContract(
 
       // A comment: the mentioned hear about the mention, other followers about the comment.
       await client.graphql(
-        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "On it. @CEO, a grocery budget?" }) { success } }',
+        'mutation($id: String!) { commentCreate(input: { issueId: $id, body: "On it. @Onboarding, a grocery budget?" }) { success } }',
         { id: issue?.id },
         chef,
       );
-      expect((await inbox(ceoToken)).notes[0]?.type).toBe("issueCommentMention");
+      expect((await inbox(onboardingToken)).notes[0]?.type).toBe("issueCommentMention");
       expect((await inbox()).notes[0]).toMatchObject({
         type: "issueNewComment",
         actor: { name: "Chef" },
@@ -1170,7 +1175,7 @@ export function hubContract(
       await client.graphql(
         "mutation($id: String!) { issueUnsubscribe(id: $id) { success } }",
         { id: issue?.id },
-        ceoToken,
+        onboardingToken,
       );
       await client.graphql(
         "mutation($id: String!, $s: String) { issueUpdate(id: $id, input: { stateId: $s }) { success } }",
@@ -1182,7 +1187,7 @@ export function hubContract(
         actor: { name: "Coach" },
         data: { to: "In Progress" },
       });
-      expect((await inbox(ceoToken)).notes[0]?.type).toBe("issueCommentMention");
+      expect((await inbox(onboardingToken)).notes[0]?.type).toBe("issueCommentMention");
 
       // Filing: read, snooze, archive, only your own.
       const before = await inbox();
@@ -1276,7 +1281,7 @@ export function hubContract(
             query:
               'mutation { requestCreate(input: { title: "Buy running shoes", action: "spend", resource: "120 EUR", reason: "The old pair is done." }) { success } }',
           },
-          token: ceoToken,
+          token: onboardingToken,
         });
         // Recent news from before the phone subscribed goes out too; find the ask.
         const ask = async () => {
@@ -1303,7 +1308,7 @@ export function hubContract(
           new Uint8Array(await (sent as Request).arrayBuffer()),
         );
         expect(payload).toMatchObject({
-          title: "CEO asks for approval",
+          title: "Onboarding asks for approval",
           body: "Buy running shoes",
           url: expect.stringMatching(/^\/request\//),
         });
@@ -1399,7 +1404,7 @@ export function hubContract(
         "{ users { nodes { id name } } }",
       );
       const coachId = people.data?.users.nodes.find((u) => u.name === "Coach")?.id ?? "";
-      // Issues the owner keeps don't go to the CEO, so only the runs under test queue.
+      // Issues the owner keeps don't go to the onboarding agent, so only the runs under test queue.
       const ownerId = people.data?.users.nodes.find((u) => u.name === "Youssef")?.id ?? "";
       const created = await gql<{ issueCreate: { issue: { id: string; identifier: string } } }>(
         "mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier } } }",
@@ -1974,7 +1979,7 @@ export function hubContract(
         const response = await client.request("/mcp", {
           method: "POST",
           json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
-          token: ceoToken,
+          token: onboardingToken,
         });
         const body = (await response.json()) as {
           result: { content: { text: string }[]; isError?: boolean };
@@ -2049,7 +2054,7 @@ export function hubContract(
         "Run 21 km",
       ]);
 
-      // The CEO posts an update over MCP; the owner hears about it.
+      // The onboarding agent posts an update over MCP; the owner hears about it.
       const listed = await mcp("list_projects", {});
       expect(listed.projects).toEqual([
         expect.objectContaining({
@@ -2112,9 +2117,9 @@ export function hubContract(
         progress: { scope: 2, completed: 1, progress: 0.5 },
         initiative: { name: "Get fit" },
         teams: { nodes: [{ id: teamId }] },
-        projectUpdates: { nodes: [{ user: { name: "CEO" } }] },
+        projectUpdates: { nodes: [{ user: { name: "Onboarding" } }] },
         projectMilestones: { nodes: [{ name: "Half marathon", progress: { scope: 0 } }] },
-        documents: { nodes: [{ title: "Training plan", updatedBy: { name: "CEO" } }] },
+        documents: { nodes: [{ title: "Training plan", updatedBy: { name: "Onboarding" } }] },
       });
       expect(view.notifications.nodes[0]).toEqual({
         type: "projectUpdateCreated",
@@ -2211,7 +2216,7 @@ export function hubContract(
         const response = await client.request("/mcp", {
           method: "POST",
           json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
-          token: ceoToken,
+          token: onboardingToken,
         });
         const body = (await response.json()) as {
           result: { content: { text: string }[]; isError?: boolean };
@@ -2235,7 +2240,7 @@ export function hubContract(
       const asAgent = await client.graphql(
         'mutation { organizationUpdate(input: { timezone: "UTC" }) { success } }',
         undefined,
-        ceoToken,
+        onboardingToken,
       );
       expect(asAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
 
@@ -2266,7 +2271,7 @@ export function hubContract(
       );
       expect(badLength.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
 
-      // An agent's new issue waits in Triage; the CEO can put it in the current cycle.
+      // An agent's new issue waits in Triage; the onboarding agent can put it in the current cycle.
       const triaged = await mcp("create_issue", {
         team: teamId,
         title: "Renew passport",
@@ -2328,7 +2333,7 @@ export function hubContract(
       const hidden = await client.graphql(
         "query($id: String!) { customView(id: $id) { id } }",
         { id: viewId },
-        ceoToken,
+        onboardingToken,
       );
       expect(hidden.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
       await gql(
@@ -2338,7 +2343,7 @@ export function hubContract(
       const seen = await gql<{ customViews: { nodes: { name: string }[] } }>(
         "{ customViews { nodes { name } } }",
         undefined,
-        ceoToken,
+        onboardingToken,
       );
       expect(seen.customViews.nodes.map((v) => v.name)).toEqual(["Triage"]);
       await gql("mutation($id: String!) { customViewDelete(id: $id) { success } }", { id: viewId });
@@ -2361,7 +2366,7 @@ export function hubContract(
         const response = await client.request("/mcp", {
           method: "POST",
           json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
-          token: ceoToken,
+          token: onboardingToken,
         });
         const body = (await response.json()) as {
           result: { content: { text: string }[]; isError?: boolean };
@@ -2393,7 +2398,7 @@ export function hubContract(
       );
       expect(bad.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
 
-      // The CEO sets up its own recurring issue over MCP.
+      // The onboarding agent sets up its own recurring issue over MCP.
       const saved = await mcp("save_template", {
         team: teamId,
         title: "Weekly review {date}",
@@ -2532,7 +2537,7 @@ export function hubContract(
       const { users } = await gql<{ users: { nodes: { id: string; name: string }[] } }>(
         "{ users { nodes { id name } } }",
       );
-      const ceoId = users.nodes.find((u) => u.name === "CEO")?.id ?? "";
+      const onboardingId = users.nodes.find((u) => u.name === "Onboarding")?.id ?? "";
 
       // Stopping a run and rejecting an agent's request became feedback on their own.
       const automatic = await gql<{
@@ -2541,21 +2546,21 @@ export function hubContract(
       expect(
         automatic.feedbacks.some((f) => f.kind === "stop" && f.body === "Wrong race, pause this"),
       ).toBe(true);
-      expect(automatic.feedbacks.some((f) => f.kind === "rejection" && f.agent.id === ceoId)).toBe(
-        true,
-      );
+      expect(
+        automatic.feedbacks.some((f) => f.kind === "rejection" && f.agent.id === onboardingId),
+      ).toBe(true);
 
       const note = await gql<{
         feedbackCreate: { feedback: { id: string; kind: string; author: { name: string } } };
       }>(
         'mutation($id: String!) { feedbackCreate(input: { agentId: $id, body: "Say the total first in money updates." }) { feedback { id kind author { name } } } }',
-        { id: ceoId },
+        { id: onboardingId },
       );
       expect(note.feedbackCreate.feedback.kind).toBe("note");
       const self = await client.graphql(
         'mutation($id: String!) { feedbackCreate(input: { agentId: $id, body: "I am great" }) { success } }',
-        { id: ceoId },
-        ceoToken,
+        { id: onboardingId },
+        onboardingToken,
       );
       expect(self.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
 
@@ -2564,7 +2569,7 @@ export function hubContract(
         feedbackCreate: { feedback: { id: string; issue: { identifier: string } } };
       }>(
         'mutation($id: String!, $issue: String!) { feedbackCreate(input: { agentId: $id, issueId: $issue, body: "Check the due date first." }) { feedback { id issue { identifier } } } }',
-        { id: ceoId, issue: issueId },
+        { id: onboardingId, issue: issueId },
       );
       const about = await gql<{ feedbacks: { id: string; body: string }[] }>(
         "query($issue: String) { feedbacks(issueId: $issue) { id body } }",
@@ -2574,31 +2579,31 @@ export function hubContract(
       expect(about.feedbacks.map((f) => f.id)).not.toContain(note.feedbackCreate.feedback.id);
       const nowhere = await client.graphql(
         'mutation($id: String!) { feedbackCreate(input: { agentId: $id, issueId: "NOPE-999", body: "Hi" }) { success } }',
-        { id: ceoId },
+        { id: onboardingId },
       );
       expect(nowhere.errors?.[0]?.extensions?.code).toBe("NOT_FOUND");
 
       // The agent rewrites its own lessons without asking, then marks the note addressed.
       await gql(
         'mutation($id: String!) { userUpdate(id: $id, input: { lessons: "- Lead money updates with the total." }) { success } }',
-        { id: ceoId },
-        ceoToken,
+        { id: onboardingId },
+        onboardingToken,
       );
       await gql(
         'mutation($id: String!) { feedbackAddress(id: $id, note: "Added a lesson") { success } }',
         { id: note.feedbackCreate.feedback.id },
-        ceoToken,
+        onboardingToken,
       );
       const open = await gql<{ feedbacks: { id: string }[] }>(
         "query($id: String) { feedbacks(agentId: $id, open: true) { id } }",
-        { id: ceoId },
+        { id: onboardingId },
       );
       expect(open.feedbacks.map((f) => f.id)).not.toContain(note.feedbackCreate.feedback.id);
 
       const handbook = await client.graphql(
         'mutation { organizationUpdate(input: { handbook: "Agents never pay without a receipt." }) { success } }',
         undefined,
-        ceoToken,
+        onboardingToken,
       );
       expect(handbook.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
       const org = await gql<{ organizationUpdate: { organization: { handbook: string } } }>(
@@ -2618,11 +2623,11 @@ export function hubContract(
           handbook: revisions(subject: "handbook") { content }
           user(id: $id) { lessons }
         }`,
-        { id: ceoId },
+        { id: onboardingId },
       );
       expect(versions.lessons[0]).toEqual({
         content: "- Lead money updates with the total.",
-        author: { name: "CEO" },
+        author: { name: "Onboarding" },
       });
       expect(versions.handbook[0]?.content).toBe("Agents never pay without a receipt.");
       expect(versions.user.lessons).toBe("- Lead money updates with the total.");
@@ -2630,21 +2635,21 @@ export function hubContract(
       // A refused update changes nothing, not even the parts that were allowed.
       const refused = await client.graphql(
         'mutation($id: String!) { userUpdate(id: $id, input: { lessons: "- Half done.", charter: "Run it all." }) { success } }',
-        { id: ceoId },
-        ceoToken,
+        { id: onboardingId },
+        onboardingToken,
       );
       expect(refused.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
       const renamed = await client.graphql(
         'mutation { organizationUpdate(input: { name: "Half Co", handbook: "Half done." }) { success } }',
         undefined,
-        ceoToken,
+        onboardingToken,
       );
       expect(renamed.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
       const unchanged = await gql<{
         user: { lessons: string };
         organization: { handbook: string };
       }>("query($id: String!) { user(id: $id) { lessons } organization { handbook } }", {
-        id: ceoId,
+        id: onboardingId,
       });
       expect(unchanged.user.lessons).toBe("- Lead money updates with the total.");
       expect(unchanged.organization.handbook).toBe("Agents never pay without a receipt.");
@@ -2652,7 +2657,7 @@ export function hubContract(
       // Every revision can say why it was made.
       await gql(
         'mutation($id: String!) { userUpdate(id: $id, input: { lessons: "- Total first.", charter: "Run the company.", reason: "Feedback on money updates" }) { success } }',
-        { id: ceoId },
+        { id: onboardingId },
       );
       const tool = async (name: string, args: Record<string, unknown>) => {
         const response = await client.request("/mcp", {
@@ -2663,7 +2668,7 @@ export function hubContract(
             method: "tools/call",
             params: { name, arguments: args },
           },
-          token: ceoToken,
+          token: onboardingToken,
           headers: { accept: "application/json, text/event-stream" },
         });
         const body = (await response.json()) as { result: { content: { text: string }[] } };
@@ -2687,7 +2692,7 @@ export function hubContract(
           charter: revisions(subject: "charter", entityId: $id) { reason }
           handbook: revisions(subject: "handbook") { reason }
         }`,
-        { id: ceoId },
+        { id: onboardingId },
       );
       expect(reasons.lessons.map((r) => r.reason).slice(0, 2)).toEqual([
         "A second note",
@@ -2724,9 +2729,9 @@ export function hubContract(
       expect(insights?.company.created).toBeGreaterThan(0);
       expect(insights?.company.runs).toBeGreaterThan(0);
       expect(insights?.company.stopRate).toBeGreaterThan(0);
-      const ceo = insights?.users.find((u) => u.user.name === "CEO");
-      expect(ceo?.metrics.requestsAnswered).toBeGreaterThan(0);
-      expect(ceo?.metrics.rejectionRate).toBeGreaterThan(0);
+      const onboarding = insights?.users.find((u) => u.user.name === "Onboarding");
+      expect(onboarding?.metrics.requestsAnswered).toBeGreaterThan(0);
+      expect(onboarding?.metrics.rejectionRate).toBeGreaterThan(0);
       expect(insights?.teams.find((t) => t.team.id === teamId)?.metrics.created).toBeGreaterThan(0);
       expect(result.data?.metricHistory).toEqual([]);
 
@@ -2738,12 +2743,12 @@ export function hubContract(
           method: "tools/call",
           params: { name: "get_metrics", arguments: { member: "me", days: 7 } },
         },
-        token: ceoToken,
+        token: onboardingToken,
         headers: { accept: "application/json, text/event-stream" },
       });
       const body = (await response.json()) as { result: { content: { text: string }[] } };
       const metrics = JSON.parse(body.result.content[0]?.text ?? "{}");
-      expect(metrics.scope).toBe("CEO");
+      expect(metrics.scope).toBe("Onboarding");
       expect(metrics.current.requestsAnswered).toBeGreaterThan(0);
       expect(metrics.previous.requestsAnswered).toBe(0);
     });
@@ -2756,7 +2761,7 @@ export function hubContract(
       const create = "mutation { machineSetupTokenCreate { token expiresAt } }";
 
       // Only the owner makes setup tokens.
-      const byAgent = await client.graphql(create, undefined, ceoToken);
+      const byAgent = await client.graphql(create, undefined, onboardingToken);
       expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
 
       const made = await client.graphql<{
@@ -2847,7 +2852,7 @@ export function hubContract(
             method: "tools/call",
             params: { name: "list_machines", arguments: {} },
           },
-          token: ceoToken,
+          token: onboardingToken,
         });
         const body = (await response.json()) as { result: { content: { text: string }[] } };
         const machines = JSON.parse(body.result.content[0]?.text ?? "[]") as {
@@ -2859,7 +2864,7 @@ export function hubContract(
       };
 
       // Only the owner renames machines.
-      const byAgent = await rename(id, "Work laptop", ceoToken);
+      const byAgent = await rename(id, "Work laptop", onboardingToken);
       expect(byAgent.errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
 
       const renamed = await rename(id, "  Work laptop ");
@@ -2925,7 +2930,7 @@ export function hubContract(
         ).body.upgrade;
 
       expect(await beat()).toBeFalsy();
-      expect((await upgrade(ceoToken)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
+      expect((await upgrade(onboardingToken)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
       expect((await upgrade()).data).toEqual({ machineUpgrade: { success: true } });
       // The machine hears it once.
       expect(await beat()).toBe(true);
@@ -3913,7 +3918,7 @@ export function hubContract(
 
     it("lets agents edit, archive and delete what members can, through MCP", async () => {
       const mcp = async (name: string, args: Record<string, unknown>) => {
-        const result = await callTool(ceoToken, name, args);
+        const result = await callTool(onboardingToken, name, args);
         if (result.isError) throw new Error(result.text);
         return result.json();
       };
@@ -3924,7 +3929,7 @@ export function hubContract(
       // Teams and cycles: an agent with team.update may change a team's settings.
       await client.graphql(
         'mutation($s: String) { grantCreate(input: { action: "team.update", scope: user, subjectId: $s }) { success } }',
-        { s: (await agentToken("CEO")).id },
+        { s: (await agentToken("Onboarding")).id },
       );
       expect(
         await mcp("update_team", { id: "TRV", description: "Trips", cyclesEnabled: true }),
@@ -3958,9 +3963,9 @@ export function hubContract(
           )
         ).data?.issue.subscribers.nodes.map((u) => u.name);
       await mcp("update_issue", { id: a.identifier, subscribed: false });
-      expect(await followers()).not.toContain("CEO");
+      expect(await followers()).not.toContain("Onboarding");
       await mcp("update_issue", { id: a.identifier, subscribed: true });
-      expect(await followers()).toContain("CEO");
+      expect(await followers()).toContain("Onboarding");
 
       // Comments and reactions.
       const comment = await mcp("create_comment", { issueId: a.identifier, body: "Tpyo" });
@@ -4218,7 +4223,7 @@ export function hubContract(
 
       // Agents do the same through MCP.
       const mcp = async (name: string, args: Record<string, unknown>) => {
-        const result = await callTool(ceoToken, name, args);
+        const result = await callTool(onboardingToken, name, args);
         if (result.isError) throw new Error(result.text);
         return result.json();
       };
@@ -4283,7 +4288,7 @@ export function hubContract(
 
     it("lists the grants that apply to an agent or a team, and edits them", async () => {
       const scout = await agentToken("Scout");
-      const ceo = await agentToken("CEO");
+      const onboarding = await agentToken("Onboarding");
       const field = await client.graphql<{ teamCreate: { team: { id: string } } }>(
         'mutation($l: String) { teamCreate(input: { name: "Field", leadId: $l }) { team { id } } }',
         { l: scout.id },
@@ -4298,7 +4303,7 @@ export function hubContract(
         ).data?.grantCreate.grant.id;
       const teamGrant = await grant("doc.write", "team", teamId);
       await grant("web.read", "everyone");
-      await grant("ceo.only", "user", ceo.id);
+      await grant("onboarding.only", "user", onboarding.id);
       type Row = { action: string; note: string | null; revokedAt: string | null };
       const list = async (filter: Record<string, unknown>, includeRevoked = false) =>
         (
@@ -4311,7 +4316,7 @@ export function hubContract(
       // An agent's grants: its own, its teams' and everyone's.
       const scouts = (await list({ userId: scout.id })).map((g) => g.action);
       expect(scouts).toEqual(expect.arrayContaining(["tool:slack__*", "doc.write", "web.read"]));
-      expect(scouts).not.toContain("ceo.only");
+      expect(scouts).not.toContain("onboarding.only");
       expect((await list({ teamId })).map((g) => g.action)).toEqual(["doc.write"]);
 
       // Only the owner edits a grant, and the edit is audited.
@@ -4343,7 +4348,7 @@ export function hubContract(
     });
 
     it("adds agents to a team and removes them, owner only", async () => {
-      const ceo = await agentToken("CEO");
+      const onboarding = await agentToken("Onboarding");
       const scout = await agentToken("Scout");
       const team = await client.graphql<{ teamCreate: { team: { id: string } } }>(
         'mutation { teamCreate(input: { name: "Crew" }) { team { id } } }',
@@ -4368,11 +4373,13 @@ export function hubContract(
           { t: teamId, u: userId },
         );
 
-      expect((await add(ceo.id, scout.token)).errors?.[0]?.extensions?.code).toBe("FORBIDDEN");
-      expect((await add(ceo.id)).errors).toBeUndefined();
-      expect(await members()).toContain("CEO");
-      expect((await remove(ceo.id)).errors).toBeUndefined();
-      expect(await members()).not.toContain("CEO");
+      expect((await add(onboarding.id, scout.token)).errors?.[0]?.extensions?.code).toBe(
+        "FORBIDDEN",
+      );
+      expect((await add(onboarding.id)).errors).toBeUndefined();
+      expect(await members()).toContain("Onboarding");
+      expect((await remove(onboarding.id)).errors).toBeUndefined();
+      expect(await members()).not.toContain("Onboarding");
       const log = await client.graphql<{ auditEntries: { nodes: { action: string }[] } }>(
         "query($id: String) { auditEntries(entityId: $id) { nodes { action } } }",
         { id: teamId },
@@ -4497,7 +4504,7 @@ export function hubContract(
     });
 
     it("runs each tier on a machine signed in to its provider, from the models machines have", async () => {
-      const ceo = await agentToken("CEO");
+      const onboarding = await agentToken("Onboarding");
       const scout = await agentToken("Scout");
       await clearRuns();
       const setModels = (models: unknown, token?: string) =>
@@ -4527,7 +4534,7 @@ export function hubContract(
 
       // An agent may not change its own models without approval; the owner sets them.
       const small = { provider: "openai", model: "gpt-6-luna", effort: "low" };
-      const asked = await setModels({ small }, ceo.token);
+      const asked = await setModels({ small }, onboarding.token);
       expect(asked.errors?.[0]?.message).toContain("needs approval: agent.models");
       const missing = await setModels({ small: { ...small, model: "gpt-9" } });
       expect(missing.errors?.[0]?.extensions?.code).toBe("BAD_REQUEST");
@@ -4609,7 +4616,7 @@ export function hubContract(
         input: { teamId, title: "Scout the trail" },
       });
       const issueId = work.data?.issueCreate.issue.id;
-      // Clear what else is queued (the new issue wakes the CEO), so the machine gets Scout's run.
+      // Clear what else is queued (the new issue wakes the onboarding agent), so the machine gets Scout's run.
       await clearRuns();
       const created = await client.graphql<{ runCreate: { run: { id: string } } }>(
         "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
@@ -4676,8 +4683,8 @@ export function hubContract(
         input: { prompt: string };
       };
       let fresh = await runner<Claim>("/claim", claudeOnly.token, {});
-      // The CEO hears about the comment too; it lets it be.
-      while (fresh.body.agent.name === "CEO") {
+      // The onboarding agent hears about the comment too; it lets it be.
+      while (fresh.body.agent.name === "Onboarding") {
         await runner(`/runs/${fresh.body.run.id}/complete`, claudeOnly.token, {
           status: "completed",
           result: { action: "ignore", reason: "Not mine" },
@@ -4716,7 +4723,7 @@ export function hubContract(
         const made = await client.graphql<{ issueCreate: { issue: { id: string } } }>(
           "mutation($teamId: String!, $title: String!) { issueCreate(input: { teamId: $teamId, title: $title }) { issue { id } } }",
           { teamId: team.data?.teamCreate.team.id, title: `Page ${n}` },
-          ceoToken,
+          onboardingToken,
         );
         ids.push(made.data?.issueCreate.issue.id ?? "");
       }
@@ -4726,7 +4733,7 @@ export function hubContract(
         await client.graphql(
           "mutation($ids: [String!]!, $assigneeId: String) { issueBatchUpdate(ids: $ids, input: { assigneeId: $assigneeId }) { success } }",
           { ids, assigneeId },
-          ceoToken,
+          onboardingToken,
         );
       }
       const mine = new Set(ids);
@@ -4751,7 +4758,7 @@ export function hubContract(
       const history: { id: string; entityId: string; action: string }[] = [];
       for (let cursor: string | null = null; ; ) {
         const page = (
-          await callTool(ceoToken, "get_history", { entityType: "issue", limit: 45, cursor })
+          await callTool(onboardingToken, "get_history", { entityType: "issue", limit: 45, cursor })
         ).json() as {
           entries: { id: string; entityId: string; action: string }[];
           nextCursor: string | null;
@@ -4796,16 +4803,18 @@ export function hubContract(
       );
       expect(newest.data?.issue.comments.nodes.map((c) => c.body)).toEqual(["Two", "Three"]);
 
-      const first = (await callTool(ceoToken, "list_comments", { issueId: id, limit: 2 })).json();
+      const first = (
+        await callTool(onboardingToken, "list_comments", { issueId: id, limit: 2 })
+      ).json();
       expect(first.comments.map((c: { body: string }) => c.body)).toEqual(["One", "Two"]);
       const rest = (
-        await callTool(ceoToken, "list_comments", { issueId: id, cursor: first.nextCursor })
+        await callTool(onboardingToken, "list_comments", { issueId: id, cursor: first.nextCursor })
       ).json();
       expect(rest).toMatchObject({ comments: [{ body: "Three" }], nextCursor: null });
     });
 
     it("checks inputs against the schemas it advertises", async () => {
-      const call = async (name: string, args: Record<string, unknown>, token = ceoToken) => {
+      const call = async (name: string, args: Record<string, unknown>, token = onboardingToken) => {
         const response = await client.request("/mcp", {
           method: "POST",
           json: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } },
@@ -4819,7 +4828,7 @@ export function hubContract(
         const text = body.result?.content[0]?.text ?? "";
         return { text, isError: body.result?.isError ?? false };
       };
-      const mcp = async (name: string, args: Record<string, unknown>, token = ceoToken) => {
+      const mcp = async (name: string, args: Record<string, unknown>, token = onboardingToken) => {
         const { text, isError } = await call(name, args, token);
         if (isError) throw new Error(text);
         return JSON.parse(text);
@@ -4884,7 +4893,12 @@ export function hubContract(
         'mutation { apiTokenCreate(name: "Schema check") { token } }',
       );
       const ownerToken = owner.data?.apiTokenCreate.token ?? "";
-      const hire = { name: "Scribe", title: "Note taker", charter: "Notes.", manager: "CEO" };
+      const hire = {
+        name: "Scribe",
+        title: "Note taker",
+        charter: "Notes.",
+        manager: "Onboarding",
+      };
       await mcp("hire_agent", hire, ownerToken);
       await mcp("update_user", { user: "Scribe", title: null, manager: null }, ownerToken);
       expect(await mcp("get_user", { query: "Scribe" })).toMatchObject({
@@ -4912,7 +4926,11 @@ export function hubContract(
 
       // Malformed JSON-RPC gets an invalid-request error.
       for (const json of [5, null, []]) {
-        const response = await client.request("/mcp", { method: "POST", json, token: ceoToken });
+        const response = await client.request("/mcp", {
+          method: "POST",
+          json,
+          token: onboardingToken,
+        });
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ error: { code: -32600 } });
       }

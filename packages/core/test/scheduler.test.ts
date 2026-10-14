@@ -282,13 +282,17 @@ describe("recurring issues", () => {
     const db = await company("UTC", start);
     const owner = { db, actorId: "owner", now: start };
     const teamId = await createTeam(owner, { name: "Home", key: "HOM" });
-    const ceo = await db.select().from(schema.users).where(eq(schema.users.name, "CEO")).get();
-    const ceoId = ceo?.id ?? "";
+    const agent = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.name, "Onboarding"))
+      .get();
+    const agentId = agent?.id ?? "";
     await createTemplate(
-      { db, actorId: ceoId, now: start },
+      { db, actorId: agentId, now: start },
       {
         teamId,
-        templateData: { title: "Morning brief {date}", assigneeId: ceoId, priority: 3 },
+        templateData: { title: "Morning brief {date}", assigneeId: agentId, priority: 3 },
         schedule: { frequency: "daily", time: "08:00" },
       },
     );
@@ -298,11 +302,11 @@ describe("recurring issues", () => {
     await createRecurringIssues(deps, start + 62 * 60_000);
     const created = await db.select().from(schema.issues).all();
     expect(created.map((i) => i.title)).toEqual(["Morning brief 2026-10-08"]);
-    expect(created[0]?.assigneeId).toBe(ceoId);
+    expect(created[0]?.assigneeId).toBe(agentId);
     const woke = await db
       .select()
       .from(schema.notifications)
-      .where(eq(schema.notifications.userId, ceoId))
+      .where(eq(schema.notifications.userId, agentId))
       .all();
     expect(woke.map((n) => n.type)).toEqual(["issueAssignedToYou"]);
     await createRecurringIssues(deps, start + DAY + 61 * 60_000);
@@ -365,9 +369,9 @@ describe("SLAs and auto-archive", () => {
       .where(eq(schema.notifications.type, "issueSlaBreached"))
       .all();
     // The CEO has it, since the owner filed it unassigned; both hear about the breach.
-    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
+    const agent = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
     expect(breaches.map((n) => [n.userId, n.issueId, n.actorId])).toEqual([
-      [ceo?.id, urgent, null],
+      [agent?.id, urgent, null],
       ["owner", urgent, null],
     ]);
 
@@ -445,10 +449,10 @@ describe("lost runs", () => {
   it("fails a run whose machine went quiet and announces the change", async () => {
     const start = Date.parse("2026-10-08T07:00:00Z");
     const db = await company("UTC", start);
-    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
+    const agent = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
     await db.insert(schema.runs).values({
       id: "lost",
-      agentId: ceo?.id ?? "",
+      agentId: agent?.id ?? "",
       kind: "work",
       status: "running",
       heartbeatAt: start,
@@ -492,10 +496,10 @@ describe("metrics", () => {
     await updateIssue({ ...ctx, now: start + 5 * 3_600_000 }, done, {
       stateId: ofType("completed"),
     });
-    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
+    const agent = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
     const run = (id: string, extra: Partial<typeof schema.runs.$inferInsert>) => ({
       id,
-      agentId: ceo?.id ?? "",
+      agentId: agent?.id ?? "",
       kind: "work" as const,
       inputTokens: 600,
       outputTokens: 400,
@@ -528,7 +532,7 @@ describe("metrics", () => {
     });
     expect(day.get(`team:${teamId}`)?.completed).toBe(1);
     expect(day.get(`team:${teamId}`)?.runs).toBe(0);
-    expect(day.get(`user:${ceo?.id}`)?.runsStopped).toBe(1);
+    expect(day.get(`user:${agent?.id}`)?.runsStopped).toBe(1);
 
     const nextMorning = Date.parse("2026-10-09T00:30:00Z");
     expect(await snapshotMetrics(db, nextMorning)).toBe(true);
@@ -570,12 +574,12 @@ describe("metrics", () => {
   it("counts a run on its local day in half-hour time zones", async () => {
     const at = Date.parse("2026-10-08T12:00:00Z");
     const db = await company("Asia/Kolkata", at);
-    const ceo = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
+    const agent = await db.select().from(schema.users).where(eq(schema.users.kind, "agent")).get();
     // 00:10 on 9 October in Kolkata.
     const endedAt = Date.parse("2026-10-08T18:40:00Z");
     await db.insert(schema.runs).values({
       id: "r1",
-      agentId: ceo?.id ?? "",
+      agentId: agent?.id ?? "",
       kind: "work",
       status: "completed",
       endedAt,

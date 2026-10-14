@@ -16,13 +16,10 @@ export function HireAgentHost() {
 function HireAgent({ onClose }: { onClose: () => void }) {
   const workspace = useStore(workspaceStore);
   const members = workspace?.users.nodes ?? [];
-  // New hires report to the CEO: the agent reporting to the owner, created with the company.
-  const owner = members.find((m) => m.kind === "owner");
-  const ceo = members.find((m) => m.kind === "agent" && m.manager?.id === owner?.id);
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [charter, setCharter] = useState("");
-  const [managerId, setManagerId] = useState(ceo?.id ?? "");
+  const [managerId, setManagerId] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(event: FormEvent) {

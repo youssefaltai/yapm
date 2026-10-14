@@ -141,7 +141,7 @@ async function isAgent(db: HubDb, userId: string) {
   return user?.kind === "agent";
 }
 
-/** What the owner files without an assignee goes to the CEO: the first agent reporting to them. */
+/** What the owner files without an assignee goes to the first agent reporting to them. */
 async function defaultAssignee(db: HubDb, actorId: string) {
   const actor = await db
     .select({ kind: users.kind })
@@ -149,13 +149,13 @@ async function defaultAssignee(db: HubDb, actorId: string) {
     .where(eq(users.id, actorId))
     .get();
   if (actor?.kind !== "owner") return null;
-  const ceo = await db
+  const lead = await db
     .select({ id: users.id })
     .from(users)
     .where(and(eq(users.kind, "agent"), eq(users.active, true), eq(users.managerId, actorId)))
     .orderBy(asc(users.createdAt))
     .get();
-  return ceo?.id ?? null;
+  return lead?.id ?? null;
 }
 
 async function checkAssignee(db: HubDb, assigneeId: string) {

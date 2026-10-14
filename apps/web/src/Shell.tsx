@@ -293,7 +293,7 @@ function Sidebar({
       </div>
       <nav className="mt-4 space-y-0.5">
         <NavLink to={paths.ask()} icon="ask" active={route.name === "ask"}>
-          Ask CEO
+          Ask
         </NavLink>
         <NavLink to={paths.inbox()} icon="inbox" active={route.name === "inbox"}>
           <span className="flex w-full items-center justify-between">

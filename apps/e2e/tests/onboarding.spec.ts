@@ -56,15 +56,15 @@ test.describe
       await page.getByLabel("Your name").fill("Youssef");
       await page.getByRole("button", { name: "Create passkey and start" }).click();
 
-      // The app opens on asking the CEO.
-      await expect(page.getByRole("link", { name: "Ask CEO", exact: true })).toHaveAttribute(
+      // The app opens on asking the onboarding agent, the only employee so far.
+      await expect(page.getByRole("link", { name: "Ask", exact: true })).toHaveAttribute(
         "aria-current",
         "page",
       );
       await page.getByRole("link", { name: "Company" }).click();
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
       await expect(page.getByText("1 AI employee across 1 team.")).toBeVisible();
-      await expect(page.getByText("Chief Executive Officer")).toBeVisible();
+      await expect(page.getByText("Sets up your company")).toBeVisible();
 
       await page.getByRole("button", { name: "Sign out" }).first().click();
       await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
@@ -76,8 +76,8 @@ test.describe
       await expect(page.getByRole("heading", { name: "Youssef Inc" })).toBeVisible();
     });
 
-    test("asks the CEO, who takes it on as an issue, once a machine can run it", async () => {
-      await page.getByRole("link", { name: "Ask CEO", exact: true }).click();
+    test("asks the onboarding agent, who takes it on as an issue, once a machine can run it", async () => {
+      await page.getByRole("link", { name: "Ask", exact: true }).click();
       // No machine yet: the page offers to add the first one.
       await expect(page.getByText("Add your first machine")).toBeVisible();
       await page.getByRole("button", { name: "Add machine" }).click();
@@ -87,13 +87,13 @@ test.describe
         data: { name: "Home Mac", tags: [], capacity: 1, setupToken: token },
       });
 
-      // It connects, and the CEO is ready.
+      // It connects, and the agent is ready.
       await expect(
         page.getByRole("heading", { name: "What can I take off your plate?" }),
       ).toBeVisible();
       await expect(page.getByText("I'll make it an issue and get to work")).toBeVisible();
       // The composer is ready to type in; a suggestion fills it, ready to edit or send.
-      const composer = page.getByLabel("Ask CEO");
+      const composer = page.getByLabel("Ask Onboarding");
       await expect(composer).toBeFocused();
       await expect(page.getByRole("button", { name: "Ask", exact: true })).toBeDisabled();
       await page.getByRole("button", { name: "Plan my week" }).click();
@@ -103,7 +103,7 @@ test.describe
       await composer.fill("Set up a team for the household bills.");
       await composer.press("Shift+Enter");
       await composer.pressSequentially("Electricity and water, mostly.");
-      // While it's on its way the composer becomes the CEO at work; a failure gives the text back.
+      // While it's on its way the composer becomes the agent at work; a failure gives the text back.
       let fail = true;
       await page.route("**/graphql", async (route) => {
         if (!(route.request().postData() ?? "").includes("issueCreate")) return route.fallback();
@@ -113,14 +113,14 @@ test.describe
         await route.fulfill({ json: { errors: [{ message: "The hub is unreachable" }] } });
       });
       await composer.press("Enter");
-      await expect(page.getByRole("status", { name: "CEO is taking it on" })).toBeVisible();
+      await expect(page.getByRole("status", { name: "Onboarding is taking it on" })).toBeVisible();
       await expect(page.getByRole("alert")).toContainText("The hub is unreachable");
       await expect(composer).toHaveValue(
         "Set up a team for the household bills.\nElectricity and water, mostly.",
       );
       await composer.press("Enter");
 
-      // It becomes an issue for the CEO, in the company's first team, where the reply lands.
+      // It becomes an issue for the agent, in the company's first team, where the reply lands.
       await expect(page).toHaveURL(/\/issue\/YI-1$/);
       await expect(page.getByLabel("Issue title")).toHaveValue(
         "Set up a team for the household bills.",
@@ -251,12 +251,12 @@ test.describe
       await expect(page.getByText("1 selected")).toBeHidden();
     });
 
-    test("suggests what to ask the CEO from the work at hand", async () => {
+    test("suggests what to ask from the work at hand", async () => {
       await page.reload();
-      await page.getByRole("link", { name: "Ask CEO", exact: true }).click();
+      await page.getByRole("link", { name: "Ask", exact: true }).click();
       // The urgent issue already in progress comes first.
       await page.getByRole("button", { name: /Pay the electricity bill/ }).click();
-      await expect(page.getByLabel("Ask CEO")).toHaveValue(/Pay the electricity bill/);
+      await expect(page.getByLabel("Ask Onboarding")).toHaveValue(/Pay the electricity bill/);
       await page.goBack();
     });
 
@@ -396,11 +396,11 @@ test.describe
       const runs = page.getByRole("region", { name: "How it runs" });
       await expect(runs.getByLabel("Runner tags")).toBeVisible();
       expect((await runs.boundingBox())?.width).toBeGreaterThan(400);
-      // New hires report to the CEO unless you pick someone else.
+      // New hires report to you unless you pick someone else.
       expect(await mcp("get_user", { query: "me" })).toMatchObject({
         name: "Ada",
         title: "Head of Finance",
-        manager: "CEO",
+        manager: "Youssef",
       });
     });
 

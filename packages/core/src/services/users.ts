@@ -213,7 +213,8 @@ export async function retireAgent(ctx: Ctx, id: string): Promise<string> {
   if (user.kind !== "agent") throw new ServiceError("BAD_REQUEST", "Only agents can be retired");
   if (!user.active) return id;
   const ops: WriteOp[] = [
-    ...(await authorize(ctx, "agent.retire", id)),
+    // An agent may retire itself, as onboarding does when it's done.
+    ...(ctx.actorId === id ? [] : await authorize(ctx, "agent.retire", id)),
     db.update(users).set({ active: false, updatedAt: now }).where(eq(users.id, id)),
     db
       .update(apiTokens)

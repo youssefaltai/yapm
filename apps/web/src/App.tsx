@@ -158,7 +158,7 @@ function SetupScreen({ onDone }: { onDone: (viewer: Viewer) => void }) {
   return (
     <Card
       title="Start your company"
-      subtitle="You're the owner. Your AI employees, led by a CEO, will run the rest."
+      subtitle="You're the owner. Your AI employees will run the rest, organized however you like."
     >
       <form onSubmit={submit}>
         <Field

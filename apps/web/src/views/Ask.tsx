@@ -9,13 +9,13 @@ import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
 import { machineSetup, type SetupCommand, SetupPanel } from "./Machines.js";
 
-/** The CEO: the first agent reporting to the owner, created with the company. */
-function ceoOf(workspace: Workspace | null): Member | undefined {
+/** Who the owner asks: the first agent reporting to them, onboarding until it hands over. */
+function leadOf(workspace: Workspace | null): Member | undefined {
   const owner = workspace?.users.nodes.find((u) => u.kind === "owner");
   return workspace?.users.nodes.find((u) => u.kind === "agent" && u.manager?.id === owner?.id);
 }
 
-// What to ask the CEO comes from the work at hand, with one cheap query and no model: requests
+// What to ask comes from the work at hand, with one cheap query and no model: requests
 // waiting on the owner, then open issues, overdue and urgent first. A new company gets starters.
 const STARTERS = ["Plan my week", "What needs my attention?", "Set up a team for my bills"];
 
@@ -75,14 +75,14 @@ function goTo(path: string) {
 }
 
 /**
- * The owner asks the CEO for something. It becomes an issue assigned to the CEO, which starts
+ * The owner asks their lead agent for something. It becomes an issue assigned to it, which starts
  * the work; results, questions and replies all land on the issue, and its followers hear.
  */
 export function AskView({ workspace }: { workspace: Workspace }) {
-  const ceo = ceoOf(workspace);
-  const name = ceo?.name ?? "CEO";
+  const lead = leadOf(workspace);
+  const name = lead?.name ?? "your agents";
   const team = workspace.teams.nodes[0];
-  // The CEO runs on the owner's machines; until there's one, the page offers to add it.
+  // Agents run on the owner's machines; until there's one, the page offers to add it.
   const [setup, setSetup] = useState<SetupCommand | null>(null);
   const machines = useQuery<{ machines: { id: string; status: string }[] }>(
     "{ machines { id status } }",
@@ -111,7 +111,7 @@ export function AskView({ workspace }: { workspace: Workspace }) {
 
   async function ask() {
     const message = body.trim();
-    if (!ceo || !team || !message || busy) return;
+    if (!lead || !team || !message || busy) return;
     setBusy(true);
     setError(null);
     const title = titleOf(message);
@@ -124,7 +124,7 @@ export function AskView({ workspace }: { workspace: Workspace }) {
             title,
             // A one-liner is all title; a longer message keeps every word in the description.
             description: message === title ? null : message,
-            assigneeId: ceo.id,
+            assigneeId: lead.id,
           },
         },
       );
@@ -185,7 +185,7 @@ export function AskView({ workspace }: { workspace: Workspace }) {
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-4 pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6">
-          {/* On send, the composer steps back and the CEO's logo, the one focal point, gets to work. */}
+          {/* On send, the composer steps back and the agent's logo, the one focal point, gets to work. */}
           <div className="flex animate-rise-in flex-col items-center text-center">
             <span
               role="status"
@@ -203,8 +203,7 @@ export function AskView({ workspace }: { workspace: Workspace }) {
               />
             </span>
             <p className="mt-3 text-muted">
-              Hi {workspace.viewer.name.split(" ")[0]},{" "}
-              {name === "CEO" ? "I'm your CEO." : `I'm ${name}, your CEO.`}
+              Hi {workspace.viewer.name.split(" ")[0]}, this is {name}.
             </p>
             <h2 className="mt-1 grid text-xl font-medium text-balance">
               {/* Both lines share one cell, so the swap cross-fades in place. */}

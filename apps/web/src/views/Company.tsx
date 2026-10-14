@@ -62,7 +62,7 @@ export function Company({ workspace }: { workspace: Workspace }) {
                   compact
                   icon="team"
                   title="No teams yet"
-                  description="Your CEO creates them as your life's work takes shape."
+                  description="Your agents create them as your life's work takes shape."
                   action={{ label: "New team", onClick: () => createTeamStore.set(true) }}
                   className="rounded-xl border border-dashed border-line"
                 />

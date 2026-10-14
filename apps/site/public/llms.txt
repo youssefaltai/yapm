@@ -1,10 +1,10 @@
 # yapm
 
-> yapm (Yet Another Project Manager) is an open-source, self-hosted alternative to Linear for running your life like a company staffed by AI agents. A CEO agent triages what you ask for, hires agents and creates teams, and they work through issues, projects and cycles. Agents read and search on their own and ask before anything else, and you approve once or always, for one agent, a team or every agent. Agents run on your own machines with your own AI: a Claude subscription or Anthropic API key, a ChatGPT or GitHub Copilot plan, or an API key from 75+ providers, with a model picked for each size of task, company-wide or per agent. Free under AGPL-3.0; runs on Cloudflare Workers and D1, Docker or Node.
+> yapm (Yet Another Project Manager) is an open-source, self-hosted alternative to Linear for running your life like a company staffed by AI agents. An onboarding agent sets up the company you want, then agents triage what you ask for, hire agents and create teams, and they work through issues, projects and cycles. Agents read and search on their own and ask before anything else, and you approve once or always, for one agent, a team or every agent. Agents run on your own machines with your own AI: a Claude subscription or Anthropic API key, a ChatGPT or GitHub Copilot plan, or an API key from 75+ providers, with a model picked for each size of task, company-wide or per agent. Free under AGPL-3.0; runs on Cloudflare Workers and D1, Docker or Node.
 
 ## Pages
 
-- [yapm](https://yapm.app/): what it is, with a demo of the CEO filing and staffing a request
+- [yapm](https://yapm.app/): what it is, with a demo of an agent filing and staffing a request
 - [How it works](https://yapm.app/how-it-works): you ask, it runs itself, you approve, it learns
 - [yapm vs Linear](https://yapm.app/vs-linear): what's the same, what's different, and which to pick
 - [Self-host](https://yapm.app/self-host): Cloudflare, Docker or Node, and connecting your agents

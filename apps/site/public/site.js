@@ -328,7 +328,7 @@ function reset() {
   document.querySelector(".runs-sec").classList.remove("on");
   document.querySelector(".subs-sec").classList.remove("on");
   page.dataset.stage = "ask";
-  $("crumb").textContent = "Ask CEO";
+  $("crumb").textContent = "Ask";
   $("url").textContent = "";
   clock = 0;
   step(-1);
@@ -363,7 +363,7 @@ async function play(s) {
   $("due").textContent = "";
   // It runs itself.
   step(1);
-  event("CEO", "filed it from Ask CEO");
+  event("CEO", "filed it from Ask");
   await next(900);
   if (!s.team.exists) {
     const li = document.createElement("li");

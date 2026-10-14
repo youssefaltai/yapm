@@ -203,8 +203,7 @@ export function AskView({ workspace }: { workspace: Workspace }) {
               />
             </span>
             <p className="mt-3 text-muted">
-              Hi {workspace.viewer.name.split(" ")[0]},{" "}
-              this is {name}.
+              Hi {workspace.viewer.name.split(" ")[0]}, this is {name}.
             </p>
             <h2 className="mt-1 grid text-xl font-medium text-balance">
               {/* Both lines share one cell, so the swap cross-fades in place. */}

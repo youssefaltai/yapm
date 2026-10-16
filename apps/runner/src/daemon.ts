@@ -25,8 +25,10 @@ export interface RunnerOptions {
   cwd: string;
   /** Reads the plan's limits while no session is running; left out, only sessions read them. */
   probe?: PlanProbe;
-  /** Reads the Claude login, at every check-in; costs nothing against the plan. */
+  /** Reads the Claude login: at startup, then while idle; sessions read it as they start. */
   login?: () => Promise<PlanUpdate | null>;
+  /** How often to read it while idle; each read starts Claude Code. */
+  loginEveryMs?: number;
   /** Lists the providers signed in here and their models, for the hub's catalog. */
   catalog?: () => Promise<ProviderModels[]>;
   /** How often to list them again; sign-ins change rarely. */
@@ -63,6 +65,7 @@ export class Runner {
   readonly plan: PlanTracker;
   private probing = false;
   private checkingLogin = false;
+  private loginAt = 0;
   /** The newest model list, until a check-in has sent it. */
   private providers: ProviderModels[] | null = null;
   private listedAt = 0;
@@ -94,7 +97,6 @@ export class Runner {
       ...plan,
     });
     this.plan.sent(plan);
-    this.readLogin();
     if (providers === this.providers) this.providers = null;
     for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
     if (answer?.upgrade && !this.upgrading) {
@@ -280,14 +282,16 @@ export class Runner {
   }
 
   /**
-   * Reads the login in the background, for the next check-in to send: a switched or signed-out
-   * login drops its reading here and at the hub within a check-in or two.
+   * Reads the login when a read is due, for the next check-in to send: a switched or signed-out
+   * login drops its reading here and at the hub. A failed read waits for the next turn.
    */
   private readLogin() {
-    const { login } = this.options;
-    if (!login || this.checkingLogin) return;
+    const { login, loginEveryMs = 60_000 } = this.options;
+    if (!login || this.checkingLogin || Date.now() - this.loginAt < loginEveryMs)
+      return Promise.resolve();
     this.checkingLogin = true;
-    void login()
+    this.loginAt = Date.now();
+    return login()
       .then((update) => update && this.plan.update(update))
       .catch((error) => this.log(`Couldn't read the Claude login: ${String(error)}`))
       .finally(() => {
@@ -321,6 +325,8 @@ export class Runner {
    */
   async run(): Promise<"upgrade" | undefined> {
     let lastBeat = 0;
+    // Before the first check-in and claim, so they go out on the right login.
+    await this.readLogin();
     while (!this.stopped) {
       try {
         if (Date.now() - lastBeat >= this.heartbeatMs) {
@@ -334,6 +340,8 @@ export class Runner {
         if (this.upgrading && this.active.size === 0) return "upgrade";
         await this.claim();
         this.readPlan();
+        // Sessions read it as they start; an idle machine reads it on its own.
+        if (this.active.size === 0) void this.readLogin();
         void this.readCatalog();
       } catch (error) {
         if (error instanceof HubError && error.status === 401) {

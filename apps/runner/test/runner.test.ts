@@ -451,7 +451,7 @@ describe("runner daemon", () => {
     expect(planRunner.plan.pending()).toEqual({});
   });
 
-  it("checks the Claude login at every check-in, so a switch or sign-out shows soon", async () => {
+  it("reads the Claude login at startup and at most once a minute while idle", async () => {
     const enrolment = await hub.enrol({
       name: "Login machine",
       tags: [],
@@ -460,6 +460,8 @@ describe("runner daemon", () => {
     });
     let account: { email: string | null } | null = { email: "shared@example.com" };
     let reads = 0;
+    let claimsBeforeFirstRead: number | null = null;
+    const claim = vi.spyOn(hub, "claim");
     const loginRunner = new Runner({
       hub,
       token: enrolment.token,
@@ -467,9 +469,13 @@ describe("runner daemon", () => {
       capacity: 1,
       version: "test",
       cwd: tmpdir(),
+      pollMs: 10,
+      heartbeatMs: 10,
+      loginEveryMs: 300,
       log: (line) => lines.push(line),
       login: async () => {
         reads++;
+        claimsBeforeFirstRead ??= claim.mock.calls.length;
         return {
           account: account && {
             ...account,
@@ -486,15 +492,19 @@ describe("runner daemon", () => {
           "{ machines { id claudeAccount { email } } }",
         )
       ).machines.find((m) => m.id === enrolment.id)?.claudeAccount ?? null;
-    await loginRunner.heartbeat();
-    await until(() => reads === 1, "the first login read");
-    await loginRunner.heartbeat();
+    const running = loginRunner.run();
+    await until(async () => (await seen()) !== null, "the login at startup");
+    expect(claimsBeforeFirstRead).toBe(0);
     expect(await seen()).toEqual({ email: "shared@example.com" });
+    // Check-ins every 10ms don't each start Claude Code.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(reads).toBe(1);
     account = null;
-    await until(async () => {
-      await loginRunner.heartbeat();
-      return (await seen()) === null;
-    }, "the sign-out");
+    await until(async () => (await seen()) === null, "the sign-out, on an idle read");
+    expect(reads).toBe(2);
+    await loginRunner.shutdown();
+    await running;
+    claim.mockRestore();
   });
 
   it("runs each tier on its provider's engine, and tells the hub which models it has", async () => {

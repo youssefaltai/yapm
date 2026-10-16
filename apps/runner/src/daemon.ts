@@ -9,7 +9,7 @@ import {
   type Usage,
 } from "./hub.js";
 import { decideTool } from "./permissions.js";
-import { PlanTracker } from "./plan.js";
+import { PlanTracker, type PlanUpdate } from "./plan.js";
 
 export interface RunnerOptions {
   hub: HubClient;
@@ -25,6 +25,8 @@ export interface RunnerOptions {
   cwd: string;
   /** Reads the plan's limits while no session is running; left out, only sessions read them. */
   probe?: PlanProbe;
+  /** Reads the Claude login, at every check-in; costs nothing against the plan. */
+  login?: () => Promise<PlanUpdate | null>;
   /** Lists the providers signed in here and their models, for the hub's catalog. */
   catalog?: () => Promise<ProviderModels[]>;
   /** How often to list them again; sign-ins change rarely. */
@@ -60,6 +62,7 @@ export class Runner {
   private readonly log: (line: string) => void;
   readonly plan: PlanTracker;
   private probing = false;
+  private checkingLogin = false;
   /** The newest model list, until a check-in has sent it. */
   private providers: ProviderModels[] | null = null;
   private listedAt = 0;
@@ -91,6 +94,7 @@ export class Runner {
       ...plan,
     });
     this.plan.sent(plan);
+    this.readLogin();
     if (providers === this.providers) this.providers = null;
     for (const stop of answer?.stop ?? []) this.stop(stop.id, stop.reason);
     if (answer?.upgrade && !this.upgrading) {
@@ -272,6 +276,22 @@ export class Runner {
       .catch((error) => this.log(`Couldn't read the plan's usage: ${String(error)}`))
       .finally(() => {
         this.probing = false;
+      });
+  }
+
+  /**
+   * Reads the login in the background, for the next check-in to send: a switched or signed-out
+   * login drops its reading here and at the hub within a check-in or two.
+   */
+  private readLogin() {
+    const { login } = this.options;
+    if (!login || this.checkingLogin) return;
+    this.checkingLogin = true;
+    void login()
+      .then((update) => update && this.plan.update(update))
+      .catch((error) => this.log(`Couldn't read the Claude login: ${String(error)}`))
+      .finally(() => {
+        this.checkingLogin = false;
       });
   }
 

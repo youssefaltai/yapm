@@ -34,7 +34,7 @@ import {
   loginChoice,
   oauthSignIn,
 } from "./providers.js";
-import { claudeModels, probePlan, sdkEngine } from "./sdk.js";
+import { claudeModels, probePlan, readLogin, sdkEngine } from "./sdk.js";
 import { followLogs, installService, uninstallService } from "./service.js";
 
 const VERSION = "0.7.0";
@@ -266,7 +266,7 @@ async function main() {
       },
       mcpServers: config.mcpServers,
       // Plan readings are Claude's.
-      ...(claude ? { probe: probePlan } : {}),
+      ...(claude ? { probe: probePlan, login: readLogin } : {}),
       // What the app may pick for tiers; a Claude listing that fails leaves the hub's known models.
       catalog: async () => [
         ...(claude

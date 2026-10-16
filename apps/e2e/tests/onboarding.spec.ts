@@ -921,6 +921,7 @@ test.describe
           claudeAccount: { email: "owner@example.com", subscriptionType: "max" },
           planUsage: {
             observedAt: Date.now(),
+            account: "owner@example.com",
             source: "usage",
             available: true,
             limits: [
@@ -952,6 +953,7 @@ test.describe
         "aria-valuenow",
         "85",
       );
+      await expect(claude.getByText("Read just now")).toBeVisible();
     });
 
     test("shows the ChatGPT plan OpenCode runs on next to the Claude plan", async () => {

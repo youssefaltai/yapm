@@ -43,7 +43,13 @@ import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
 import { cleanTags, engineOf, runnableOn } from "../services/machines.js";
 import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
-import { cleanAccount, cleanPlanUsage, mergePlans, runUsageSet } from "../services/usage.js";
+import {
+  cleanAccount,
+  cleanPlanUsage,
+  loginOf,
+  mergePlans,
+  runUsageSet,
+} from "../services/usage.js";
 import { isAbove } from "../services/users.js";
 import {
   type Decision,
@@ -878,7 +884,7 @@ export async function heartbeat(
     capacity?: number;
     version?: string;
     runIds?: string[];
-    /** The Claude login agents use there. */
+    /** The Claude login agents use there; null when signed out, left out when not read. */
     claudeAccount?: unknown;
     /** The plan's limits as the machine last read them. */
     planUsage?: unknown;
@@ -889,8 +895,20 @@ export async function heartbeat(
 ) {
   const runIds = Array.isArray(info.runIds) ? info.runIds.slice(0, 50).map(String) : [];
   const ops: WriteOp[] = [];
-  const account = cleanAccount(info.claudeAccount);
-  const plan = cleanPlanUsage(info.planUsage, at);
+  const signedOut = info.claudeAccount === null;
+  const account = signedOut ? null : (cleanAccount(info.claudeAccount) ?? machine.claudeAccount);
+  // Another login's reading says nothing about this one's plan, so a switch drops it.
+  const switched = loginOf(account) !== loginOf(machine.claudeAccount);
+  const kept = signedOut || switched ? null : machine.planUsage;
+  const reading = cleanPlanUsage(info.planUsage, at);
+  // Readings can arrive out of order; keep the newest, and only one taken on this login.
+  const plan =
+    reading &&
+    !signedOut &&
+    reading.account === loginOf(account) &&
+    reading.observedAt >= (kept?.observedAt ?? 0)
+      ? reading
+      : kept;
   const plans = mergePlans(machine.plans, info.plans, at);
   // Owners set tags in the app once approved; until then the machine's own list counts.
   ops.push(
@@ -907,13 +925,10 @@ export async function heartbeat(
           ? { engines: ENGINES.filter((e) => (info.engines as unknown[]).includes(e)) }
           : {}),
         ...(Array.isArray(info.providers) ? { providers: cleanProviders(info.providers) } : {}),
-        ...(account ? { claudeAccount: account } : {}),
+        ...(account !== machine.claudeAccount ? { claudeAccount: account } : {}),
         // Said once: the runner remembers it until its runs finish.
         ...(machine.upgradeRequestedAt != null ? { upgradeRequestedAt: null } : {}),
-        // Readings can arrive out of order; keep the newest.
-        ...(plan && plan.observedAt >= (machine.planUsage?.observedAt ?? 0)
-          ? { planUsage: plan }
-          : {}),
+        ...(plan !== machine.planUsage ? { planUsage: plan } : {}),
         ...(plans ? { plans } : {}),
       })
       .where(eq(machines.id, machine.id)),

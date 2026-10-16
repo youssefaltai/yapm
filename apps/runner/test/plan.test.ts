@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { applyRateLimit, PlanTracker, planFromHeaders, usageFrom } from "../src/plan.js";
+import {
+  accountFrom,
+  applyRateLimit,
+  PlanTracker,
+  planFromHeaders,
+  usageFrom,
+} from "../src/plan.js";
 
 describe("plan readings", () => {
   const at = Date.parse("2026-10-08T12:00:00Z");
@@ -180,5 +186,71 @@ describe("plan readings", () => {
     expect(report).toEqual({ plans: [chatgpt] });
     tracker.sent(report);
     expect(tracker.pending()).toEqual({});
+  });
+
+  const login = (email: string) => ({
+    email,
+    organization: null,
+    subscriptionType: "max",
+    apiProvider: "firstParty",
+  });
+  const reading = (utilization: number) => ({
+    observedAt: at,
+    source: "usage" as const,
+    available: true,
+    limits: [{ kind: "five_hour", label: "Session", utilization, resetsAt: null, status: null }],
+    extraUsage: null,
+  });
+
+  it("ties each reading to the login it was taken on, and drops it when the login changes", () => {
+    const tracker = new PlanTracker();
+    tracker.update({ account: login("Shared@example.com") }, at);
+    tracker.update({ usage: reading(90) }, at);
+    expect(tracker.usage?.account).toBe("shared@example.com");
+    tracker.sent(tracker.pending());
+    tracker.update({ account: login("mine@example.com") }, at);
+    expect(tracker.usage).toBeNull();
+    // A new login wants a full reading of its own right away.
+    expect(tracker.claimReading(at + 1)).toBe(true);
+    expect(tracker.pending()).toEqual({ claudeAccount: login("mine@example.com") });
+  });
+
+  it("doesn't fold a rate-limit event into another login's reading", () => {
+    const tracker = new PlanTracker();
+    tracker.update({ account: login("shared@example.com") }, at);
+    tracker.update({ usage: reading(90) }, at);
+    tracker.update({ account: login("mine@example.com") }, at);
+    tracker.update(
+      { rateLimit: { status: "allowed", rateLimitType: "seven_day", utilization: 0.1 } },
+      at,
+    );
+    expect(tracker.usage).toMatchObject({
+      account: "mine@example.com",
+      limits: [{ kind: "seven_day", utilization: 10 }],
+    });
+  });
+
+  it("tells signing out apart from not having read the login yet", () => {
+    const tracker = new PlanTracker();
+    expect(tracker.pending()).toEqual({});
+    tracker.update({ account: login("mine@example.com") }, at);
+    tracker.update({ usage: reading(5) }, at);
+    tracker.sent(tracker.pending());
+    tracker.update({ account: null }, at);
+    expect(tracker.usage).toBeNull();
+    expect(tracker.pending()).toEqual({ claudeAccount: null });
+    tracker.sent(tracker.pending());
+    expect(tracker.pending()).toEqual({});
+  });
+
+  it("reads a signed-out Claude Code as no login", () => {
+    expect(accountFrom({ tokenSource: "none", apiProvider: "firstParty" })).toBeNull();
+    expect(accountFrom({ apiKeySource: "ANTHROPIC_API_KEY", apiProvider: "firstParty" })).toEqual({
+      email: null,
+      organization: null,
+      subscriptionType: null,
+      apiProvider: "firstParty",
+    });
+    expect(accountFrom({ apiProvider: "bedrock" })).not.toBeNull();
   });
 });

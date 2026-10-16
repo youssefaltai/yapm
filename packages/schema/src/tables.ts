@@ -560,6 +560,8 @@ export interface PlanLimit {
 export interface PlanUsage {
   /** When the machine read these numbers. */
   observedAt: number;
+  /** The login (its email, lowercased) the reading was taken on; null when it has none. */
+  account?: string | null;
   /** usage: a full reading of /usage; rate_limit: what a run's rate-limit events said. */
   source: "usage" | "rate_limit";
   /** False when plan limits don't apply (an API key, Bedrock or Vertex). */

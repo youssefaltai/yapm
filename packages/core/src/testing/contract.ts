@@ -3029,6 +3029,131 @@ export function hubContract(
       await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", { id });
     });
 
+    it("keeps each plan reading with the login it was taken on, current and dated", async () => {
+      const enrol = async (name: string) => {
+        const made = await client.graphql<{ machineSetupTokenCreate: { token: string } }>(
+          "mutation { machineSetupTokenCreate { token } }",
+        );
+        return (
+          await client.json<{ id: string; token: string }>("/api/runner/enrol", {
+            method: "POST",
+            json: { name, tags: [], setupToken: made.data?.machineSetupTokenCreate.token },
+          })
+        ).body;
+      };
+      const a = await enrol("Switcher");
+      const b = await enrol("Sharer");
+      const beat = (token: string, json: unknown) =>
+        client.json("/api/runner/heartbeat", { method: "POST", json, token });
+      const now = Date.now();
+      const login = (email: string) => ({ email, subscriptionType: "max" });
+      const reading = (account: string, utilization: number, at = now - 60_000) => ({
+        observedAt: at,
+        account,
+        source: "usage",
+        limits: [
+          {
+            kind: "five_hour",
+            label: "Session",
+            utilization,
+            resetsAt: new Date(now + 3_600_000).toISOString(),
+          },
+        ],
+      });
+      const read = async () =>
+        (
+          await client.graphql<{
+            claudeSubscriptions: {
+              id: string;
+              provider: string;
+              machines: { name: string }[];
+              planUsage: { stale: boolean; limits: { utilization: number }[] } | null;
+            }[];
+            machines: {
+              id: string;
+              claudeAccount: { email: string } | null;
+              planUsage: { limits: { utilization: number; resetsAt: string | null }[] } | null;
+            }[];
+          }>(
+            "{ claudeSubscriptions { id provider machines { name } planUsage { stale limits { utilization } } } machines { id claudeAccount { email } planUsage { limits { utilization resetsAt } } } }",
+          )
+        ).data;
+      await beat(a.token, {
+        claudeAccount: login("team@example.com"),
+        planUsage: reading("team@example.com", 90),
+      });
+      await beat(b.token, {
+        claudeAccount: login("team@example.com"),
+        planUsage: reading("team@example.com", 85, now - 120_000),
+      });
+
+      // A switches to a plan of its own: the shared plan's reading stays with the shared plan.
+      await beat(a.token, { claudeAccount: login("mine@example.com") });
+      // A reading from the old login, arriving late, isn't put down to the new one.
+      await beat(a.token, { planUsage: reading("team@example.com", 95, now - 30_000) });
+      let data = await read();
+      const team = data?.claudeSubscriptions.find((s) => s.id === "claude:team@example.com");
+      expect(team).toMatchObject({
+        provider: "claude",
+        machines: [{ name: "Sharer" }],
+        planUsage: { stale: false, limits: [{ utilization: 85 }] },
+      });
+      expect(data?.claudeSubscriptions.find((s) => s.id === "claude:mine@example.com")).toEqual({
+        id: "claude:mine@example.com",
+        provider: "claude",
+        machines: [{ name: "Switcher" }],
+        planUsage: null,
+      });
+      await beat(a.token, { planUsage: reading("Mine@example.com", 3) });
+      data = await read();
+      expect(
+        data?.claudeSubscriptions.find((s) => s.id === "claude:mine@example.com")?.planUsage,
+      ).toMatchObject({ limits: [{ utilization: 3 }] });
+
+      // A check-in that hasn't read the login yet clears nothing; signing out clears it all.
+      await beat(a.token, { version: "test" });
+      expect((await read())?.machines.find((m) => m.id === a.id)?.claudeAccount).toEqual({
+        email: "mine@example.com",
+      });
+      await beat(a.token, { claudeAccount: null });
+      data = await read();
+      expect(data?.machines.find((m) => m.id === a.id)).toMatchObject({
+        claudeAccount: null,
+        planUsage: null,
+      });
+      expect(
+        data?.claudeSubscriptions.find((s) => s.machines.some((m) => m.name === "Switcher")),
+      ).toMatchObject({ id: `claude:${a.id}`, planUsage: null });
+
+      // A window past its reset is empty again without a new reading; an old reading is stale.
+      await beat(b.token, {
+        claudeAccount: login("old@example.com"),
+        planUsage: {
+          ...reading("old@example.com", 0, now - 30 * 60_000),
+          limits: [
+            { kind: "five_hour", label: "Session", utilization: 85, resetsAt: now - 60_000 },
+            { kind: "seven_day", label: "Week", utilization: 40, resetsAt: now + 3_600_000 },
+          ],
+        },
+      });
+      data = await read();
+      expect(data?.machines.find((m) => m.id === b.id)?.planUsage).toEqual({
+        limits: [
+          { utilization: 0, resetsAt: null },
+          { utilization: 40, resetsAt: new Date(now + 3_600_000).toISOString() },
+        ],
+      });
+      expect(
+        data?.claudeSubscriptions.find((s) => s.id === "claude:old@example.com")?.planUsage,
+      ).toMatchObject({ stale: true });
+      await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+        id: a.id,
+      });
+      await client.graphql("mutation($id: String!) { machineRevoke(id: $id) { success } }", {
+        id: b.id,
+      });
+    });
+
     it("shows each Claude login's plan limits and what runs used, per day", async () => {
       const gql = <T = Record<string, unknown>>(
         query: string,
@@ -3065,6 +3190,7 @@ export function hubContract(
         },
         planUsage: {
           observedAt: now - 60_000,
+          account: "owner@example.com",
           source: "usage",
           available: true,
           limits: [
@@ -3079,11 +3205,21 @@ export function hubContract(
       // The second machine uses the same login, and read the limits earlier.
       await runner("/heartbeat", desktop.token, {
         claudeAccount: { email: "owner@example.com", subscriptionType: "max" },
-        planUsage: { observedAt: now - 600_000, source: "rate_limit", limits: [] },
+        planUsage: {
+          observedAt: now - 600_000,
+          account: "owner@example.com",
+          source: "rate_limit",
+          limits: [],
+        },
       });
       // An older reading arriving late doesn't replace a newer one.
       await runner("/heartbeat", laptop.token, {
-        planUsage: { observedAt: now - 3_600_000, source: "usage", limits: [] },
+        planUsage: {
+          observedAt: now - 3_600_000,
+          account: "owner@example.com",
+          source: "usage",
+          limits: [],
+        },
       });
       const subscriptions = await gql<{
         claudeSubscriptions: {
@@ -3101,7 +3237,7 @@ export function hubContract(
         "{ claudeSubscriptions { id account { subscriptionType } machines { name } reportedBy { name } planUsage { source available limits { kind label utilization resetsAt } } } }",
       );
       const mine = subscriptions.data?.claudeSubscriptions.find(
-        (s) => s.id === "owner@example.com",
+        (s) => s.id === "claude:owner@example.com",
       );
       expect(mine).toMatchObject({
         account: { subscriptionType: "max" },

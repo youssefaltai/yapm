@@ -419,8 +419,8 @@ describe("runner daemon", () => {
     }>(
       "{ claudeSubscriptions { id account { subscriptionType } planUsage { limits { kind utilization status } } } }",
     );
-    expect(plan.claudeSubscriptions.find((s) => s.id === "owner@example.com")).toEqual({
-      id: "owner@example.com",
+    expect(plan.claudeSubscriptions.find((s) => s.id === "claude:owner@example.com")).toEqual({
+      id: "claude:owner@example.com",
       account: { subscriptionType: "max" },
       planUsage: {
         limits: [
@@ -449,6 +449,52 @@ describe("runner daemon", () => {
     ]);
     // Nothing new: the next check-in doesn't send the reading again.
     expect(planRunner.plan.pending()).toEqual({});
+  });
+
+  it("checks the Claude login at every check-in, so a switch or sign-out shows soon", async () => {
+    const enrolment = await hub.enrol({
+      name: "Login machine",
+      tags: [],
+      capacity: 1,
+      version: "test",
+    });
+    let account: { email: string | null } | null = { email: "shared@example.com" };
+    let reads = 0;
+    const loginRunner = new Runner({
+      hub,
+      token: enrolment.token,
+      engines: { claude: engine },
+      capacity: 1,
+      version: "test",
+      cwd: tmpdir(),
+      log: (line) => lines.push(line),
+      login: async () => {
+        reads++;
+        return {
+          account: account && {
+            ...account,
+            organization: null,
+            subscriptionType: "max",
+            apiProvider: "firstParty",
+          },
+        };
+      },
+    });
+    const seen = async () =>
+      (
+        await gql<{ machines: { id: string; claudeAccount: { email: string } | null }[] }>(
+          "{ machines { id claudeAccount { email } } }",
+        )
+      ).machines.find((m) => m.id === enrolment.id)?.claudeAccount ?? null;
+    await loginRunner.heartbeat();
+    await until(() => reads === 1, "the first login read");
+    await loginRunner.heartbeat();
+    expect(await seen()).toEqual({ email: "shared@example.com" });
+    account = null;
+    await until(async () => {
+      await loginRunner.heartbeat();
+      return (await seen()) === null;
+    }, "the sign-out");
   });
 
   it("runs each tier on its provider's engine, and tells the hub which models it has", async () => {

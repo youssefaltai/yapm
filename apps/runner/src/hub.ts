@@ -168,7 +168,7 @@ export class HubClient {
       tags?: string[];
       engines?: EngineName[];
       providers?: ProviderModels[];
-      claudeAccount?: ClaudeAccount;
+      claudeAccount?: ClaudeAccount | null;
       planUsage?: PlanUsage;
     },
   ) {

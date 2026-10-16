@@ -13,6 +13,10 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
       })(),
       {
         close: () => {},
+        accountInfo: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return { email: "owner@example.com", subscriptionType: "max" };
+        },
         supportedModels: async () => [
           {
             value: "default",
@@ -95,6 +99,17 @@ describe("sdk engine", () => {
     messages = [];
     expect(ran).toMatchObject({ model: "claude-opus-5-5", effort: "high" });
     expect(unset.effort).toBeNull();
+  });
+
+  it("puts a session's rate-limit events down to its login, read first", async () => {
+    messages = [
+      { type: "system", subtype: "init", model: "claude-opus-5-5" },
+      { type: "rate_limit_event", rate_limit_info: { status: "allowed" } },
+    ];
+    const updates: string[] = [];
+    await sdkEngine(run({ onPlan: (update) => updates.push(Object.keys(update)[0] ?? "") }));
+    messages = [];
+    await vi.waitFor(() => expect(updates).toEqual(["account", "rateLimit"]));
   });
 
   it("keeps the owner's claude.ai connectors out of agent sessions", async () => {

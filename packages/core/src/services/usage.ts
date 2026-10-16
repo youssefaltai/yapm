@@ -48,6 +48,10 @@ export function cleanAccount(value: unknown): ClaudeAccount | null {
   return Object.values(account).some((x) => x !== null) ? account : null;
 }
 
+/** The login a Claude account is known by: its email, or null when it has none. */
+export const loginOf = (account: ClaudeAccount | null | undefined) =>
+  account?.email?.toLowerCase() ?? null;
+
 /** A runner's reading of the plan's limits, checked field by field. */
 export function cleanPlanUsage(value: unknown, at: number): PlanUsage | null {
   if (!value || typeof value !== "object") return null;
@@ -72,6 +76,7 @@ export function cleanPlanUsage(value: unknown, at: number): PlanUsage | null {
   return {
     // A machine's clock may run ahead; a reading can't come from the future.
     observedAt: Math.min(observedAt, at),
+    account: text(v.account)?.toLowerCase() ?? null,
     source: v.source === "rate_limit" ? "rate_limit" : "usage",
     available: v.available !== false,
     limits,
@@ -188,9 +193,21 @@ export async function runUsageSet(
 
 type MachineRow = typeof machines.$inferSelect;
 
+/** A reading is this old once a runner has missed a full reading or two (they take one every 10 minutes). */
+export const STALE_AFTER = 20 * 60_000;
+
+/** A reading's windows as they stand at `at`: one past its reset is empty again. */
+export const currentLimits = (limits: PlanLimit[], at: number) =>
+  limits.map((l) =>
+    l.resetsAt !== null && l.resetsAt <= at
+      ? { ...l, utilization: 0, resetsAt: null, status: null }
+      : l,
+  );
+
 export interface Subscription {
-  /** The login's email, or the machine id when the machine didn't say who it is. */
+  /** `<provider>:<login>`, or `<provider>:<machine id>` when the machine can't name its login. */
   id: string;
+  provider: "claude";
   account: ClaudeAccount | null;
   machines: MachineRow[];
   /** The newest reading from any machine on this login. */
@@ -213,12 +230,12 @@ export async function claudeSubscriptions(db: HubDb): Promise<Subscription[]> {
   for (const machine of rows) {
     // Older runners don't say, and only ran Claude.
     if (machine.engines && !machine.engines.includes("claude")) continue;
-    const email = machine.claudeAccount?.email?.toLowerCase();
-    const id = email ?? machine.id;
+    const id = `claude:${loginOf(machine.claudeAccount) ?? machine.id}`;
     let group = groups.get(id);
     if (!group) {
       group = {
         id,
+        provider: "claude",
         account: machine.claudeAccount,
         machines: [],
         planUsage: null,

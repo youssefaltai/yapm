@@ -111,19 +111,22 @@ export const sdkEngine: Engine = async (run) => {
   };
   const result: EngineResult = { output: null, sessionId: run.resume, usage: {} };
   const session = query({ prompt: run.input.prompt, options });
-  let accountRead = false;
+  // Rate-limit events wait for the login, so they're never put down to the one before.
+  let accountRead: Promise<unknown> | null = null;
   try {
     for await (const message of session) {
       if (run.onPlan && !accountRead && message.type === "system") {
-        accountRead = true;
         const onPlan = run.onPlan;
-        void readAccount(session).then((update) => update && onPlan(update));
+        accountRead = readAccount(session).then((update) => update && onPlan(update));
       }
       if (message.type === "system" && message.subtype === "init") {
         result.model = message.model;
         result.effort = run.effort ?? null;
       }
-      if (message.type === "rate_limit_event") run.onPlan?.({ rateLimit: message.rate_limit_info });
+      if (message.type === "rate_limit_event") {
+        const update = { rateLimit: message.rate_limit_info };
+        void (accountRead ?? Promise.resolve()).then(() => run.onPlan?.(update));
+      }
       if (
         "session_id" in message &&
         message.session_id &&
@@ -230,6 +233,9 @@ async function withIdleSession<T>(use: (session: Query) => Promise<T>): Promise<
     session.close();
   }
 }
+
+/** Reads the login; Claude Code answers from its own state, without calling a model. */
+export const readLogin = () => withIdleSession(readAccount);
 
 /** Reads the login and /usage; costs nothing against the plan. */
 export const probePlan: PlanProbe = () =>

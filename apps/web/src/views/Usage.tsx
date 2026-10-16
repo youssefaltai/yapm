@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useQuery } from "../data.js";
 import { Page, PageBody, PageHeader, PageTitle, Section, Tabs } from "../layout.js";
 import { navigate, paths } from "../router.js";
@@ -15,6 +15,7 @@ export interface PlanLimit {
 
 interface PlanUsage {
   observedAt: string;
+  stale: boolean;
   source: "usage" | "rate_limit";
   available: boolean;
   limits: PlanLimit[];
@@ -35,7 +36,7 @@ interface Subscription {
     subscriptionType: string | null;
     apiProvider: string | null;
   } | null;
-  machines: { id: string; name: string; online: boolean }[];
+  machines: { id: string; name: string; online: boolean; lastSeenAt: string | null }[];
   reportedBy: { name: string } | null;
   planUsage: PlanUsage | null;
 }
@@ -71,10 +72,10 @@ const QUERY = `query($days: Int, $groupBy: UsageGroupBy!) {
   claudeSubscriptions {
     id
     account { email organization subscriptionType apiProvider }
-    machines { id name online }
+    machines { id name online lastSeenAt }
     reportedBy { name }
     planUsage {
-      observedAt source available
+      observedAt stale source available
       limits { kind label utilization resetsAt status }
       extraUsage { enabled monthlyLimit usedCredits utilization currency }
     }
@@ -83,7 +84,7 @@ const QUERY = `query($days: Int, $groupBy: UsageGroupBy!) {
     id name status engines
     plans {
       provider name
-      usage { observedAt source available limits { kind label utilization resetsAt status } }
+      usage { observedAt stale source available limits { kind label utilization resetsAt status } }
     }
   }
   usageHistory(days: $days, groupBy: $groupBy) { date key label runs inputTokens outputTokens costUsd }
@@ -125,7 +126,6 @@ const format = (v: number, measure: Measure) => (measure === "costUsd" ? usd(v) 
 
 function untilLabel(iso: string) {
   const minutes = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
-  if (minutes <= 0) return "Reset since this reading";
   if (minutes < 60) return `Resets in ${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `Resets in ${hours}h ${minutes % 60}m`;
@@ -262,7 +262,16 @@ function SubscriptionCard({ subscription: s }: { subscription: Subscription }) {
         </span>
         {name && <span className="text-[12px] text-muted">{name}</span>}
       </div>
-      <p className="text-[12px] text-faint">Used by {s.machines.map((m) => m.name).join(", ")}</p>
+      <p className="text-[12px] text-faint">
+        Used by{" "}
+        {s.machines
+          .map((m) =>
+            m.online
+              ? m.name
+              : `${m.name} (offline${m.lastSeenAt ? `, seen ${timeAgo(m.lastSeenAt)}` : ""})`,
+          )
+          .join(", ")}
+      </p>
       {!plan ? (
         <p className="mt-3 text-muted">
           No reading yet. Runners read the plan when they start and every 10 minutes; older runners
@@ -278,7 +287,7 @@ function SubscriptionCard({ subscription: s }: { subscription: Subscription }) {
           {plan.limits.length === 0 ? (
             <p className="mt-3 text-muted">No limit windows reported yet.</p>
           ) : (
-            <ul className="mt-3 space-y-3">
+            <ul className={`mt-3 space-y-3 ${plan.stale ? "opacity-60" : ""}`}>
               {plan.limits.map((l) => (
                 <Meter key={l.kind} limit={l} />
               ))}
@@ -295,11 +304,10 @@ function SubscriptionCard({ subscription: s }: { subscription: Subscription }) {
         </>
       )}
       {plan && (
-        <p className="mt-3 text-[12px] text-faint">
-          Read {timeAgo(plan.observedAt)}
+        <ReadingAge usage={plan}>
           {s.reportedBy && ` by ${s.reportedBy.name}`}
           {plan.source === "rate_limit" && ", from a run's rate-limit notices"}
-        </p>
+        </ReadingAge>
       )}
     </section>
   );
@@ -334,7 +342,7 @@ function OpencodeCards({ machine: m }: { machine: UsageMachine }) {
       </div>
       <p className="text-[12px] text-faint">Used by {m.name}</p>
       {p.usage?.limits.length ? (
-        <ul className="mt-3 space-y-3">
+        <ul className={`mt-3 space-y-3 ${p.usage.stale ? "opacity-60" : ""}`}>
           {p.usage.limits.map((l) => (
             <Meter key={l.kind} limit={l} />
           ))}
@@ -342,18 +350,42 @@ function OpencodeCards({ machine: m }: { machine: UsageMachine }) {
       ) : (
         <p className="mt-3 text-muted">No limit windows: the plan reported none.</p>
       )}
-      {p.usage && (
-        <p className="mt-3 text-[12px] text-faint">
-          Read {timeAgo(p.usage.observedAt)}, from a run
-        </p>
-      )}
+      {p.usage && <ReadingAge usage={p.usage}>, from a run</ReadingAge>}
     </section>
   ));
 }
 
+/**
+ * When a reading was taken. Runners read the plan every 10 minutes, so one over 20 minutes old
+ * is stale: the plan may have moved since.
+ */
+export function ReadingAge({
+  usage,
+  children,
+}: {
+  usage: { observedAt: string; stale: boolean };
+  children?: ReactNode;
+}) {
+  return (
+    <p className="mt-3 text-[12px] text-faint">
+      {usage.stale && (
+        <>
+          <span aria-hidden style={{ color: "var(--color-warning)" }}>
+            ●{" "}
+          </span>
+          <span className="text-ink">Stale</span> ·{" "}
+        </>
+      )}
+      Read {timeAgo(usage.observedAt)}
+      {children}
+    </p>
+  );
+}
+
 export function Meter({ limit: l }: { limit: PlanLimit }) {
-  const stale = !!l.resetsAt && new Date(l.resetsAt).getTime() <= Date.now();
-  const used = stale ? null : l.utilization;
+  // The hub empties a window once it resets; one may reset between polls, too.
+  const reset = !!l.resetsAt && new Date(l.resetsAt).getTime() <= Date.now();
+  const used = reset ? 0 : l.utilization;
   const level =
     l.status === "rejected" || (used ?? 0) >= 100
       ? "critical"
@@ -370,7 +402,7 @@ export function Meter({ limit: l }: { limit: PlanLimit }) {
     <li>
       <div className="flex items-baseline gap-2 text-[13px]">
         <span className="min-w-0 flex-1 truncate">{l.label}</span>
-        {level !== "normal" && !stale && (
+        {level !== "normal" && (
           <span className="text-[12px] text-ink">
             <span aria-hidden style={{ color: fill }}>
               ●{" "}
@@ -398,7 +430,9 @@ export function Meter({ limit: l }: { limit: PlanLimit }) {
           />
         )}
       </div>
-      {l.resetsAt && <p className="mt-0.5 text-[12px] text-faint">{untilLabel(l.resetsAt)}</p>}
+      {l.resetsAt && !reset && (
+        <p className="mt-0.5 text-[12px] text-faint">{untilLabel(l.resetsAt)}</p>
+      )}
     </li>
   );
 }

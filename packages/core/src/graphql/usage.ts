@@ -7,6 +7,8 @@ import {
 } from "@yapm/schema";
 import {
   claudeSubscriptions,
+  currentLimits,
+  STALE_AFTER,
   type Subscription,
   USAGE_GROUPS,
   type UsagePoint,
@@ -74,6 +76,11 @@ const PlanUsageRef = builder.objectRef<PlanUsage>("PlanUsage").implement({
   description: "The subscription's limits as a machine last read them.",
   fields: (t) => ({
     observedAt: t.field({ type: "DateTime", resolve: (p) => p.observedAt }),
+    stale: t.boolean({
+      description:
+        "Read over 20 minutes ago, so at least one of the runner's 10-minute readings is missing.",
+      resolve: (p, _args, ctx) => now(ctx) - p.observedAt > STALE_AFTER,
+    }),
     source: t.exposeString("source", {
       description:
         "usage: a full reading of Claude Code's /usage. rate_limit: only the windows a run's rate-limit events mentioned.",
@@ -81,7 +88,11 @@ const PlanUsageRef = builder.objectRef<PlanUsage>("PlanUsage").implement({
     available: t.exposeBoolean("available", {
       description: "False when plan limits don't apply, such as with an API key.",
     }),
-    limits: t.field({ type: [PlanLimitRef], resolve: (p) => p.limits }),
+    limits: t.field({
+      type: [PlanLimitRef],
+      description: "A window past its reset shows as empty, without waiting for a new reading.",
+      resolve: (p, _args, ctx) => currentLimits(p.limits, now(ctx)),
+    }),
     extraUsage: t.field({ type: ExtraUsageRef, nullable: true, resolve: (p) => p.extraUsage }),
   }),
 });
@@ -91,14 +102,13 @@ type MachinePlan = Omit<OpencodePlan, "provider" | "usage"> & {
   usage: PlanUsage | null;
 };
 
+const PlanProviderRef = builder.enumType("PlanProvider", { values: PLAN_PROVIDERS });
+
 const MachinePlanRef = builder.objectRef<MachinePlan>("MachinePlan").implement({
   description:
     "A plan a machine's agents run on: its Claude login's, or OpenCode's ChatGPT or Copilot plan.",
   fields: (t) => ({
-    provider: t.field({
-      type: builder.enumType("PlanProvider", { values: PLAN_PROVIDERS }),
-      resolve: (p) => p.provider,
-    }),
+    provider: t.field({ type: PlanProviderRef, resolve: (p) => p.provider }),
     name: t.exposeString("name", {
       nullable: true,
       description: "max, plus…, when the provider says.",
@@ -147,6 +157,7 @@ const ClaudeSubscriptionRef = builder.objectRef<Subscription>("ClaudeSubscriptio
     "A Claude login and the machines that use it. They draw from one plan, so they share its limits.",
   fields: (t) => ({
     id: t.exposeID("id"),
+    provider: t.field({ type: PlanProviderRef, resolve: (s) => s.provider }),
     account: t.field({ type: ClaudeAccountRef, nullable: true, resolve: (s) => s.account }),
     machines: t.field({ type: [Machine], resolve: (s) => s.machines }),
     planUsage: t.field({

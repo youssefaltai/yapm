@@ -27,6 +27,8 @@ export interface PlanLimit {
 
 export interface PlanUsage {
   observedAt: number;
+  /** The login (its email) the reading was taken on; another login's reading is never used. */
+  account?: string | null;
   source: "usage" | "rate_limit";
   available: boolean;
   limits: PlanLimit[];
@@ -49,7 +51,8 @@ export interface OpencodePlan {
 
 /** Something a session or a probe learned about the plan. */
 export type PlanUpdate =
-  | { account: ClaudeAccount }
+  /** Null when Claude Code isn't signed in. */
+  | { account: ClaudeAccount | null }
   | { usage: PlanUsage }
   | { rateLimit: SDKRateLimitInfo }
   | { plan: OpencodePlan };
@@ -76,7 +79,15 @@ const time = (iso: string | null | undefined) => {
   return Number.isFinite(ms) ? ms : null;
 };
 
-export function accountFrom(info: AccountInfo): ClaudeAccount {
+/** The login Claude Code uses; null when it's signed out (no token, key or cloud login). */
+export function accountFrom(info: AccountInfo): ClaudeAccount | null {
+  const signedIn =
+    info.email ||
+    info.subscriptionType ||
+    info.apiKeySource ||
+    (info.tokenSource && info.tokenSource !== "none") ||
+    (info.apiProvider && info.apiProvider !== "firstParty");
+  if (!signedIn) return null;
   return {
     email: info.email ?? null,
     organization: info.organization ?? null,
@@ -229,9 +240,13 @@ export function planFromHeaders(headers: Record<string, string>, at: number): Op
   return { provider: "copilot", name: null, usage: usage(limits) };
 }
 
+const loginOf = (account: ClaudeAccount | null | undefined) =>
+  account?.email?.toLowerCase() ?? null;
+
 /** The machine's latest picture of its plan, and what the hub hasn't heard yet. */
 export class PlanTracker {
-  account: ClaudeAccount | null = null;
+  /** Null when signed out; undefined until read. */
+  account: ClaudeAccount | null | undefined = undefined;
   usage: PlanUsage | null = null;
   /** OpenCode's plans, newest reading per provider. */
   plans = new Map<OpencodePlan["provider"], OpencodePlan>();
@@ -248,6 +263,13 @@ export class PlanTracker {
   update(update: PlanUpdate, at = Date.now()) {
     if ("account" in update) {
       if (JSON.stringify(update.account) !== JSON.stringify(this.account)) {
+        // Another login's reading says nothing about this one's plan.
+        if (loginOf(update.account) !== loginOf(this.account)) {
+          this.usage = null;
+          this.fullAt = 0;
+          this.triedAt = 0;
+          this.dirty.usage = false;
+        }
         this.account = update.account;
         this.dirty.account = true;
       }
@@ -255,13 +277,13 @@ export class PlanTracker {
       this.plans.set(update.plan.provider, update.plan);
       this.dirty.plans = true;
     } else if ("usage" in update) {
-      this.usage = update.usage;
+      this.usage = { ...update.usage, account: loginOf(this.account) };
       this.fullAt = at;
       this.dirty.usage = true;
     } else {
       const next = applyRateLimit(this.usage, update.rateLimit, at);
-      if (next !== this.usage) {
-        this.usage = next;
+      if (next && next !== this.usage) {
+        this.usage = { ...next, account: loginOf(this.account) };
         this.dirty.usage = true;
       }
     }
@@ -277,7 +299,7 @@ export class PlanTracker {
   /** What to send with the next heartbeat. */
   pending() {
     return {
-      ...(this.dirty.account && this.account ? { claudeAccount: this.account } : {}),
+      ...(this.dirty.account && this.account !== undefined ? { claudeAccount: this.account } : {}),
       ...(this.dirty.usage && this.usage ? { planUsage: this.usage } : {}),
       ...(this.dirty.plans ? { plans: [...this.plans.values()] } : {}),
     };

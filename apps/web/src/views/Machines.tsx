@@ -19,7 +19,14 @@ import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { DetailLayout, Property, PropertyList, propertyButton, timeAgo, useStore } from "../ui.js";
 import { RUN_SUMMARY, RunRows, type RunSummary, RunsTabs } from "./Runs.js";
-import { type MachinePlan, Meter, type PlanLimit, PROVIDERS, planName } from "./Usage.js";
+import {
+  type MachinePlan,
+  Meter,
+  type PlanLimit,
+  PROVIDERS,
+  planName,
+  ReadingAge,
+} from "./Usage.js";
 
 interface Machine {
   id: string;
@@ -36,7 +43,12 @@ interface Machine {
   createdAt: string;
   runningCount: number;
   claudeAccount: { email: string | null; subscriptionType: string | null } | null;
-  planUsage: { available: boolean; limits: PlanLimit[] } | null;
+  planUsage: {
+    observedAt: string;
+    stale: boolean;
+    available: boolean;
+    limits: PlanLimit[];
+  } | null;
   plans: {
     provider: MachinePlan["provider"];
     name: string | null;
@@ -47,7 +59,7 @@ interface Machine {
 const MACHINES = `{ machines {
   id name originalName status tags capacity version online lastSeenAt createdAt runningCount
   claudeAccount { email subscriptionType }
-  planUsage { available limits { kind label utilization resetsAt status } }
+  planUsage { observedAt stale available limits { kind label utilization resetsAt status } }
   plans { provider name usage { available limits { kind label utilization resetsAt status } } }
 } }`;
 
@@ -596,11 +608,16 @@ function ClaudePlan({ machine: m }: { machine: Machine }) {
         </p>
       )}
       {limits.length > 0 && (
-        <ul className="mt-3 space-y-3 px-2">
+        <ul className={`mt-3 space-y-3 px-2 ${m.planUsage?.stale ? "opacity-60" : ""}`}>
           {limits.map((l) => (
             <Meter key={l.kind} limit={l} />
           ))}
         </ul>
+      )}
+      {m.planUsage && (
+        <div className="px-2">
+          <ReadingAge usage={m.planUsage} />
+        </div>
       )}
       <button
         type="button"

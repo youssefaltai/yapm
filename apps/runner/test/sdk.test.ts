@@ -112,6 +112,54 @@ describe("sdk engine", () => {
     await vi.waitFor(() => expect(updates).toEqual(["account", "rateLimit"]));
   });
 
+  it("says when the plan's usage limit stopped the session, and until when", async () => {
+    const resetsAt = 1_791_500_000;
+    const limited = {
+      type: "assistant",
+      error: "rate_limit",
+      message: { content: [{ type: "text", text: "You've hit your limit" }] },
+    };
+    const failed = {
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      result: "You've hit your limit",
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+    messages = [
+      { type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt } },
+      limited,
+      failed,
+    ];
+    const rejected = await sdkEngine(run());
+    expect(rejected).toMatchObject({ output: null, limited: { resetsAt: resetsAt * 1000 } });
+    // An error alone says there's a limit, not when it resets.
+    messages = [limited, failed];
+    expect((await sdkEngine(run())).limited).toEqual({ resetsAt: null });
+    messages = [];
+  });
+
+  it("reports a turn that ended on an error as a failure, with what it said", async () => {
+    messages = [
+      {
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "API Error: 500",
+        structured_output: null,
+        num_turns: 1,
+        total_cost_usd: 0,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    ];
+    const ended = await sdkEngine(run());
+    messages = [];
+    expect(ended).toMatchObject({ output: null, error: "API Error: 500" });
+    expect(ended.limited).toBeUndefined();
+  });
+
   it("keeps the owner's claude.ai connectors out of agent sessions", async () => {
     calls.length = 0;
     await sdkEngine(run());

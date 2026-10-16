@@ -32,6 +32,7 @@ import {
   upgradeMachine,
   waitingFor,
 } from "../services/machines.js";
+import { sharedPlans } from "../services/usage.js";
 import {
   act,
   builder,
@@ -156,12 +157,14 @@ Run.implement({
     queuedReason: t.string({
       nullable: true,
       description:
-        "Why a queued run hasn't started: no machine online, or none with the agent's tags, signed in to the run's provider or with room on its plan. Null otherwise.",
+        "Why a queued run hasn't started: it waits for a plan's limit to reset, or no machine is online, or none has the agent's tags, a sign-in to the run's provider or room on its plan. Null otherwise.",
       resolve: async (r, _args, ctx) => {
-        if (r.status !== "queued" || (r.notBefore ?? 0) > now(ctx)) return null;
+        if (r.status !== "queued") return null;
+        // A run a plan's limit stopped says until when it waits.
+        if ((r.notBefore ?? 0) > now(ctx)) return r.error;
         const agent = await ctx.loaders.user.load(r.agentId);
         if (!agent) return null;
-        const online = (await listMachines(db(ctx))).filter(
+        const online = sharedPlans(await listMachines(db(ctx))).filter(
           (m) =>
             m.status === "active" &&
             !!m.lastSeenAt &&

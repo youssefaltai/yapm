@@ -150,10 +150,13 @@ export function applyRateLimit(
   const kind = info.rateLimitType;
   if (!kind) return current;
   const before = current?.limits.find((l) => l.kind === kind);
+  // A rejected window is full, whatever it said before.
   const utilization =
-    typeof info.utilization === "number"
-      ? Math.round((info.utilization <= 1 ? info.utilization * 100 : info.utilization) * 10) / 10
-      : (before?.utilization ?? null);
+    info.status === "rejected"
+      ? 100
+      : typeof info.utilization === "number"
+        ? Math.round((info.utilization <= 1 ? info.utilization * 100 : info.utilization) * 10) / 10
+        : (before?.utilization ?? null);
   const limit: PlanLimit = {
     kind,
     label: LABELS[kind] ?? kind,

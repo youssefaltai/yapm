@@ -126,7 +126,11 @@ export const sdkEngine: Engine = async (run) => {
       if (message.type === "rate_limit_event") {
         const update = { rateLimit: message.rate_limit_info };
         void (accountRead ?? Promise.resolve()).then(() => run.onPlan?.(update));
+        const { status, resetsAt } = message.rate_limit_info;
+        if (status === "rejected") result.limited = { resetsAt: resetsAt ? resetsAt * 1000 : null };
       }
+      if (message.type === "assistant" && message.error === "rate_limit")
+        result.limited ??= { resetsAt: null };
       if (
         "session_id" in message &&
         message.session_id &&
@@ -143,8 +147,12 @@ export const sdkEngine: Engine = async (run) => {
           const reading = await readUsage(session);
           if (reading) run.onPlan(reading);
         }
-        if (message.subtype === "success") result.output = message.structured_output ?? null;
-        else result.error = `The session ended early (${message.subtype.replace(/_/g, " ")})`;
+        if (message.subtype !== "success")
+          result.error = `The session ended early (${message.subtype.replace(/_/g, " ")})`;
+        // A turn that ended on an API error says so in its result.
+        else if (message.is_error)
+          result.error = clip(message.result || "The session ended on an error");
+        else result.output = message.structured_output ?? null;
       }
     }
   } catch (error) {
@@ -152,6 +160,8 @@ export const sdkEngine: Engine = async (run) => {
   } finally {
     run.signal.removeEventListener("abort", abort);
   }
+  // Its plan updates are in before it ends, for the runner to pass on.
+  await accountRead;
   return result;
 };
 

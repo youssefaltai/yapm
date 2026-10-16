@@ -5265,6 +5265,7 @@ export function hubContract(
         routeRule: string | null;
         notBefore: string | null;
         queuedReason: string | null;
+        error: string | null;
         trigger: { retryOf?: string; notes?: unknown[] } | null;
       };
       const claim = async (token: string) => {
@@ -5291,7 +5292,7 @@ export function hubContract(
       const runsOf = async (filter: Record<string, unknown>) =>
         (
           await client.graphql<{ runs: { nodes: RunRow[] } }>(
-            "query($f: RunFilter) { runs(filter: $f) { nodes { id kind status modelTier routeRule notBefore queuedReason trigger } } }",
+            "query($f: RunFilter) { runs(filter: $f) { nodes { id kind status modelTier routeRule notBefore queuedReason error trigger } } }",
             { f: filter },
           )
         ).data?.runs.nodes ?? [];
@@ -5475,6 +5476,91 @@ export function hubContract(
         expect(claimed.body.run.id).toBe(queued?.id);
         await clearRuns();
         await revoke(box.id);
+      });
+
+      /** A machine signed in to `email`, with that login's 5-hour window `utilization` full. */
+      const onLogin = (email: string, utilization?: number, resetsAt = Date.now() + 3_600_000) =>
+        enrolBox({
+          claudeAccount: { email, subscriptionType: "max" },
+          ...(utilization === undefined
+            ? {}
+            : {
+                planUsage: {
+                  observedAt: Date.now() - 60_000,
+                  account: email,
+                  source: "usage",
+                  limits: [{ kind: "five_hour", utilization, resetsAt }],
+                },
+              }),
+        });
+
+      it("takes no work on a login whose plan is spent, while another login has room", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const spent = await onLogin("shared@example.com", 100);
+        // It hasn't read the plan itself, but shares the login that did.
+        const sharer = await onLogin("shared@example.com");
+        await startWork(scout.id);
+        expect((await next(spent.token)).status).toBe(204);
+        expect((await next(sharer.token)).status).toBe(204);
+        const [queued] = await runsOf({ agentId: scout.id, status: ["queued"] });
+        expect(queued?.queuedReason).toContain("Claude's usage limit resets");
+        // Each machine on the login shows the plan as spent.
+        const shown = await client.graphql<{
+          machines: { id: string; plans: { usage: { limits: { utilization: number }[] } }[] }[];
+        }>("{ machines { id plans { usage { limits { utilization } } } } }");
+        expect(shown.data?.machines.find((m) => m.id === sharer.id)?.plans).toEqual([
+          { usage: { limits: [{ utilization: 100 }] } },
+        ]);
+        const roomy = await onLogin("roomy@example.com", 40);
+        expect((await next(roomy.token)).status).toBe(200);
+        await clearRuns();
+        for (const box of [spent, sharer, roomy]) await revoke(box.id);
+      });
+
+      it("takes work again once the spent window has reset", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const reset = await onLogin("reset@example.com", 100, Date.now() - 60_000);
+        const sharer = await onLogin("reset@example.com");
+        await startWork(scout.id);
+        expect((await next(sharer.token)).status).toBe(200);
+        await clearRuns();
+        for (const box of [reset, sharer]) await revoke(box.id);
+      });
+
+      it("queues a run that hit the plan's limit again until it resets, without counting it failed", async () => {
+        const scout = await agentToken("Scout");
+        await clearRuns();
+        const box = await enrolBox();
+        const issue = await newIssue("Map the col");
+        await startWork(scout.id, issue);
+        const run = (await next(box.token)).body.run;
+        await client.json(`/api/runner/runs/${run.id}/logs`, {
+          method: "POST",
+          json: { seq: 0, events: [{ type: "text", text: "Roping up" }] },
+          token: box.token,
+        });
+        const resetsAt = Date.now() + 2 * 3_600_000;
+        await complete(box.token, run.id, { status: "usage_limited", resetsAt });
+        const [again, ...others] = await runsOf({ agentId: scout.id, issueId: issue });
+        expect(others).toEqual([]);
+        expect(again).toMatchObject({ id: run.id, status: "queued", modelTier: "standard" });
+        expect(Date.parse(again?.notBefore ?? "")).toBe(resetsAt);
+        expect(again?.error).toContain("Waiting for the Claude plan's limit to reset at");
+        expect(again?.queuedReason).toBe(again?.error);
+        // Not before the reset, and then on any machine.
+        expect((await next(box.token)).status).toBe(204);
+        const other = await enrolBox();
+        const claimed = await later(2 * 3_600_000 + 1000, () => next(other.token));
+        expect(claimed.body.run).toMatchObject({ id: run.id, logSeq: 1 });
+        // A limit says nothing about the model: the next run on the issue isn't a tier up.
+        await clearRuns();
+        await startWork(scout.id, issue);
+        const [fresh] = await runsOf({ agentId: scout.id, issueId: issue, status: ["queued"] });
+        expect(fresh).toMatchObject({ modelTier: "standard", routeRule: "default" });
+        await clearRuns();
+        for (const b of [box, other]) await revoke(b.id);
       });
 
       it("starts a paused session afresh elsewhere when its machine is removed", async () => {

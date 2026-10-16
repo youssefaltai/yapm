@@ -41,6 +41,8 @@ export interface Claim {
     /** What runs the model: Claude for Anthropic's, OpenCode for the rest; older hubs send nothing, meaning Claude. */
     engine?: EngineName;
     sessionId: string | null;
+    /** The first transcript batch's number; older hubs don't say, meaning 0. */
+    logSeq?: number;
     issue: string | null;
     issueId: string | null;
   };
@@ -71,7 +73,10 @@ export interface Usage {
 }
 
 export interface Completion {
-  status: "completed" | "failed" | "stopped" | "needs_input";
+  /** usage_limited: the plan's usage limit stopped it; the hub queues it until the reset. */
+  status: "completed" | "failed" | "stopped" | "needs_input" | "usage_limited";
+  /** When the limit resets (epoch ms), when known. */
+  resetsAt?: number | null;
   result?: unknown;
   error?: string;
   sessionId?: string | null;

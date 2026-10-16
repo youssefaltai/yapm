@@ -76,8 +76,9 @@ describe("plan readings", () => {
     ]);
     // Without a type there's no window to put it in.
     expect(applyRateLimit(first, { status: "rejected" }, at)).toBe(first);
+    // A rejected window is full, whatever it said before.
     const second = applyRateLimit(first, { status: "rejected", rateLimitType: "seven_day" }, at);
-    expect(second?.limits[0]).toMatchObject({ utilization: 50, status: "rejected" });
+    expect(second?.limits[0]).toMatchObject({ utilization: 100, status: "rejected" });
   });
 
   it("reads a ChatGPT plan's windows off a response's headers", () => {

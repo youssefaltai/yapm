@@ -5,11 +5,14 @@ import {
   type PlanLimit,
   type PlanUsage,
 } from "@yapm/schema";
+import { listMachines } from "../services/machines.js";
 import {
   claudeSubscriptions,
   currentLimits,
+  loginOf,
   STALE_AFTER,
   type Subscription,
+  sharedPlans,
   USAGE_GROUPS,
   type UsagePoint,
   usageHistory,
@@ -125,14 +128,18 @@ const MachinePlanRef = builder.objectRef<MachinePlan>("MachinePlan").implement({
 builder.objectFields(Machine, (t) => ({
   plans: t.field({
     type: [MachinePlanRef],
-    description: "Every plan the machine reports, Claude's first.",
-    resolve: (m) => [
+    description:
+      "Every plan the machine reports, Claude's first, as the newest reading on its login: the machines on one login share its plan.",
+    resolve: async (m, _args, ctx) => [
       ...(m.claudeAccount || m.planUsage
         ? [
             {
               provider: "claude" as const,
               name: m.claudeAccount?.subscriptionType ?? null,
-              usage: m.planUsage,
+              usage: loginOf(m.claudeAccount)
+                ? (sharedPlans(await listMachines(db(ctx))).find((o) => o.id === m.id)?.planUsage ??
+                  null)
+                : m.planUsage,
             },
           ]
         : []),

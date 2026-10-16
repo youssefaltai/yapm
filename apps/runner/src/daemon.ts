@@ -158,7 +158,7 @@ export class Runner {
     const label = `${claim.agent.name} · ${claim.run.kind}${claim.run.issue ? ` on ${claim.run.issue}` : ""}${claim.run.model ? ` (${claim.run.model}, ${claim.run.effort ?? "default"} effort)` : ""}`;
     this.log(`Starting ${label}`);
 
-    let seq = 0;
+    let seq = claim.run.logSeq ?? 0;
     const buffer: Record<string, unknown>[] = [];
     let sessionId = claim.run.sessionId;
     let usage: Usage = {};
@@ -230,6 +230,12 @@ export class Runner {
       if (result.model) ran = { model: result.model, effort: result.effort ?? null };
       if (abort.signal.aborted) {
         completion = { status: "stopped", error: entry.stopReason ?? "Stopped" };
+      } else if (result.limited && result.output == null) {
+        completion = {
+          status: "usage_limited",
+          resetsAt: result.limited.resetsAt,
+          error: result.error ?? "The plan's usage limit was reached",
+        };
       } else if (result.error || result.output == null) {
         completion = {
           status: "failed",
@@ -250,6 +256,9 @@ export class Runner {
       left = buffer.length;
       await flush();
     }
+    // The spent plan first, so no machine on the login takes the run back before it resets.
+    if (completion.status === "usage_limited")
+      await this.heartbeat().catch((error) => this.log(`Couldn't check in: ${String(error)}`));
     const answer = await hub
       .complete(token, claim.run.id, { ...completion, sessionId, usage, ...ran })
       .catch((error) => {

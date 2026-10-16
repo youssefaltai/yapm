@@ -45,6 +45,8 @@ export interface EngineResult {
   model?: string;
   /** The effort (an OpenCode variant) it ran with; null when none applied. */
   effort?: string | null;
+  /** The plan's usage limit stopped it; resets then (epoch ms), when known. */
+  limited?: { resetsAt: number | null };
 }
 
 export type Engine = (run: EngineRun) => Promise<EngineResult>;

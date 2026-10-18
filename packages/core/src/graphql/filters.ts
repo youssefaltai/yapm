@@ -17,6 +17,7 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { createGraphQLError } from "graphql-yoga";
 import type { HubDb } from "../db.js";
 import { builder, type Page, pageSize } from "./builder.js";
@@ -108,16 +109,57 @@ const BooleanComparator = builder.inputRef<{ eq?: boolean | null }>("BooleanComp
   fields: (t) => ({ eq: t.boolean({ required: false }) }),
 });
 
+interface NullableTeamFilterShape {
+  id?: IDComparatorShape | null;
+  key?: StringComparatorShape | null;
+  null?: boolean | null;
+}
 interface TeamFilterShape {
   id?: IDComparatorShape | null;
   key?: StringComparatorShape | null;
+  parent?: NullableTeamFilterShape | null;
 }
-const TeamFilter = builder.inputRef<TeamFilterShape>("TeamFilter").implement({
+const NullableTeamFilter = builder
+  .inputRef<NullableTeamFilterShape>("NullableTeamFilter")
+  .implement({
+    fields: (t) => ({
+      id: t.field({ type: IDComparator, required: false }),
+      key: t.field({ type: StringComparator, required: false }),
+      null: t.boolean({ required: false, description: "Whether there is no parent team." }),
+    }),
+  });
+export const TeamFilter = builder.inputRef<TeamFilterShape>("TeamFilter").implement({
   fields: (t) => ({
     id: t.field({ type: IDComparator, required: false }),
     key: t.field({ type: StringComparator, required: false }),
+    parent: t.field({
+      type: NullableTeamFilter,
+      required: false,
+      description: "Filters that the team's parent must satisfy.",
+    }),
   }),
 });
+
+const parentTeams = alias(teams, "parent_teams");
+
+/** The SQL for a team filter, over `teams`. */
+export function teamCondition(db: HubDb, filter: TeamFilterShape): SQL | undefined {
+  const { parent } = filter;
+  const above =
+    parent && and(compare(parentTeams.id, parent.id), compare(parentTeams.key, parent.key));
+  return and(
+    compare(teams.id, filter.id),
+    compare(teams.key, filter.key),
+    parent?.null != null
+      ? parent.null
+        ? isNull(teams.parentId)
+        : isNotNull(teams.parentId)
+      : undefined,
+    above
+      ? inArray(teams.parentId, db.select({ id: parentTeams.id }).from(parentTeams).where(above))
+      : undefined,
+  );
+}
 
 interface StateFilterShape {
   id?: IDComparatorShape | null;
@@ -337,7 +379,7 @@ export function issueWhere(
     userCondition(issues.creatorId, filter.creator, viewerId),
   ];
   if (filter.team) {
-    const cond = and(compare(teams.id, filter.team.id), compare(teams.key, filter.team.key));
+    const cond = teamCondition(db, filter.team);
     if (cond)
       parts.push(inArray(issues.teamId, db.select({ id: teams.id }).from(teams).where(cond)));
   }

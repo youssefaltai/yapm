@@ -32,6 +32,7 @@ export interface Team {
   name: string;
   description: string | null;
   lead: { id: string; name: string } | null;
+  parent: { id: string } | null;
   members: { nodes: { id: string }[] };
   states: { nodes: WorkflowState[] };
   labels: { nodes: Label[] };
@@ -77,6 +78,33 @@ export interface SavedView {
   team: { id: string } | null;
 }
 
+/** A team's sub-teams, or with no parent the top-level teams (and any whose parent is gone). */
+export function subTeams(teams: Team[], parentId: string | null): Team[] {
+  return teams.filter((t) =>
+    parentId ? t.parent?.id === parentId : !t.parent || !teams.some((p) => p.id === t.parent?.id),
+  );
+}
+
+/** Teams in hierarchy order, sub-teams after their parent, with their depth. */
+export function teamTree(teams: Team[], parentId: string | null = null, depth = 0) {
+  return subTeams(teams, parentId).flatMap((team): { team: Team; depth: number }[] => [
+    { team, depth },
+    ...teamTree(teams, team.id, depth + 1),
+  ]);
+}
+
+/** The teams above a team, from the root down to its parent. */
+export function teamAncestors(teams: Team[], team: Team): Team[] {
+  const out: Team[] = [];
+  for (let t = team; t.parent; ) {
+    const parent = teams.find((p) => p.id === t.parent?.id);
+    if (!parent || out.includes(parent)) break;
+    out.unshift(parent);
+    t = parent;
+  }
+  return out;
+}
+
 export interface Workspace {
   organization: { name: string; timezone: string };
   customViews: { nodes: SavedView[] };
@@ -93,6 +121,7 @@ export const WORKSPACE_QUERY = `{
     nodes {
       id key name description
       lead { id name }
+      parent { id }
       members { nodes { id } }
       states { nodes { id name type color position } }
       labels(first: 250) { nodes { id name color } }

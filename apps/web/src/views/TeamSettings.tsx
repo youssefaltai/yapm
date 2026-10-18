@@ -1,10 +1,11 @@
 import { createIssueStore, workspaceStore } from "../actions.js";
 import { confirmDialog, Select as Dropdown, promptDialog } from "../controls.js";
 import { mutate, type StateType, type Team, toast, type WorkflowState } from "../data.js";
-import { Breadcrumbs, button, PageHeader } from "../layout.js";
+import { Breadcrumbs, button, PageHeader, teamTrail } from "../layout.js";
 import { paths } from "../router.js";
 import { Avatar, openMenu, StatusIcon, useStore } from "../ui.js";
 import { AccessPanel } from "./Access.js";
+import { parentOptions } from "./CreateTeam.js";
 import { SettingsLayout, SettingsPanel, SettingsRow } from "./SettingsLayout.js";
 
 const PRIORITY_SLAS = [
@@ -85,13 +86,39 @@ const range = (from: number, to: number, label: (n: number) => string) =>
   Array.from({ length: to - from + 1 }, (_, i) => ({ value: from + i, label: label(from + i) }));
 
 export function TeamSettings({ team }: { team: Team }) {
+  const teams = useStore(workspaceStore)?.teams.nodes ?? [];
   return (
     <div className="flex h-full flex-col">
       <PageHeader>
-        <Breadcrumbs trail={[{ label: team.name, to: paths.team(team.key) }]}>Settings</Breadcrumbs>
+        <Breadcrumbs
+          trail={[...teamTrail(teams, team), { label: team.name, to: paths.team(team.key) }]}
+        >
+          Settings
+        </Breadcrumbs>
       </PageHeader>
       <SettingsLayout
         sections={[
+          {
+            id: "hierarchy",
+            title: "Team hierarchy",
+            description: "Nest this team under another. Its members join the teams above it.",
+            children: (
+              <SettingsPanel>
+                <SettingsRow
+                  label="Parent team"
+                  hint="The parent's issue lists include this team's, and it uses the parent's labels."
+                >
+                  <Dropdown
+                    aria-label="Parent team"
+                    value={team.parent?.id ?? ""}
+                    options={parentOptions(teams, team.id)}
+                    onChange={(v) => void save(team, { parentId: v || null })}
+                    className="min-w-32 rounded-md border border-line bg-panel px-2 py-1 outline-none hover:bg-raised focus-visible:border-accent"
+                  />
+                </SettingsRow>
+              </SettingsPanel>
+            ),
+          },
           {
             id: "statuses",
             title: "Statuses",

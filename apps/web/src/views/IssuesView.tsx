@@ -147,6 +147,7 @@ export function IssuesView({
 }) {
   const sourceKey = `${source.kind}:${sourceId(source)}`;
   const team = teamOf(source);
+  const teams = useStore(workspaceStore)?.teams.nodes ?? [];
   const [layout, setLayoutState] = useState<"list" | "board">(() => readLayout(sourceKey));
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const filtersRef = useRef(filters);
@@ -166,7 +167,7 @@ export function IssuesView({
   const query =
     source.kind === "my"
       ? `query($filter: IssueFilter) { source: viewer { issues: ${source.tab === "assigned" ? "assignedIssues" : "createdIssues"}(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`
-      : `query($key: String!, $filter: IssueFilter) { source: ${SOURCE_QUERIES[source.kind]} { issues(first: 250, filter: $filter) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`;
+      : `query($key: String!, $filter: IssueFilter) { source: ${SOURCE_QUERIES[source.kind]} { issues(first: 250, filter: $filter${source.kind === "team" ? ", includeSubTeams: true" : ""}) { nodes { ...IssueFields } } } } ${ISSUE_FIELDS}`;
   const { data, error, stale } = useQuery<{ source: { issues: { nodes: Issue[] } } }>(
     query,
     source.kind === "my" ? { filter } : { key: sourceId(source), filter },
@@ -345,8 +346,12 @@ export function IssuesView({
                         onFocus={() => setFocusedId(issue.id)}
                         onToggle={() => toggle(issue.id)}
                         onContextMenu={onContextMenu(issue)}
-                        showTeam={!team}
-                        triage={issue.state.type === "triage" ? team : null}
+                        showTeam={issue.team.id !== team?.id}
+                        triage={
+                          team && issue.state.type === "triage"
+                            ? (teams.find((t) => t.id === issue.team.id) ?? null)
+                            : null
+                        }
                       />
                     ))}
                   </section>
@@ -406,7 +411,11 @@ function groupIssues(
       }));
   const byKey = new Map(groups.map((g) => [g.key, g]));
   for (const issue of issues) {
-    byKey.get(team ? issue.state.id : issue.state.type)?.issues.push(issue);
+    // A sub-team's issue, in its parent's list, goes with the parent's first state of its type.
+    const group = team
+      ? (byKey.get(issue.state.id) ?? groups.find((g) => g.type === issue.state.type))
+      : byKey.get(issue.state.type);
+    group?.issues.push(issue);
   }
   // Boards show every column the view allows, even empty ones, so issues can be dragged there.
   // Like Linear, an empty Triage column stays hidden.
@@ -590,9 +599,9 @@ function Board({
     setOver(null);
     const issue = groups.flatMap((g) => g.issues).find((i) => i.id === issueId);
     if (!issue) return;
-    // Across teams (My issues), a column is a state category: use the issue's team's state of that type.
+    // Across teams (My issues, sub-teams), a column is a state category: use the issue's team's state of that type.
     const state =
-      group.state ??
+      (issue.team.id === team?.id ? group.state : null) ??
       teams.find((t) => t.id === issue.team.id)?.states.nodes.find((s) => s.type === group.type) ??
       null;
     if (state && state.id !== issue.state.id)

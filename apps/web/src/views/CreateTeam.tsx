@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useState } from "react";
-import { createTeamStore } from "../actions.js";
-import { mutate } from "../data.js";
+import { createTeamStore, workspaceStore } from "../actions.js";
+import { Select } from "../controls.js";
+import { mutate, type Team, teamTree } from "../data.js";
 import { button, dialogField } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { Modal, useStore } from "../ui.js";
@@ -17,6 +18,20 @@ function suggestKey(name: string) {
   return (/^[A-Z]/.test(key) || !key ? key : `T${key}`).slice(0, 7);
 }
 
+/** Teams to nest under, sub-teams after their parent; `except` leaves out a team and its sub-teams. */
+export function parentOptions(teams: Team[], except?: string) {
+  const tree = teamTree(teams);
+  const skip = new Set<string>();
+  for (const { team } of tree)
+    if (team.id === except || (team.parent && skip.has(team.parent.id))) skip.add(team.id);
+  return [
+    { value: "", label: "No parent team" },
+    ...tree
+      .filter(({ team }) => !skip.has(team.id))
+      .map(({ team }) => ({ value: team.id, label: team.name })),
+  ];
+}
+
 export function CreateTeamHost() {
   const open = useStore(createTeamStore);
   const close = useCallback(() => createTeamStore.set(false), []);
@@ -27,6 +42,8 @@ function CreateTeam({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [key, setKey] = useState<string | null>(null);
   const [description, setDescription] = useState("");
+  const [parentId, setParentId] = useState("");
+  const teams = useStore(workspaceStore)?.teams.nodes ?? [];
   const [busy, setBusy] = useState(false);
   const shownKey = key ?? suggestKey(name);
 
@@ -35,7 +52,14 @@ function CreateTeam({ onClose }: { onClose: () => void }) {
     setBusy(true);
     const result = await mutate<{ teamCreate: { team: { key: string } } }>(
       "mutation($input: TeamCreateInput!) { teamCreate(input: $input) { team { key } } }",
-      { input: { name, key: shownKey || null, description: description || null } },
+      {
+        input: {
+          name,
+          key: shownKey || null,
+          description: description || null,
+          parentId: parentId || null,
+        },
+      },
     );
     setBusy(false);
     if (result) {
@@ -83,7 +107,7 @@ function CreateTeam({ onClose }: { onClose: () => void }) {
             Issues are numbered with it, like {shownKey || "PF"}-1.
           </span>
         </label>
-        <label className="mb-4 block">
+        <label className="mb-3 block">
           <span className="mb-1.5 block text-muted">Description</span>
           <input
             value={description}
@@ -91,6 +115,19 @@ function CreateTeam({ onClose }: { onClose: () => void }) {
             placeholder="Optional"
             className={input}
           />
+        </label>
+        <label htmlFor="team-parent" className="mb-4 block">
+          <span className="mb-1.5 block text-muted">Parent team</span>
+          <Select
+            id="team-parent"
+            value={parentId}
+            options={parentOptions(teams)}
+            onChange={setParentId}
+            className={`${input} text-left`}
+          />
+          <span className="mt-1 block text-[12px] text-faint">
+            A sub-team's members are members of its parent too.
+          </span>
         </label>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={button("ghost")}>

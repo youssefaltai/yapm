@@ -210,7 +210,12 @@ Team.implement({
       type: [Team],
       description: "The team's sub-teams.",
       resolve: (team, _args, ctx) =>
-        db(ctx).select().from(teams).where(eq(teams.parentId, team.id)).orderBy(asc(teams.name)).all(),
+        db(ctx)
+          .select()
+          .from(teams)
+          .where(eq(teams.parentId, team.id))
+          .orderBy(asc(teams.name))
+          .all(),
     }),
     ancestors: t.field({
       type: [Team],

@@ -851,6 +851,37 @@ test.describe
       await expect(page.getByText("On hold", { exact: true })).toBeHidden();
     });
 
+    test("nests a sub-team under a team, shows its issues there and un-nests it", async () => {
+      await page.getByRole("button", { name: "Create team" }).first().click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel("Name").fill("Bills");
+      await choose(page, dialog.getByLabel("Parent team"), "Personal Finance");
+      await dialog.getByRole("button", { name: "Create team" }).click();
+      await expect(page).toHaveURL(/\/team\/BIL$/);
+
+      // Breadcrumbs lead up to the parent; the sidebar nests the sub-team under it.
+      await expect(
+        page.getByRole("main").getByRole("button", { name: "Personal Finance" }),
+      ).toBeVisible();
+      const nested = page.getByRole("group", { name: "Personal Finance sub-teams" });
+      await expect(nested.getByRole("link", { name: /Bills/ })).toBeVisible();
+
+      // The parent's issues include its sub-teams'.
+      await page.keyboard.press("c");
+      await page.getByLabel("Issue title").fill("Pay the water bill");
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("status")).toContainText("Created BIL-1");
+      await page
+        .getByRole("link", { name: /Personal Finance/ })
+        .first()
+        .click();
+      await expect(page.getByRole("button", { name: /Pay the water bill/ })).toBeVisible();
+
+      await page.goto("/team/BIL/settings");
+      await choose(page, page.getByLabel("Parent team"), "No parent team");
+      await expect(nested).toBeHidden();
+    });
+
     test("coaches an agent with feedback, lessons and the handbook", async () => {
       // Feedback on the issue where the work happened, from Ada's comment.
       await page.goto("/issue/PF-1");

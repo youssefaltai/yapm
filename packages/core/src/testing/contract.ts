@@ -4650,12 +4650,28 @@ export function hubContract(
       const issuesOf = async (includeSubTeams?: boolean) =>
         (
           await client.graphql<{ team: { issues: { nodes: { title: string }[] } } }>(
-            "query($s: Boolean) { team(id: \"STU\") { issues(includeSubTeams: $s) { nodes { title } } } }",
+            'query($s: Boolean) { team(id: "STU") { issues(includeSubTeams: $s) { nodes { title } } } }',
             { s: includeSubTeams },
           )
         ).data?.team.issues.nodes.map((i) => i.title);
       expect(await issuesOf()).toEqual([]);
       expect(await issuesOf(true)).toEqual(["New logo"]);
+      // Filters reach teams by their parent, as Linear's TeamFilter does.
+      const keys = async (filter: Record<string, unknown>) =>
+        (
+          await client.graphql<{ teams: { nodes: { key: string }[] } }>(
+            "query($f: TeamFilter) { teams(filter: $f) { nodes { key } } }",
+            { f: filter },
+          )
+        ).data?.teams.nodes.map((t) => t.key);
+      expect(await keys({ parent: { key: { eq: "STU" } } })).toEqual(["DES"]);
+      expect(await keys({ parent: { null: true } })).toContain("STU");
+      expect(await keys({ parent: { null: true } })).not.toContain("DES");
+      const filtered = await client.graphql<{ issues: { nodes: { title: string }[] } }>(
+        "query($d: ID) { issues(filter: { team: { parent: { id: { eq: $d } } } }) { nodes { title } } }",
+        { d: design },
+      );
+      expect(filtered.data?.issues.nodes.map((i) => i.title)).toEqual(["New logo"]);
 
       // Un-nesting is logged; nesting a team brings its members into the new ancestors.
       expect((await update(brand, { parentId: null })).errors).toBeUndefined();

@@ -16,9 +16,10 @@ import {
   type workflowStates,
   type workspaces,
 } from "@yapm/schema";
-import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { createGraphQLError } from "graphql-yoga";
 import { DEFAULT_ROUTING } from "../runs/routing.js";
+import { ancestorIds, descendantIds, teamLabels } from "../services/teamTree.js";
 import { builder, connection, db, type GraphQLContext, pageArgs, paginate } from "./builder.js";
 import { issueArgs, queryIssues } from "./filters.js";
 
@@ -199,6 +200,26 @@ Team.implement({
       nullable: true,
       resolve: (team, _args, ctx) => (team.leadId ? ctx.loaders.user.load(team.leadId) : null),
     }),
+    parent: t.field({
+      type: Team,
+      nullable: true,
+      description: "The team's parent team.",
+      resolve: (team, _args, ctx) => (team.parentId ? ctx.loaders.team.load(team.parentId) : null),
+    }),
+    children: t.field({
+      type: [Team],
+      description: "The team's sub-teams.",
+      resolve: (team, _args, ctx) =>
+        db(ctx).select().from(teams).where(eq(teams.parentId, team.id)).orderBy(asc(teams.name)).all(),
+    }),
+    ancestors: t.field({
+      type: [Team],
+      description: "The team's ancestor teams, ordered from the root to the immediate parent.",
+      resolve: async (team, _args, ctx) => {
+        const ids = await ancestorIds(db(ctx), team.id);
+        return Promise.all(ids.map((id) => must(ctx.loaders.team.load(id), "Team")));
+      },
+    }),
     members: t.field({
       type: UserConnection,
       args: pageArgs,
@@ -224,14 +245,14 @@ Team.implement({
     }),
     labels: t.field({
       type: IssueLabelConnection,
-      description: "Labels usable in this team: its own plus workspace-wide ones.",
+      description: "Labels usable in this team: its own, its ancestors' and workspace-wide ones.",
       args: pageArgs,
       resolve: async (team, args, ctx) =>
         paginate(
           await db(ctx)
             .select()
             .from(labels)
-            .where(or(eq(labels.teamId, team.id), isNull(labels.teamId)))
+            .where(await teamLabels(db(ctx), team.id))
             .orderBy(asc(labels.name))
             .all(),
           args,
@@ -239,9 +260,20 @@ Team.implement({
     }),
     issues: t.field({
       type: IssueConnection,
-      args: issueArgs,
-      resolve: (team, args, ctx) =>
-        queryIssues(db(ctx), args, viewerId(ctx), eq(issues.teamId, team.id)),
+      description: "Issues belonging to the team, and with includeSubTeams its sub-teams'.",
+      args: {
+        ...issueArgs,
+        includeSubTeams: t.arg.boolean({ required: false, defaultValue: false }),
+      },
+      resolve: async (team, { includeSubTeams, ...args }, ctx) =>
+        queryIssues(
+          db(ctx),
+          args,
+          viewerId(ctx),
+          includeSubTeams
+            ? inArray(issues.teamId, [team.id, ...(await descendantIds(db(ctx), team.id))])
+            : eq(issues.teamId, team.id),
+        ),
     }),
   }),
 });

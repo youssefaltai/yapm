@@ -25,6 +25,7 @@ import {
   subscribersOf,
 } from "./notifications.js";
 import { issueProjectFields } from "./projects.js";
+import { teamLabels } from "./teamTree.js";
 
 export type IssueRow = typeof issues.$inferSelect;
 
@@ -173,7 +174,7 @@ async function checkLabels(db: HubDb, teamId: string, labelIds: string[]) {
   const found = await db
     .select({ id: labels.id })
     .from(labels)
-    .where(and(inArray(labels.id, labelIds), or(isNull(labels.teamId), eq(labels.teamId, teamId))))
+    .where(and(inArray(labels.id, labelIds), await teamLabels(db, teamId)))
     .all();
   if (found.length !== new Set(labelIds).size)
     throw badRequest("Some labels don't exist or belong to another team");

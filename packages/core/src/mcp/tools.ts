@@ -59,6 +59,7 @@ import {
 } from "../services/requests.js";
 import { archiveState, createState, updateState } from "../services/states.js";
 import { createTeam, updateTeam } from "../services/teams.js";
+import { teamLabels } from "../services/teamTree.js";
 import { hireAgent, retireAgent, updateUser } from "../services/users.js";
 import { type Tool, ToolError } from "./protocol.js";
 
@@ -139,7 +140,7 @@ async function resolveLabels(c: McpContext, teamId: string, refs: string[]) {
   const available = await c.db
     .select()
     .from(labels)
-    .where(or(eq(labels.teamId, teamId), isNull(labels.teamId)))
+    .where(await teamLabels(c.db, teamId))
     .all();
   return refs.map((ref) => {
     const label = available.find((l) => l.id === ref || l.name.toLowerCase() === ref.toLowerCase());
@@ -403,7 +404,7 @@ export const tools: Tool<McpContext>[] = [
   {
     name: "list_teams",
     title: "List teams",
-    description: "List the company's teams.",
+    description: "List the company's teams. A sub-team has its parent's id as parentId.",
     readOnly: true,
     inputSchema: {
       type: "object",
@@ -419,27 +420,39 @@ export const tools: Tool<McpContext>[] = [
         .all();
       return rows
         .filter((t) => !q || t.name.toLowerCase().includes(q) || t.key.toLowerCase().includes(q))
-        .map((t) => ({ id: t.id, key: t.key, name: t.name, description: t.description }));
+        .map((t) => ({
+          id: t.id,
+          key: t.key,
+          name: t.name,
+          description: t.description,
+          parentId: t.parentId,
+        }));
     },
   },
   {
     name: "get_team",
     title: "Get team",
-    description: "Get a team by id, key or name, with its statuses and members.",
+    description:
+      "Get a team by id, key or name, with its statuses, lead, parent team and sub-teams.",
     readOnly: true,
     inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
     async run(args, c) {
       const team = await resolveTeam(c, String(args.query));
-      const [states, lead] = await Promise.all([
+      const [states, lead, parent, children] = await Promise.all([
         c.loaders.statesByTeam.load(team.id),
         team.leadId ? c.loaders.user.load(team.leadId) : null,
+        team.parentId ? c.loaders.team.load(team.parentId) : null,
+        c.db.select().from(teams).where(eq(teams.parentId, team.id)).orderBy(asc(teams.name)).all(),
       ]);
+      const brief = (t: typeof team) => ({ id: t.id, key: t.key, name: t.name });
       return {
         id: team.id,
         key: team.key,
         name: team.name,
         description: team.description,
         lead: lead?.name ?? null,
+        parent: parent ? brief(parent) : null,
+        children: children.map(brief),
         statuses: states.map((s) => ({ id: s.id, name: s.name, type: s.type })),
       };
     },
@@ -448,7 +461,7 @@ export const tools: Tool<McpContext>[] = [
     name: "create_team",
     title: "Create team",
     description:
-      "Create a team (a unit of the company) with the default workflow. Only when real work needs one.",
+      "Create a team (a unit of the company) with the default workflow. Only when real work needs one. With parent it's a sub-team: its members join the teams above it, so agents nest only under teams they're on.",
     inputSchema: {
       type: "object",
       properties: {
@@ -459,17 +472,20 @@ export const tools: Tool<McpContext>[] = [
         },
         description: { type: "string" },
         lead: { type: "string", description: "Member name or id" },
+        parent: { type: "string", description: "Parent team name, key or id, for a sub-team" },
       },
       required: ["name"],
     },
     async run(args, c) {
       const leadId = args.lead ? (await resolveUser(c, String(args.lead))).id : null;
+      const parentId = args.parent ? (await resolveTeam(c, String(args.parent))).id : null;
       const id = await c.act((s) =>
         createTeam(s, {
           name: String(args.name),
           key: str(args.key) ?? null,
           description: str(args.description) ?? null,
           leadId,
+          parentId,
         }),
       );
       const team = await c.db.select().from(teams).where(eq(teams.id, id)).get();
@@ -480,7 +496,7 @@ export const tools: Tool<McpContext>[] = [
     name: "update_team",
     title: "Update team",
     description:
-      "Change a team's name, key, triage, cycles, SLAs or auto-archive. Needs team.update; only the owner picks its lead.",
+      "Change a team's name, key, parent team, triage, cycles, SLAs or auto-archive. Needs team.update; only the owner picks its lead or moves members into the teams above it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -489,6 +505,10 @@ export const tools: Tool<McpContext>[] = [
         key: { type: "string" },
         description: { type: ["string", "null"] },
         lead: { type: ["string", "null"], description: "Member name or id; null for none" },
+        parent: {
+          type: ["string", "null"],
+          description: "Parent team name, key or id; null un-nests it",
+        },
         triageEnabled: { type: "boolean", description: "New issues from agents wait in Triage" },
         cyclesEnabled: { type: "boolean" },
         cycleDuration: { type: "integer", description: "Weeks per cycle, 1-8" },
@@ -505,8 +525,10 @@ export const tools: Tool<McpContext>[] = [
     },
     async run(args, c) {
       const team = await resolveTeam(c, String(args.id));
-      const { id: _id, lead, ...input } = args;
+      const { id: _id, lead, parent, ...input } = args;
       if (lead !== undefined) input.leadId = lead ? (await resolveUser(c, String(lead))).id : null;
+      if (parent !== undefined)
+        input.parentId = parent ? (await resolveTeam(c, String(parent))).id : null;
       await c.act((s) => updateTeam(s, team.id, input as Parameters<typeof updateTeam>[2]));
       const row = await resolveTeam(c, team.id);
       return {
@@ -670,7 +692,7 @@ export const tools: Tool<McpContext>[] = [
     name: "list_issue_labels",
     title: "List issue labels",
     description:
-      "List labels: a team's own plus workspace-wide ones, or all labels without a team.",
+      "List labels: a team's own, its parent teams' and workspace-wide ones, or all labels without a team.",
     readOnly: true,
     inputSchema: { type: "object", properties: { team: { type: "string" } } },
     async run(args, c) {
@@ -678,7 +700,7 @@ export const tools: Tool<McpContext>[] = [
       const rows = await c.db
         .select()
         .from(labels)
-        .where(team ? or(eq(labels.teamId, team.id), isNull(labels.teamId)) : undefined)
+        .where(team ? await teamLabels(c.db, team.id) : undefined)
         .orderBy(asc(labels.name))
         .all();
       return rows.map((l) => ({

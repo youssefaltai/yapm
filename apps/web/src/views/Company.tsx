@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { createTeamStore, hireAgentStore } from "../actions.js";
-import { type Member, mutate, useQuery, type Workspace } from "../data.js";
+import { type Member, mutate, teamTree, useQuery, type Workspace } from "../data.js";
 import { button, Page, PageBody, PageHeader, PageTitle, pageHeading, Section } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState } from "../states.js";
@@ -116,7 +116,7 @@ function SideCard({
 function TeamList({ teams, members }: { teams: Workspace["teams"]["nodes"]; members: Member[] }) {
   return (
     <div className="divide-y divide-line overflow-hidden rounded-lg border border-line empty:hidden">
-      {teams.map((team) => {
+      {teamTree(teams).map(({ team, depth }) => {
         const people = team.members.nodes
           .map((m) => members.find((u) => u.id === m.id))
           .filter((m): m is Member => !!m);
@@ -126,6 +126,8 @@ function TeamList({ teams, members }: { teams: Workspace["teams"]["nodes"]; memb
             type="button"
             onClick={() => navigate(paths.team(team.key))}
             className="flex w-full animate-fade-in items-center gap-3 px-4 py-2 text-left hover:bg-raised"
+            // Sub-teams sit indented under their parent.
+            style={depth ? { paddingLeft: `${1 + depth * 1.25}rem` } : undefined}
           >
             <span className="w-10 shrink-0 text-[11px] font-medium text-faint">{team.key}</span>
             <span className="min-w-0 flex-1">

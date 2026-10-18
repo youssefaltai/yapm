@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { navigate } from "./router.js";
+import { type Team, teamAncestors } from "./data.js";
+import { navigate, paths } from "./router.js";
 import { SelectedPill } from "./states.js";
 
 // The pieces every page is built from, so pages line up and read the same way: one header bar,
@@ -85,6 +86,15 @@ export interface Crumb {
   to: string;
   /** Leave it out on a phone, where the header is narrow. */
   wide?: boolean;
+}
+
+/** Crumbs up through the teams above a sub-team: "Studio › Design". */
+export function teamTrail(teams: Team[], team: Team): Crumb[] {
+  return teamAncestors(teams, team).map((t) => ({
+    label: t.name,
+    to: paths.team(t.key),
+    wide: true,
+  }));
 }
 
 /** The way back up, then where you are: "Projects › Pay off the car". */

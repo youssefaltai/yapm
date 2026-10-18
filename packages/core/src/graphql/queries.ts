@@ -21,7 +21,7 @@ import {
   paginate,
   requireViewer,
 } from "./builder.js";
-import { issueArgs, queryIssues } from "./filters.js";
+import { issueArgs, queryIssues, TeamFilter, teamCondition } from "./filters.js";
 import {
   AuditEntryConnection,
   Comment,
@@ -82,13 +82,22 @@ builder.queryType({
     }),
     teams: t.field({
       type: TeamConnection,
-      args: { ...pageArgs, includeArchived: t.arg.boolean({ required: false }) },
+      args: {
+        ...pageArgs,
+        filter: t.arg({ type: TeamFilter, required: false }),
+        includeArchived: t.arg.boolean({ required: false }),
+      },
       resolve: async (_root, args, ctx) => {
         requireViewer(ctx);
         const rows = await db(ctx)
           .select()
           .from(teams)
-          .where(args.includeArchived ? undefined : isNull(teams.archivedAt))
+          .where(
+            and(
+              args.includeArchived ? undefined : isNull(teams.archivedAt),
+              args.filter ? teamCondition(db(ctx), args.filter) : undefined,
+            ),
+          )
           .orderBy(asc(teams.name))
           .all();
         return paginate(rows, args);

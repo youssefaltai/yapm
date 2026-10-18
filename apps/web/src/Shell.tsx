@@ -10,10 +10,17 @@ import {
 } from "./actions.js";
 import { type Viewer, waitingStore } from "./api.js";
 import { type ContextEntry, ContextMenuHost, contextMenu } from "./contextMenu.js";
-import { type Team, useQuery, useToast, WORKSPACE_QUERY, type Workspace } from "./data.js";
+import {
+  subTeams,
+  type Team,
+  useQuery,
+  useToast,
+  WORKSPACE_QUERY,
+  type Workspace,
+} from "./data.js";
 import { EmojiPickerHost } from "./emoji/EmojiPicker.js";
 import { AppIcon, type IconName, icon } from "./icons.js";
-import { eyebrow, TabLink, TabRow } from "./layout.js";
+import { Breadcrumbs, eyebrow, TabLink, TabRow, teamTrail } from "./layout.js";
 import { useLiveUpdates } from "./live.js";
 import { navigate, parseRoute, paths, type Route, usePath } from "./router.js";
 import { EmptyState, SelectedPill } from "./states.js";
@@ -164,7 +171,9 @@ function RouteView({ route, workspace }: { route: Route; workspace: Workspace })
         <IssuesView
           key={`${team.id}-${route.view}`}
           source={{ kind: "team", team, view: route.view }}
-          title={team.name}
+          title={
+            <Breadcrumbs trail={teamTrail(workspace.teams.nodes, team)}>{team.name}</Breadcrumbs>
+          }
           tabs={<TeamTabs team={team} active={route.view} />}
         />
       );
@@ -381,69 +390,14 @@ function Sidebar({
       </div>
       <nav className="mt-1 min-h-0 space-y-0.5 overflow-y-auto">
         {workspace?.teams.nodes.length === 0 && <p className="px-2 py-1.5 text-faint">None yet</p>}
-        {workspace?.teams.nodes.map((team) => {
-          const active = expanded === team.key;
-          const view = route.name === "team" ? route.view : null;
-          return (
-            <div key={team.id}>
-              <NavLink
-                to={paths.team(team.key)}
-                icon="team"
-                active={active && view === "all"}
-                menu={() => teamMenu(team)}
-                copy={{ id: team.key, name: team.name }}
-              >
-                <span className="flex w-full items-center justify-between">
-                  <span className="truncate">{team.name}</span>
-                  <span className="text-[11px] text-faint">{team.key}</span>
-                </span>
-              </NavLink>
-              {active && (
-                <div className="ml-3 animate-reveal space-y-0.5 border-l border-line pl-2">
-                  {team.triageEnabled && (
-                    <NavLink
-                      to={paths.team(team.key, "triage")}
-                      icon="triage"
-                      active={view === "triage"}
-                    >
-                      Triage
-                    </NavLink>
-                  )}
-                  <NavLink
-                    to={paths.team(team.key, "active")}
-                    icon="active"
-                    active={view === "active"}
-                  >
-                    Active
-                  </NavLink>
-                  <NavLink
-                    to={paths.team(team.key, "backlog")}
-                    icon="backlog"
-                    active={view === "backlog"}
-                  >
-                    Backlog
-                  </NavLink>
-                  {team.cyclesEnabled && (
-                    <NavLink
-                      to={paths.cycles(team.key)}
-                      icon="cycle"
-                      active={route.name === "cycles"}
-                    >
-                      Cycles
-                    </NavLink>
-                  )}
-                  <NavLink
-                    to={paths.teamSettings(team.key)}
-                    icon="settings"
-                    active={route.name === "teamSettings"}
-                  >
-                    Settings
-                  </NavLink>
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {workspace && (
+          <TeamLinks
+            teams={workspace.teams.nodes}
+            parentId={null}
+            route={route}
+            expanded={expanded}
+          />
+        )}
       </nav>
       {!!workspace?.customViews.nodes.length && (
         <>
@@ -490,6 +444,78 @@ function Sidebar({
       </div>
     </>
   );
+}
+
+/** The sidebar's teams, each sub-team nested under its parent. */
+function TeamLinks({
+  teams,
+  parentId,
+  route,
+  expanded,
+}: {
+  teams: Team[];
+  parentId: string | null;
+  route: Route;
+  expanded: string | null;
+}) {
+  const view = route.name === "team" ? route.view : null;
+  return subTeams(teams, parentId).map((team) => {
+    const active = expanded === team.key;
+    const children = subTeams(teams, team.id);
+    return (
+      <div key={team.id} className="space-y-0.5">
+        <NavLink
+          to={paths.team(team.key)}
+          icon="team"
+          active={active && view === "all"}
+          menu={() => teamMenu(team)}
+          copy={{ id: team.key, name: team.name }}
+        >
+          <span className="flex w-full items-center justify-between">
+            <span className="truncate">{team.name}</span>
+            <span className="text-[11px] text-faint">{team.key}</span>
+          </span>
+        </NavLink>
+        {active && (
+          <div className="ml-3 animate-reveal space-y-0.5 border-l border-line pl-2">
+            {team.triageEnabled && (
+              <NavLink to={paths.team(team.key, "triage")} icon="triage" active={view === "triage"}>
+                Triage
+              </NavLink>
+            )}
+            <NavLink to={paths.team(team.key, "active")} icon="active" active={view === "active"}>
+              Active
+            </NavLink>
+            <NavLink
+              to={paths.team(team.key, "backlog")}
+              icon="backlog"
+              active={view === "backlog"}
+            >
+              Backlog
+            </NavLink>
+            {team.cyclesEnabled && (
+              <NavLink to={paths.cycles(team.key)} icon="cycle" active={route.name === "cycles"}>
+                Cycles
+              </NavLink>
+            )}
+            <NavLink
+              to={paths.teamSettings(team.key)}
+              icon="settings"
+              active={route.name === "teamSettings"}
+            >
+              Settings
+            </NavLink>
+          </div>
+        )}
+        {children.length > 0 && (
+          // biome-ignore lint/a11y/useSemanticElements: a group of links, not a form fieldset
+          <div role="group" aria-label={`${team.name} sub-teams`} className="ml-3 space-y-0.5 pl-2">
+            <TeamLinks teams={teams} parentId={team.id} route={route} expanded={expanded} />
+          </div>
+        )}
+      </div>
+    );
+  });
 }
 
 function teamFor(workspace: Workspace | null, route: Route): Team | undefined {

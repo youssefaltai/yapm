@@ -1,6 +1,6 @@
 import { cycleName, workspaceStore } from "../actions.js";
 import { type Team, useQuery } from "../data.js";
-import { Breadcrumbs, listRow, PageHeader, PageTitle } from "../layout.js";
+import { Breadcrumbs, listRow, PageHeader, teamTrail } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
 import { shortDate, useStore } from "../ui.js";
@@ -36,10 +36,11 @@ export function CyclesView({ team }: { team: Team }) {
     { id: team.id },
   );
   const cycles = data?.team.cycles.nodes ?? [];
+  const teams = useStore(workspaceStore)?.teams.nodes ?? [];
   return (
     <div className="flex h-full flex-col">
       <PageHeader tabs={<TeamTabs team={team} active="cycles" />}>
-        <PageTitle>{team.name}</PageTitle>
+        <Breadcrumbs trail={teamTrail(teams, team)}>{team.name}</Breadcrumbs>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error && <p className="p-6 text-critical">{error}</p>}
@@ -105,6 +106,7 @@ export function CyclePage({ id }: { id: string }) {
       title={
         <Breadcrumbs
           trail={[
+            ...teamTrail(workspace?.teams.nodes ?? [], team),
             { label: team.name, to: paths.team(team.key), wide: true },
             { label: "Cycles", to: paths.cycles(team.key) },
           ]}

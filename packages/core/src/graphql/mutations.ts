@@ -100,6 +100,7 @@ const TeamCreateInput = builder.inputType("TeamCreateInput", {
     icon: t.string({ required: false }),
     color: t.string({ required: false }),
     leadId: t.string({ required: false }),
+    parentId: t.string({ required: false, description: "The parent team ID." }),
   }),
 });
 
@@ -118,6 +119,7 @@ const TeamUpdateInput = builder.inputType("TeamUpdateInput", {
     icon: t.string({ required: false }),
     color: t.string({ required: false }),
     leadId: t.string({ required: false }),
+    parentId: t.string({ required: false, description: "The parent team ID; null un-nests it." }),
     triageEnabled: t.boolean({
       required: false,
       description: "New issues from agents wait in Triage for the owner.",

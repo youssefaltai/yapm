@@ -1,5 +1,5 @@
 import { teamMemberships, teams, users, workflowStates } from "@yapm/schema";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { audit } from "../audit.js";
 import { newId } from "../crypto.js";
 import { commit, type HubDb, type WriteOp } from "../db.js";
@@ -10,6 +10,7 @@ import { type Ctx, changes, cleanText, event } from "./common.js";
 import { companyTimeZone, syncTeamCycles } from "./cycles.js";
 import { retimeSlas } from "./issues.js";
 import { authorize, requireOwner } from "./requests.js";
+import { ancestorIds, descendantIds } from "./teamTree.js";
 
 export interface TeamCreateInput {
   name: string;
@@ -18,6 +19,8 @@ export interface TeamCreateInput {
   icon?: string | null;
   color?: string | null;
   leadId?: string | null;
+  /** Makes this a sub-team of that team. */
+  parentId?: string | null;
 }
 
 export type TeamUpdateInput = { [K in keyof TeamCreateInput]?: TeamCreateInput[K] | null } & {
@@ -76,6 +79,43 @@ async function assertActiveUser(db: HubDb, id: string, what: string) {
   if (!user?.active) throw notFound(what);
 }
 
+/** The teams a sub-team of `parentId` sits under, from the root down to the parent. */
+async function lineageOf(db: HubDb, parentId: string) {
+  const parent = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, parentId)).get();
+  if (!parent) throw notFound("Parent team");
+  return [...(await ancestorIds(db, parentId)), parentId];
+}
+
+/**
+ * Puts `userIds` on each of `teamIds` they aren't on yet, as Linear does: a sub-team's members
+ * are members of its parent too. Joining brings a team's grants, so only the owner adds anyone.
+ */
+async function joinTeams(ctx: Ctx, teamIds: string[], userIds: string[]): Promise<WriteOp[]> {
+  const { db, now } = ctx;
+  if (!teamIds.length || !userIds.length) return [];
+  const held = await db
+    .select()
+    .from(teamMemberships)
+    .where(inArray(teamMemberships.teamId, teamIds))
+    .all();
+  const have = new Set(held.map((m) => `${m.teamId}:${m.userId}`));
+  const rows = teamIds.flatMap((teamId) =>
+    userIds
+      .filter((userId) => !have.has(`${teamId}:${userId}`))
+      .map((userId) => ({ teamId, userId, createdAt: now })),
+  );
+  if (!rows.length) return [];
+  await requireOwner(ctx, "add members to a parent team");
+  return [
+    ...insertRows(db, teamMemberships, rows),
+    ...audit(
+      db,
+      rows.map((r) => event(ctx, "teamMembership.create", "team", r.teamId, { userId: r.userId })),
+      now,
+    ),
+  ];
+}
+
 /** Creates a team with Linear's default workflow states. The creator and the owner become members. */
 export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
   const { db, actorId, now } = ctx;
@@ -83,6 +123,7 @@ export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
   const key = normalizeKey(input.key ?? suggestKey(name));
   await assertKeyFree(db, key);
   if (input.leadId) await assertActiveUser(db, input.leadId, "Team lead");
+  const ancestors = input.parentId ? await lineageOf(db, input.parentId) : [];
   const allowed = await authorize(ctx, "team.create");
 
   const id = newId();
@@ -100,6 +141,7 @@ export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
       icon: input.icon ?? null,
       color: input.color ?? null,
       leadId: input.leadId ?? null,
+      parentId: input.parentId ?? null,
       ...stamp,
     }),
     ...insertRows(
@@ -118,9 +160,17 @@ export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
         ...stamp,
       })),
     ),
+    ...(await joinTeams(ctx, ancestors, [...memberIds])),
     ...audit(
       db,
-      [event(ctx, "team.create", "team", id, { key, name, leadId: input.leadId ?? null })],
+      [
+        event(ctx, "team.create", "team", id, {
+          key,
+          name,
+          leadId: input.leadId ?? null,
+          parentId: input.parentId ?? null,
+        }),
+      ],
       now,
     ),
   ];
@@ -128,7 +178,10 @@ export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
   return id;
 }
 
-/** The owner adds a member to a team, or with `remove` takes them off it. */
+/**
+ * The owner adds a member to a team, or with `remove` takes them off it. Joining a sub-team joins
+ * its ancestors; leaving a team leaves its sub-teams.
+ */
 export async function setTeamMembership(
   ctx: Ctx,
   teamId: string,
@@ -140,20 +193,29 @@ export async function setTeamMembership(
   const team = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).get();
   if (!team) throw notFound("Team");
   await assertActiveUser(db, userId, "Member");
-  const where = and(eq(teamMemberships.teamId, teamId), eq(teamMemberships.userId, userId));
-  const member = await db.select().from(teamMemberships).where(where).get();
-  if (!!member !== remove) return teamId;
+  if (!remove) {
+    await commit(db, await joinTeams(ctx, [...(await ancestorIds(db, teamId)), teamId], [userId]));
+    return teamId;
+  }
+  const held = await db
+    .select({ teamId: teamMemberships.teamId })
+    .from(teamMemberships)
+    .where(
+      and(
+        eq(teamMemberships.userId, userId),
+        inArray(teamMemberships.teamId, [teamId, ...(await descendantIds(db, teamId))]),
+      ),
+    )
+    .all();
+  if (!held.some((m) => m.teamId === teamId)) return teamId;
+  const leaving = held.map((m) => m.teamId);
   await commit(db, [
-    remove
-      ? db.delete(teamMemberships).where(where)
-      : db.insert(teamMemberships).values({ teamId, userId, createdAt: now }),
+    db
+      .delete(teamMemberships)
+      .where(and(eq(teamMemberships.userId, userId), inArray(teamMemberships.teamId, leaving))),
     ...audit(
       db,
-      [
-        event(ctx, `teamMembership.${remove ? "delete" : "create"}`, "team", teamId, {
-          userId,
-        }),
-      ],
+      leaving.map((t) => event(ctx, "teamMembership.delete", "team", t, { userId })),
       now,
     ),
   ]);
@@ -181,6 +243,14 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
     await requireOwner(ctx, "choose a team's lead");
     if (input.leadId) await assertActiveUser(db, input.leadId, "Team lead");
     next.leadId = input.leadId;
+  }
+  // The teams it moves under, root first; null when it stays where it is.
+  let ancestors: string[] | null = null;
+  if (input.parentId !== undefined && input.parentId !== team.parentId) {
+    ancestors = input.parentId ? await lineageOf(db, input.parentId) : [];
+    if (ancestors.includes(id))
+      throw badRequest("A team can't sit under itself or its own sub-team");
+    next.parentId = input.parentId;
   }
 
   if (input.triageEnabled != null) next.triageEnabled = input.triageEnabled;
@@ -220,6 +290,18 @@ export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
         .onConflictDoNothing(),
     );
   }
+  // The lead, and when it moves all its members, join the teams above it.
+  const joiners = new Set(next.leadId ? [next.leadId] : []);
+  if (ancestors?.length) {
+    const members = await db
+      .select({ userId: teamMemberships.userId })
+      .from(teamMemberships)
+      .where(eq(teamMemberships.teamId, id))
+      .all();
+    for (const m of members) joiners.add(m.userId);
+  }
+  if (joiners.size)
+    ops.push(...(await joinTeams(ctx, ancestors ?? (await ancestorIds(db, id)), [...joiners])));
   ops.push(...audit(db, [event(ctx, "team.update", "team", id, diff)], now));
   await commit(db, ops);
   // Turning cycles on creates them straight away; changing their shape re-lays the upcoming ones.

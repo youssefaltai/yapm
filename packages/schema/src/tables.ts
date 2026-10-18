@@ -96,36 +96,42 @@ export const users = sqliteTable(
 );
 
 /** A unit of the business, like Linear's teams. */
-export const teams = sqliteTable("teams", {
-  id: text("id").primaryKey(),
-  key: text("key").notNull().unique(),
-  name: text("name").notNull(),
-  description: text("description"),
-  icon: text("icon"),
-  color: text("color"),
-  leadId: text("lead_id"),
-  /** Last issue number handed out in this team, for identifiers like FIN-42. */
-  issueCount: integer("issue_count").notNull().default(0),
-  /** New issues from agents wait in Triage for the owner to accept or decline. */
-  triageEnabled: integer("triage_enabled", { mode: "boolean" }).notNull().default(false),
-  cyclesEnabled: integer("cycles_enabled", { mode: "boolean" }).notNull().default(false),
-  /** Weeks per cycle. */
-  cycleDuration: integer("cycle_duration").notNull().default(1),
-  /** Day cycles start on: 0 Sunday … 6 Saturday. */
-  cycleStartDay: integer("cycle_start_day").notNull().default(1),
-  /** Weeks of rest between cycles. */
-  cycleCooldown: integer("cycle_cooldown").notNull().default(0),
-  /** How many future cycles to keep ready. */
-  upcomingCycleCount: integer("upcoming_cycle_count").notNull().default(2),
-  /** Last cycle number handed out. */
-  cycleCount: integer("cycle_count").notNull().default(0),
-  /** Hours to finish an issue, by priority (`"1"` urgent … `"4"` low); none means no SLA. */
-  slaHours: text("sla_hours", { mode: "json" }).$type<Record<string, number>>(),
-  /** Months after which done and canceled issues are archived; 0 never. */
-  autoArchivePeriod: integer("auto_archive_period").notNull().default(6),
-  archivedAt: integer("archived_at", { mode: "number" }),
-  ...timestamps,
-});
+export const teams = sqliteTable(
+  "teams",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description"),
+    icon: text("icon"),
+    color: text("color"),
+    leadId: text("lead_id"),
+    /** The team this is a sub-team of; its members are members of the parent too. */
+    parentId: text("parent_id"),
+    /** Last issue number handed out in this team, for identifiers like FIN-42. */
+    issueCount: integer("issue_count").notNull().default(0),
+    /** New issues from agents wait in Triage for the owner to accept or decline. */
+    triageEnabled: integer("triage_enabled", { mode: "boolean" }).notNull().default(false),
+    cyclesEnabled: integer("cycles_enabled", { mode: "boolean" }).notNull().default(false),
+    /** Weeks per cycle. */
+    cycleDuration: integer("cycle_duration").notNull().default(1),
+    /** Day cycles start on: 0 Sunday … 6 Saturday. */
+    cycleStartDay: integer("cycle_start_day").notNull().default(1),
+    /** Weeks of rest between cycles. */
+    cycleCooldown: integer("cycle_cooldown").notNull().default(0),
+    /** How many future cycles to keep ready. */
+    upcomingCycleCount: integer("upcoming_cycle_count").notNull().default(2),
+    /** Last cycle number handed out. */
+    cycleCount: integer("cycle_count").notNull().default(0),
+    /** Hours to finish an issue, by priority (`"1"` urgent … `"4"` low); none means no SLA. */
+    slaHours: text("sla_hours", { mode: "json" }).$type<Record<string, number>>(),
+    /** Months after which done and canceled issues are archived; 0 never. */
+    autoArchivePeriod: integer("auto_archive_period").notNull().default(6),
+    archivedAt: integer("archived_at", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [index("teams_parent_idx").on(t.parentId)],
+);
 
 export const teamMemberships = sqliteTable(
   "team_memberships",

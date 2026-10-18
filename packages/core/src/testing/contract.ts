@@ -4555,6 +4555,180 @@ export function hubContract(
       });
     });
 
+    it("nests teams as sub-teams, Linear's way", async () => {
+      const scout = await agentToken("Scout");
+      type Node = { id: string; key: string };
+      const make = async (name: string, key: string, parentId?: string | null) => {
+        const made = await client.graphql<{ teamCreate: { team: Node } }>(
+          "mutation($input: TeamCreateInput!) { teamCreate(input: $input) { team { id key } } }",
+          { input: { name, key, parentId } },
+        );
+        expect(made.errors).toBeUndefined();
+        return made.data?.teamCreate.team.id ?? "";
+      };
+      const update = (id: string, input: Record<string, unknown>) =>
+        client.graphql(
+          "mutation($id: String!, $input: TeamUpdateInput!) { teamUpdate(id: $id, input: $input) { success } }",
+          { id, input },
+        );
+      const read = async (key: string) =>
+        (
+          await client.graphql<{
+            team: {
+              parent: Node | null;
+              ancestors: Node[];
+              children: Node[];
+              members: { nodes: { name: string }[] };
+              labels: { nodes: { name: string }[] };
+            };
+          }>(
+            `query($key: String!) { team(id: $key) {
+              parent { id key } ancestors { key } children { key }
+              members { nodes { name } } labels(first: 250) { nodes { name } }
+            } }`,
+            { key },
+          )
+        ).data?.team;
+
+      // Any depth: Studio > Design > Brand, ancestors from the root down.
+      const studio = await make("Studio", "STU");
+      const design = await make("Design", "DES", studio);
+      const brand = await make("Brand", "BRA", design);
+      expect((await read("DES"))?.parent?.key).toBe("STU");
+      expect((await read("STU"))?.children.map((t) => t.key)).toEqual(["DES"]);
+      expect((await read("BRA"))?.ancestors.map((t) => t.key)).toEqual(["STU", "DES"]);
+      const listed = await client.graphql<{
+        teams: { nodes: { key: string; parent: Node | null; children: Node[] }[] };
+      }>("{ teams { nodes { key parent { key } children { key } } } }");
+      expect(listed.data?.teams.nodes.find((t) => t.key === "DES")).toEqual({
+        key: "DES",
+        parent: { key: "STU" },
+        children: [{ key: "BRA" }],
+      });
+
+      // A team can't be its own ancestor, or hang off a team that doesn't exist.
+      expect((await update(studio, { parentId: brand })).errors?.[0]?.message).toContain(
+        "own sub-team",
+      );
+      expect((await update(studio, { parentId: studio })).errors?.[0]?.extensions?.code).toBe(
+        "BAD_REQUEST",
+      );
+      expect((await update(studio, { parentId: "nope" })).errors?.[0]?.extensions?.code).toBe(
+        "NOT_FOUND",
+      );
+
+      // A sub-team's members are members of its parent too, and leaving a parent leaves its sub-teams.
+      const join = (teamId: string, remove = false) =>
+        client.graphql(
+          remove
+            ? "mutation($t: String!, $u: String!) { teamMembershipDelete(teamId: $t, userId: $u) { success } }"
+            : "mutation($t: String!, $u: String!) { teamMembershipCreate(input: { teamId: $t, userId: $u }) { success } }",
+          { t: teamId, u: scout.id },
+        );
+      const names = async (key: string) => (await read(key))?.members.nodes.map((m) => m.name);
+      expect((await join(brand)).errors).toBeUndefined();
+      expect(await names("STU")).toContain("Scout");
+      expect(await names("DES")).toContain("Scout");
+      expect((await join(studio, true)).errors).toBeUndefined();
+      expect(await names("DES")).not.toContain("Scout");
+      expect(await names("BRA")).not.toContain("Scout");
+
+      // Sub-teams use their ancestors' labels.
+      const label = await client.graphql<{ issueLabelCreate: { issueLabel: { id: string } } }>(
+        'mutation($t: String) { issueLabelCreate(input: { name: "House style", teamId: $t }) { issueLabel { id } } }',
+        { t: studio },
+      );
+      const labelId = label.data?.issueLabelCreate.issueLabel.id;
+      expect((await read("BRA"))?.labels.nodes.map((l) => l.name)).toContain("House style");
+      const issue = await client.graphql<{ issueCreate: { issue: { id: string } } }>(
+        'mutation($t: String!, $l: [String!]) { issueCreate(input: { title: "New logo", teamId: $t, labelIds: $l }) { issue { id } } }',
+        { t: brand, l: [labelId] },
+      );
+      expect(issue.errors).toBeUndefined();
+
+      // A parent's issues include its sub-teams' when asked.
+      const issuesOf = async (includeSubTeams?: boolean) =>
+        (
+          await client.graphql<{ team: { issues: { nodes: { title: string }[] } } }>(
+            'query($s: Boolean) { team(id: "STU") { issues(includeSubTeams: $s) { nodes { title } } } }',
+            { s: includeSubTeams },
+          )
+        ).data?.team.issues.nodes.map((i) => i.title);
+      expect(await issuesOf()).toEqual([]);
+      expect(await issuesOf(true)).toEqual(["New logo"]);
+      // Filters reach teams by their parent, as Linear's TeamFilter does.
+      const keys = async (filter: Record<string, unknown>) =>
+        (
+          await client.graphql<{ teams: { nodes: { key: string }[] } }>(
+            "query($f: TeamFilter) { teams(filter: $f) { nodes { key } } }",
+            { f: filter },
+          )
+        ).data?.teams.nodes.map((t) => t.key);
+      expect(await keys({ parent: { key: { eq: "STU" } } })).toEqual(["DES"]);
+      expect(await keys({ parent: { null: true } })).toContain("STU");
+      expect(await keys({ parent: { null: true } })).not.toContain("DES");
+      const filtered = await client.graphql<{ issues: { nodes: { title: string }[] } }>(
+        "query($d: ID) { issues(filter: { team: { parent: { id: { eq: $d } } } }) { nodes { title } } }",
+        { d: design },
+      );
+      expect(filtered.data?.issues.nodes.map((i) => i.title)).toEqual(["New logo"]);
+
+      // Un-nesting is logged; nesting a team brings its members into the new ancestors.
+      expect((await update(brand, { parentId: null })).errors).toBeUndefined();
+      expect((await read("BRA"))?.parent).toBeNull();
+      await join(brand);
+      expect(await names("STU")).not.toContain("Scout");
+      expect((await update(brand, { parentId: design })).errors).toBeUndefined();
+      expect(await names("STU")).toContain("Scout");
+      const log = await client.graphql<{
+        auditEntries: { nodes: { action: string; data: Record<string, unknown> }[] };
+      }>("query($id: String) { auditEntries(entityId: $id) { nodes { action data } } }", {
+        id: brand,
+      });
+      expect(log.data?.auditEntries.nodes.map((n) => n.data)).toContainEqual(
+        expect.objectContaining({ parentId: { from: design, to: null } }),
+      );
+
+      // Agents nest teams through MCP, under teams they're on: joining one brings its grants.
+      const mcp = async (name: string, args: Record<string, unknown>) => {
+        const result = await callTool(onboardingToken, name, args);
+        if (result.isError) throw new Error(result.text);
+        return result.json();
+      };
+      const onboarding = await agentToken("Onboarding");
+      await client.graphql(
+        'mutation($s: String) { grantCreate(input: { action: "team.create", scope: user, subjectId: $s }) { success } }',
+        { s: onboarding.id },
+      );
+      const motion = { name: "Motion", key: "MOT", parent: "Design" };
+      expect((await callTool(onboardingToken, "create_team", motion)).text).toContain(
+        "Only the owner",
+      );
+      await client.graphql(
+        "mutation($t: String!, $u: String!) { teamMembershipCreate(input: { teamId: $t, userId: $u }) { success } }",
+        { t: design, u: onboarding.id },
+      );
+      const { id: motionId } = await mcp("create_team", motion);
+      expect(await mcp("get_team", { query: "MOT" })).toMatchObject({
+        parent: { id: design, key: "DES", name: "Design" },
+        children: [],
+      });
+      expect((await mcp("get_team", { query: "DES" })).children.map((t: Node) => t.key)).toEqual([
+        "BRA",
+        "MOT",
+      ]);
+      expect(
+        (await mcp("list_teams", { query: "MOT" })).map((t: { parentId: string }) => t.parentId),
+      ).toEqual([design]);
+      // Onboarding holds team.update from the MCP test above.
+      await mcp("update_team", { id: motionId, parent: null });
+      expect((await mcp("get_team", { query: "MOT" })).parent).toBeNull();
+      const move = (id: string, parent: string) =>
+        callTool(onboardingToken, "update_team", { id, parent });
+      expect((await move("DES", "BRA")).text).toContain("own sub-team");
+      expect((await move("MOT", "BRA")).text).toContain("Only the owner");
+    });
+
     /** Machines report the providers they're signed in to and their models. */
     const CLAUDE = {
       id: "anthropic",

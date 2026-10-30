@@ -451,6 +451,63 @@ describe("runner daemon", () => {
     expect(planRunner.plan.pending()).toEqual({});
   });
 
+  it("hands back a run the plan's limit stopped, and tells the hub the plan is spent", async () => {
+    const enrolment = await hub.enrol({
+      name: "Spent machine",
+      tags: [],
+      capacity: 1,
+      version: "test",
+    });
+    await gql(
+      "mutation($id: String!, $code: String!) { machineApprove(id: $id, pairingCode: $code) { success } }",
+      { id: enrolment.id, code: enrolment.pairingCode },
+    );
+    const spent = new Runner({
+      hub,
+      token: enrolment.token,
+      engines: { claude: engine },
+      capacity: 1,
+      version: "test",
+      cwd: tmpdir(),
+      pollMs: 10,
+      logFlushMs: 10,
+      log: (line) => lines.push(line),
+    });
+    const resetsAt = Date.now() + 3_600_000;
+    script = async (run) => {
+      run.onPlan?.({
+        rateLimit: {
+          status: "rejected",
+          rateLimitType: "five_hour",
+          resetsAt: Math.floor(resetsAt / 1000),
+        },
+      });
+      return { output: null, sessionId: null, usage: {}, limited: { resetsAt } };
+    };
+    const created = await gql<{ runCreate: { run: { id: string } } }>(
+      "mutation($input: RunCreateInput!) { runCreate(input: $input) { run { id } } }",
+      { input: { agentId, goal: "Climb past the limit" } },
+    );
+    expect(await spent.claim()).toBe(1);
+    await spent.idle();
+    const after = await gql<{
+      run: { status: string; notBefore: string };
+      machines: { name: string; planUsage: { limits: { utilization: number }[] } | null }[];
+    }>(
+      "query($id: String!) { run(id: $id) { status notBefore } machines { name planUsage { limits { utilization } } } }",
+      { id: created.runCreate.run.id },
+    );
+    expect(after.run.status).toBe("queued");
+    expect(Date.parse(after.run.notBefore)).toBe(resetsAt);
+    // Without waiting for the next check-in, so other machines on the login stop at once.
+    expect(after.machines.find((m) => m.name === "Spent machine")?.planUsage?.limits).toEqual([
+      { utilization: 100 },
+    ]);
+    await gql('mutation($id: String!) { runStop(id: $id, reason: "Done here") { success } }', {
+      id: created.runCreate.run.id,
+    });
+  });
+
   it("reads the Claude login at startup and at most once a minute while idle", async () => {
     const enrolment = await hub.enrol({
       name: "Login machine",

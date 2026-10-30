@@ -7,6 +7,7 @@ import {
   type MachineProvider,
   machines,
   notifications,
+  type PlanUsage,
   requests,
   runLogs,
   runs,
@@ -39,9 +40,10 @@ import { announce } from "../realtime.js";
 import { createComment, createReaction } from "../services/comments.js";
 import type { Ctx } from "../services/common.js";
 import { event } from "../services/common.js";
+import { companyTimeZone } from "../services/cycles.js";
 import { feedbackOp } from "../services/feedback.js";
 import { findIssue, updateIssue } from "../services/issues.js";
-import { cleanTags, engineOf, runnableOn } from "../services/machines.js";
+import { cleanTags, engineOf, providerName, runnableOn } from "../services/machines.js";
 import { type McpServerConfig, mcpServersFor } from "../services/mcpServers.js";
 import {
   cleanAccount,
@@ -332,6 +334,8 @@ export interface ClaimedRun {
     engine: Engine;
     /** Resume this Agent SDK session (needs-input runs continue where they paused). */
     sessionId: string | null;
+    /** The first transcript batch's number: past an earlier try's, for a run queued again. */
+    logSeq: number;
     issue: string | null;
     issueId: string | null;
   };
@@ -357,12 +361,22 @@ export async function claimRun(
 
 async function claimNext(deps: HubDeps, machine: Machine, at: number) {
   const { db } = deps;
+  const login = loginOf(machine.claudeAccount);
   const busy = await db
-    .select({ n: count() })
+    .select({
+      n: count(),
+      // Every machine on a login draws from one plan, so the newest reading on it counts.
+      plan: login
+        ? sql<
+            string | null
+          >`(select ${machines.planUsage} from ${machines} where ${machines.status} != 'revoked' and lower(json_extract(${machines.claudeAccount}, '$.email')) = ${login} order by json_extract(${machines.planUsage}, '$.observedAt') desc limit 1)`
+        : sql<null>`null`,
+    })
     .from(runs)
     .where(and(eq(runs.machineId, machine.id), eq(runs.status, "running")))
     .get();
   if ((busy?.n ?? 0) >= machine.capacity) return null;
+  const planUsage = busy?.plan ? (JSON.parse(busy.plan) as PlanUsage) : machine.planUsage;
   const work = alias(runs, "work");
   const candidates = await db
     .select({ run: runs })
@@ -374,7 +388,12 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
         or(isNull(runs.notBefore), lte(runs.notBefore, at)),
         or(isNull(runs.machineId), eq(runs.machineId, machine.id)),
         eq(users.active, true),
-        runnableOn(machine, sql`coalesce(${runs.provider}, 'anthropic')`, users.runnerTags, at),
+        runnableOn(
+          { ...machine, planUsage },
+          sql`coalesce(${runs.provider}, 'anthropic')`,
+          users.runnerTags,
+          at,
+        ),
         // A decision waits for the agent's work on its issue to end, and so sees how it went.
         or(
           ne(runs.kind, "decision"),
@@ -403,6 +422,7 @@ async function claimNext(deps: HubDeps, machine: Machine, at: number) {
       .update(runs)
       .set({
         status: "running",
+        error: null,
         engine: engineOf(provider),
         machineId: machine.id,
         startedAt: at,
@@ -453,6 +473,8 @@ async function prepare(deps: HubDeps, run: RunRow, at: number): Promise<ClaimedR
       ...(await modelOf(db, run)),
       engine: engineOf(run.provider ?? "anthropic"),
       sessionId,
+      // Each batch has an event at least, so this is past every number used.
+      logSeq: run.logCount,
       issue: issue ? await identifierOf(db, issue) : null,
       issueId: issue?.id ?? null,
     },
@@ -530,7 +552,10 @@ export async function appendLogs(
 }
 
 export interface RunCompletion {
-  status: "completed" | "failed" | "stopped" | "needs_input";
+  /** usage_limited: the plan's usage limit stopped the run, which waits for it to reset. */
+  status: "completed" | "failed" | "stopped" | "needs_input" | "usage_limited";
+  /** When the limit resets (epoch ms), when the runner knows. */
+  resetsAt?: number | null;
   /** The structured output: a decision, or a work result. */
   result?: unknown;
   error?: string;
@@ -557,7 +582,11 @@ export async function completeRun(
   if (run.status !== "running")
     throw new ServiceError("CONFLICT", `The run is already ${run.status}`);
   const ctx: Ctx = { db, actorId: run.agentId, now: at, runId: run.id };
-  let status: RunRow["status"] = body.status === "needs_input" ? "needs_input" : body.status;
+  if (body.status === "usage_limited" && !run.stopRequestedAt) {
+    await waitForReset(db, run, body, at);
+    return { status: "queued", notified: false };
+  }
+  let status: RunRow["status"] = body.status === "usage_limited" ? "stopped" : body.status;
   let result: Record<string, unknown> | null = null;
   let error = body.error?.slice(0, 5000) ?? null;
   if (run.stopRequestedAt && status !== "completed") status = "stopped";
@@ -627,6 +656,66 @@ export async function completeRun(
   ]);
   if (status === "failed") await retryRun(db, run, at);
   return { status, notified: !!ctx.notified };
+}
+
+/** How long a run that hit a limit with no known reset waits: about until the plan is read again. */
+const LIMIT_DELAY = 10 * 60 * 1000;
+
+/**
+ * A plan's usage limit isn't the run's doing, so it isn't a failure: the run goes back in the
+ * queue until the limit resets, then runs as it was on any machine with room. A run that resumes
+ * a session stays on the machine that has it.
+ */
+async function waitForReset(db: HubDb, run: RunRow, body: RunCompletion, at: number) {
+  const resetsAt = typeof body.resetsAt === "number" && body.resetsAt > at ? body.resetsAt : null;
+  const notBefore = resetsAt ?? at + LIMIT_DELAY;
+  const when = new Intl.DateTimeFormat("en-US", {
+    timeZone: await companyTimeZone(db),
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(notBefore);
+  const plan = providerName(run.provider ?? "anthropic");
+  const error = resetsAt
+    ? `Waiting for the ${plan} plan's limit to reset at ${when}`
+    : `Waiting out ${plan}'s rate limit until ${when}`;
+  const resumes = !!run.resumeOfRunId && !!(body.sessionId ?? run.sessionId);
+  await commit(db, [
+    db
+      .update(runs)
+      .set({
+        status: "queued",
+        notBefore,
+        error,
+        machineId: resumes ? run.machineId : null,
+        startedAt: null,
+        heartbeatAt: null,
+        updatedAt: at,
+        ...(body.sessionId ? { sessionId: body.sessionId } : {}),
+        ...(await runUsageSet(db, run, body.usage, body.sessionId)),
+      })
+      .where(eq(runs.id, run.id)),
+    db
+      .update(apiTokens)
+      .set({ revokedAt: at })
+      .where(and(eq(apiTokens.runId, run.id), isNull(apiTokens.revokedAt))),
+    ...audit(
+      db,
+      [
+        {
+          actorId: run.agentId,
+          runId: run.id,
+          action: "run.requeue",
+          entityType: "run",
+          entityId: run.id,
+          data: { kind: run.kind, error, notBefore },
+        },
+      ],
+      at,
+    ),
+  ]);
 }
 
 async function applyDecision(ctx: Ctx, run: RunRow, decision: Decision) {

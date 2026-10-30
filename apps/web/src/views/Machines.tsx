@@ -17,7 +17,15 @@ import {
 } from "../layout.js";
 import { navigate, paths } from "../router.js";
 import { EmptyState, ListSkeleton, PageSkeleton } from "../states.js";
-import { DetailLayout, Property, PropertyList, propertyButton, timeAgo, useStore } from "../ui.js";
+import {
+  DetailLayout,
+  Property,
+  PropertyList,
+  propertyButton,
+  shortDate,
+  timeAgo,
+  useStore,
+} from "../ui.js";
 import { RUN_SUMMARY, RunRows, type RunSummary, RunsTabs } from "./Runs.js";
 import {
   type MachinePlan,
@@ -79,6 +87,14 @@ const update = (id: string, input: { name?: string; tags?: string[] }) =>
 /** "Online · 1/2 running", "Offline · seen 3h ago" or "Waiting for approval". */
 function statusText(m: Machine) {
   if (m.status === "pending") return "Waiting for approval";
+  // It takes no work on that plan until the window resets.
+  const spent = busiestLimit(m);
+  if (m.online && spent?.resetsAt && (spent.utilization ?? 0) >= 100) {
+    const at = new Date(spent.resetsAt);
+    const today = at.toDateString() === new Date().toDateString();
+    const time = at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    return `At its limit · until ${today ? time : shortDate(spent.resetsAt)}`;
+  }
   if (m.online) return `Online · ${m.runningCount}/${m.capacity} running`;
   return `Offline${m.lastSeenAt ? ` · seen ${timeAgo(m.lastSeenAt)}` : ""}`;
 }

@@ -256,6 +256,26 @@ export async function claudeSubscriptions(db: HubDb): Promise<Subscription[]> {
   );
 }
 
+/** Each machine with the newest reading on its login, as claims see its plan. */
+export function sharedPlans(list: MachineRow[]): MachineRow[] {
+  const newest = new Map<string, PlanUsage>();
+  for (const m of list) {
+    const login = loginOf(m.claudeAccount);
+    const known = login && newest.get(login);
+    if (
+      login &&
+      m.status !== "revoked" &&
+      m.planUsage &&
+      (!known || m.planUsage.observedAt > known.observedAt)
+    )
+      newest.set(login, m.planUsage);
+  }
+  return list.map((m) => ({
+    ...m,
+    planUsage: newest.get(loginOf(m.claudeAccount) ?? "") ?? m.planUsage,
+  }));
+}
+
 export const USAGE_GROUPS = ["agent", "model", "machine"] as const;
 export type UsageGroup = (typeof USAGE_GROUPS)[number];
 

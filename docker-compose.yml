@@ -1,0 +1,16 @@
+services:
+  hub:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      # Public HTTPS origin of the app, e.g. https://life.example.com. Passkeys are bound to it.
+      ORIGIN: ${ORIGIN:-}
+      # Encrypts MCP server sign-ins; any long random string.
+      YAPM_SECRET: ${YAPM_SECRET:-}
+    volumes:
+      - yapm-data:/data
+
+volumes:
+  yapm-data:

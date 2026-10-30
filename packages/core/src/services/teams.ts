@@ -1,0 +1,313 @@
+import { teamMemberships, teams, users, workflowStates } from "@yapm/schema";
+import { and, eq, inArray, ne } from "drizzle-orm";
+import { audit } from "../audit.js";
+import { newId } from "../crypto.js";
+import { commit, type HubDb, type WriteOp } from "../db.js";
+import { badRequest, notFound, ServiceError } from "../errors.js";
+import { DEFAULT_STATES, suggestKey } from "../seed.js";
+import { insertRows } from "../write.js";
+import { type Ctx, changes, cleanText, event } from "./common.js";
+import { companyTimeZone, syncTeamCycles } from "./cycles.js";
+import { retimeSlas } from "./issues.js";
+import { authorize, requireOwner } from "./requests.js";
+import { ancestorIds, descendantIds } from "./teamTree.js";
+
+export interface TeamCreateInput {
+  name: string;
+  key?: string | null;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  leadId?: string | null;
+  /** Makes this a sub-team of that team. */
+  parentId?: string | null;
+}
+
+export type TeamUpdateInput = { [K in keyof TeamCreateInput]?: TeamCreateInput[K] | null } & {
+  triageEnabled?: boolean | null;
+  cyclesEnabled?: boolean | null;
+  cycleDuration?: number | null;
+  cycleStartDay?: number | null;
+  cycleCooldown?: number | null;
+  upcomingCycleCount?: number | null;
+  /** Hours by priority, e.g. `{ "1": 24, "2": 72 }`; empty turns SLAs off. */
+  slaHours?: Record<string, unknown> | null;
+  autoArchivePeriod?: number | null;
+};
+
+function checkSla(value: Record<string, unknown> | null): Record<string, number> | null {
+  if (!value) return null;
+  const out: Record<string, number> = {};
+  for (const [priority, hours] of Object.entries(value)) {
+    if (!["1", "2", "3", "4"].includes(priority))
+      throw badRequest("SLA priorities are 1 (urgent) to 4 (low)");
+    if (hours === null || hours === 0) continue;
+    if (typeof hours !== "number" || !Number.isFinite(hours) || hours < 1 || hours > 24 * 365)
+      throw badRequest("SLA hours must be between 1 and 8760");
+    out[priority] = Math.round(hours);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function whole(value: number, label: string, min: number, max: number) {
+  if (!Number.isInteger(value) || value < min || value > max)
+    throw badRequest(`${label} must be a whole number from ${min} to ${max}`);
+  return value;
+}
+
+const KEY_PATTERN = /^[A-Z][A-Z0-9]{0,6}$/;
+
+function normalizeKey(key: string): string {
+  const normalized = key.trim().toUpperCase();
+  if (!KEY_PATTERN.test(normalized)) {
+    throw badRequest("Team key must be 1–7 letters or digits, starting with a letter (e.g. FIN)");
+  }
+  return normalized;
+}
+
+async function assertKeyFree(db: HubDb, key: string, exceptId?: string) {
+  const clash = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(exceptId ? and(eq(teams.key, key), ne(teams.id, exceptId)) : eq(teams.key, key))
+    .get();
+  if (clash) throw new ServiceError("CONFLICT", `A team with key ${key} already exists`);
+}
+
+async function assertActiveUser(db: HubDb, id: string, what: string) {
+  const user = await db.select({ active: users.active }).from(users).where(eq(users.id, id)).get();
+  if (!user?.active) throw notFound(what);
+}
+
+/** The teams a sub-team of `parentId` sits under, from the root down to the parent. */
+async function lineageOf(db: HubDb, parentId: string) {
+  const parent = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, parentId)).get();
+  if (!parent) throw notFound("Parent team");
+  return [...(await ancestorIds(db, parentId)), parentId];
+}
+
+/**
+ * Puts `userIds` on each of `teamIds` they aren't on yet, as Linear does: a sub-team's members
+ * are members of its parent too. Joining brings a team's grants, so only the owner adds anyone.
+ */
+async function joinTeams(ctx: Ctx, teamIds: string[], userIds: string[]): Promise<WriteOp[]> {
+  const { db, now } = ctx;
+  if (!teamIds.length || !userIds.length) return [];
+  const held = await db
+    .select()
+    .from(teamMemberships)
+    .where(inArray(teamMemberships.teamId, teamIds))
+    .all();
+  const have = new Set(held.map((m) => `${m.teamId}:${m.userId}`));
+  const rows = teamIds.flatMap((teamId) =>
+    userIds
+      .filter((userId) => !have.has(`${teamId}:${userId}`))
+      .map((userId) => ({ teamId, userId, createdAt: now })),
+  );
+  if (!rows.length) return [];
+  await requireOwner(ctx, "add members to a parent team");
+  return [
+    ...insertRows(db, teamMemberships, rows),
+    ...audit(
+      db,
+      rows.map((r) => event(ctx, "teamMembership.create", "team", r.teamId, { userId: r.userId })),
+      now,
+    ),
+  ];
+}
+
+/** Creates a team with Linear's default workflow states. The creator and the owner become members. */
+export async function createTeam(ctx: Ctx, input: TeamCreateInput) {
+  const { db, actorId, now } = ctx;
+  const name = cleanText(input.name, "Team name", 80);
+  const key = normalizeKey(input.key ?? suggestKey(name));
+  await assertKeyFree(db, key);
+  if (input.leadId) await assertActiveUser(db, input.leadId, "Team lead");
+  const ancestors = input.parentId ? await lineageOf(db, input.parentId) : [];
+  const allowed = await authorize(ctx, "team.create");
+
+  const id = newId();
+  const stamp = { createdAt: now, updatedAt: now };
+  const owner = await db.select({ id: users.id }).from(users).where(eq(users.kind, "owner")).get();
+  const memberIds = new Set([actorId, owner?.id, input.leadId].filter((v): v is string => !!v));
+
+  const ops: WriteOp[] = [
+    ...allowed,
+    db.insert(teams).values({
+      id,
+      key,
+      name,
+      description: input.description?.trim() || null,
+      icon: input.icon ?? null,
+      color: input.color ?? null,
+      leadId: input.leadId ?? null,
+      parentId: input.parentId ?? null,
+      ...stamp,
+    }),
+    ...insertRows(
+      db,
+      teamMemberships,
+      [...memberIds].map((userId) => ({ teamId: id, userId, createdAt: now })),
+    ),
+    ...insertRows(
+      db,
+      workflowStates,
+      DEFAULT_STATES.map((state, position) => ({
+        id: newId(),
+        teamId: id,
+        ...state,
+        position,
+        ...stamp,
+      })),
+    ),
+    ...(await joinTeams(ctx, ancestors, [...memberIds])),
+    ...audit(
+      db,
+      [
+        event(ctx, "team.create", "team", id, {
+          key,
+          name,
+          leadId: input.leadId ?? null,
+          parentId: input.parentId ?? null,
+        }),
+      ],
+      now,
+    ),
+  ];
+  await commit(db, ops);
+  return id;
+}
+
+/**
+ * The owner adds a member to a team, or with `remove` takes them off it. Joining a sub-team joins
+ * its ancestors; leaving a team leaves its sub-teams.
+ */
+export async function setTeamMembership(
+  ctx: Ctx,
+  teamId: string,
+  userId: string,
+  remove = false,
+): Promise<string> {
+  const { db, now } = ctx;
+  await requireOwner(ctx, "change team members");
+  const team = await db.select({ id: teams.id }).from(teams).where(eq(teams.id, teamId)).get();
+  if (!team) throw notFound("Team");
+  await assertActiveUser(db, userId, "Member");
+  if (!remove) {
+    await commit(db, await joinTeams(ctx, [...(await ancestorIds(db, teamId)), teamId], [userId]));
+    return teamId;
+  }
+  const held = await db
+    .select({ teamId: teamMemberships.teamId })
+    .from(teamMemberships)
+    .where(
+      and(
+        eq(teamMemberships.userId, userId),
+        inArray(teamMemberships.teamId, [teamId, ...(await descendantIds(db, teamId))]),
+      ),
+    )
+    .all();
+  if (!held.some((m) => m.teamId === teamId)) return teamId;
+  const leaving = held.map((m) => m.teamId);
+  await commit(db, [
+    db
+      .delete(teamMemberships)
+      .where(and(eq(teamMemberships.userId, userId), inArray(teamMemberships.teamId, leaving))),
+    ...audit(
+      db,
+      leaving.map((t) => event(ctx, "teamMembership.delete", "team", t, { userId })),
+      now,
+    ),
+  ]);
+  return teamId;
+}
+
+export async function updateTeam(ctx: Ctx, id: string, input: TeamUpdateInput) {
+  const { db, now } = ctx;
+  const team = await db.select().from(teams).where(eq(teams.id, id)).get();
+  if (!team) throw notFound("Team");
+  const allowed = await authorize(ctx, "team.update", id);
+
+  const next: Partial<typeof teams.$inferInsert> = {};
+  if (input.name !== undefined && input.name !== null)
+    next.name = cleanText(input.name, "Team name", 80);
+  if (input.key !== undefined && input.key !== null) {
+    next.key = normalizeKey(input.key);
+    await assertKeyFree(db, next.key, id);
+  }
+  if (input.description !== undefined) next.description = input.description?.trim() || null;
+  if (input.icon !== undefined) next.icon = input.icon;
+  if (input.color !== undefined) next.color = input.color;
+  if (input.leadId !== undefined && input.leadId !== team.leadId) {
+    // The lead joins the team, so this is a membership change too.
+    await requireOwner(ctx, "choose a team's lead");
+    if (input.leadId) await assertActiveUser(db, input.leadId, "Team lead");
+    next.leadId = input.leadId;
+  }
+  // The teams it moves under, root first; null when it stays where it is.
+  let ancestors: string[] | null = null;
+  if (input.parentId !== undefined && input.parentId !== team.parentId) {
+    ancestors = input.parentId ? await lineageOf(db, input.parentId) : [];
+    if (ancestors.includes(id))
+      throw badRequest("A team can't sit under itself or its own sub-team");
+    next.parentId = input.parentId;
+  }
+
+  if (input.triageEnabled != null) next.triageEnabled = input.triageEnabled;
+  if (input.cyclesEnabled != null) next.cyclesEnabled = input.cyclesEnabled;
+  if (input.cycleDuration != null)
+    next.cycleDuration = whole(input.cycleDuration, "Cycle length in weeks", 1, 8);
+  if (input.cycleStartDay != null)
+    next.cycleStartDay = whole(input.cycleStartDay, "Cycle start day", 0, 6);
+  if (input.cycleCooldown != null)
+    next.cycleCooldown = whole(input.cycleCooldown, "Cooldown in weeks", 0, 4);
+  if (input.upcomingCycleCount != null)
+    next.upcomingCycleCount = whole(input.upcomingCycleCount, "Upcoming cycles", 1, 10);
+
+  if (input.slaHours !== undefined) next.slaHours = checkSla(input.slaHours);
+  if (input.autoArchivePeriod != null)
+    next.autoArchivePeriod = whole(input.autoArchivePeriod, "Auto-archive after months", 0, 24);
+
+  const { slaHours, ...plain } = next;
+  const diff = changes(team, plain) ?? {};
+  if (slaHours !== undefined && JSON.stringify(slaHours) !== JSON.stringify(team.slaHours))
+    diff.slaHours = { from: team.slaHours, to: slaHours };
+  else delete next.slaHours;
+  if (!Object.keys(diff).length) return id;
+  const ops: WriteOp[] = [
+    ...allowed,
+    db
+      .update(teams)
+      .set({ ...next, updatedAt: now })
+      .where(eq(teams.id, id)),
+  ];
+  if (diff.slaHours) ops.push(...retimeSlas(db, id, next.slaHours ?? null, now));
+  if (next.leadId) {
+    ops.push(
+      db
+        .insert(teamMemberships)
+        .values({ teamId: id, userId: next.leadId, createdAt: now })
+        .onConflictDoNothing(),
+    );
+  }
+  // The lead, and when it moves all its members, join the teams above it.
+  const joiners = new Set(next.leadId ? [next.leadId] : []);
+  if (ancestors?.length) {
+    const members = await db
+      .select({ userId: teamMemberships.userId })
+      .from(teamMemberships)
+      .where(eq(teamMemberships.teamId, id))
+      .all();
+    for (const m of members) joiners.add(m.userId);
+  }
+  if (joiners.size)
+    ops.push(...(await joinTeams(ctx, ancestors ?? (await ancestorIds(db, id)), [...joiners])));
+  ops.push(...audit(db, [event(ctx, "team.update", "team", id, diff)], now));
+  await commit(db, ops);
+  // Turning cycles on creates them straight away; changing their shape re-lays the upcoming ones.
+  const updated = { ...team, ...next };
+  const relay = !!(diff.cycleStartDay || diff.cycleDuration || diff.cycleCooldown);
+  if (updated.cyclesEnabled)
+    await syncTeamCycles(db, updated, await companyTimeZone(db), now, relay);
+  return id;
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.turbo/
+.wrangler/
+.cloudflare/
+data/
+*.db
+*.db-journal
+.env
+.env.*
+!.env.example
+.dev.vars
+coverage/
+.DS_Store
+docs/plan.md

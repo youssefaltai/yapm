@@ -1,0 +1,30 @@
+name: Release runner
+
+on:
+  push:
+    tags: ["runner-v*"]
+
+jobs:
+  publish:
+    name: Publish @yapm/runner to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Check the tag matches the package version
+        run: |
+          version=$(node -p "require('./apps/runner/package.json').version")
+          test "runner-v$version" = "$GITHUB_REF_NAME"
+      - run: pnpm --filter @yapm/runner test
+      - run: pnpm --filter @yapm/runner publish --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

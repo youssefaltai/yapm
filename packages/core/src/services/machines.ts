@@ -1,0 +1,451 @@
+import {
+  EFFORTS,
+  type Engine,
+  type MachineProvider,
+  machineSetupTokens,
+  machines,
+  runs,
+  users,
+} from "@yapm/schema";
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  type SQLWrapper,
+  sql,
+} from "drizzle-orm";
+import { audit } from "../audit.js";
+import { newId, randomToken, sha256Hex } from "../crypto.js";
+import { commit, type HubDb } from "../db.js";
+import { badRequest, forbidden, notFound, ServiceError } from "../errors.js";
+import { type Ctx, cleanText, event } from "./common.js";
+
+export const MACHINE_TOKEN_PREFIX = "lrn_";
+export const SETUP_TOKEN_PREFIX = "lms_";
+
+/** A setup token is pasted within minutes; an hour leaves room for a coffee. */
+const SETUP_TOKEN_TTL = 60 * 60 * 1000;
+
+/** Pending enrolments expire, and only a few may wait at once: enrolling needs no account. */
+const PENDING_TTL = 60 * 60 * 1000;
+const MAX_PENDING = 5;
+
+const TAG = /^[a-z0-9][a-z0-9_.-]{0,39}$/;
+
+type MachineRow = typeof machines.$inferSelect;
+
+/** The name people see: the owner's, or what the machine called itself when it enrolled. */
+export function machineName(m: Pick<MachineRow, "name" | "displayName">) {
+  return m.displayName ?? m.name;
+}
+
+/** Which engine runs a provider's models: Claude's SDK for Anthropic, OpenCode for the rest. */
+export const engineOf = (provider: string): Engine =>
+  provider === "anthropic" ? "claude" : "opencode";
+
+const PROVIDER_NAMES: Record<string, string> = {
+  anthropic: "Claude",
+  openai: "ChatGPT",
+  "github-copilot": "Copilot",
+};
+
+/** A provider as owners know it: ChatGPT rather than OpenAI, else as a machine names it. */
+export function providerName(id: string, catalog: MachineProvider[] = []) {
+  return PROVIDER_NAMES[id] ?? catalog.find((p) => p.id === id)?.name ?? id;
+}
+
+/** Claude's models the hub knows, for runners before 0.7, which don't list them. */
+const KNOWN_CLAUDE: MachineProvider = {
+  id: "anthropic",
+  name: "Claude",
+  models: [
+    ["claude-fable-5-1", "Fable 5.1"],
+    ["claude-opus-5-5", "Opus 5.5"],
+    ["claude-sonnet-5-5", "Sonnet 5.5"],
+    ["claude-haiku-5-5", "Haiku 5.5"],
+  ].map(([id = "", name = ""]) => ({ id, name, efforts: [...EFFORTS] })),
+};
+
+type Reports = Pick<MachineRow, "engines" | "providers">;
+type Plans = Pick<MachineRow, "planUsage" | "plans">;
+
+/**
+ * The providers a machine reports, named as owners know them. A runner that couldn't list
+ * Claude's models, or is older and has Claude, has the known ones.
+ */
+function reported(m: Reports): MachineProvider[] {
+  if (!m.providers) return (m.engines ?? ["claude"]).includes("claude") ? [KNOWN_CLAUDE] : [];
+  return m.providers.map((p) =>
+    p.id === "anthropic" && !p.models.length
+      ? KNOWN_CLAUDE
+      : { ...p, name: providerName(p.id, [p]) },
+  );
+}
+
+/** Whether a machine may run a provider's model. An older runner's OpenCode runs any but Claude. */
+function canRun(m: Reports, provider: string) {
+  if (m.providers) return m.providers.some((p) => p.id === provider);
+  return (m.engines ?? ["claude"]).includes(engineOf(provider));
+}
+
+/** Every provider and model some machine has, each once: what tiers may choose from. */
+export function modelCatalog(all: Reports[]): MachineProvider[] {
+  const out: MachineProvider[] = [];
+  for (const provider of all.flatMap(reported)) {
+    const known = out.find((p) => p.id === provider.id);
+    if (!known) out.push({ ...provider, models: [...provider.models] });
+    else
+      for (const model of provider.models)
+        if (!known.models.some((m) => m.id === model.id)) known.models.push(model);
+  }
+  return out;
+}
+
+/** The catalog from every approved machine, online or not. */
+export async function loadCatalog(db: HubDb) {
+  return modelCatalog(
+    await db
+      .select({ engines: machines.engines, providers: machines.providers })
+      .from(machines)
+      .where(eq(machines.status, "active"))
+      .all(),
+  );
+}
+
+/** The OpenCode plan each provider's models run on; Claude's is the machine's planUsage. */
+const PLANS: Record<string, string> = { openai: "chatgpt", "github-copilot": "copilot" };
+
+/** When a machine's plan for `provider` has room again, or null while it has room now. */
+function resetsAt(m: Plans, provider: string, at: number) {
+  const usage =
+    provider === "anthropic"
+      ? m.planUsage
+      : m.plans?.find((p) => p.provider === PLANS[provider])?.usage;
+  const spent = (usage?.limits ?? []).flatMap((l) =>
+    (l.utilization ?? 0) >= 100 && l.resetsAt && l.resetsAt > at ? [l.resetsAt] : [],
+  );
+  return spent.length ? Math.max(...spent) : null;
+}
+
+/**
+ * The claim's side of `waitingFor`, as a condition on a run's provider and its agent's tags:
+ * the machine has every tag, may run the provider, and the provider's plan isn't spent.
+ */
+export function runnableOn(
+  m: Reports & Plans & Pick<MachineRow, "tags">,
+  provider: SQLWrapper,
+  tags: SQLWrapper,
+  at: number,
+) {
+  const spent = ["anthropic", ...Object.keys(PLANS)].filter((p) => resetsAt(m, p, at));
+  return and(
+    sql`not exists (select 1 from json_each(coalesce(${tags}, '[]')) where value not in (select value from json_each(${JSON.stringify(m.tags)})))`,
+    m.providers
+      ? inArray(
+          provider,
+          m.providers.map((p) => p.id),
+        )
+      : or(
+          sql`0`, // no engines: nothing
+          ...(m.engines ?? ["claude"]).map((e) =>
+            e === "claude" ? eq(provider, "anthropic") : ne(provider, "anthropic"),
+          ),
+        ),
+    notInArray(provider, spent),
+  );
+}
+
+/**
+ * Why a run on `provider`'s model waits for these machines, or null when one of them may run
+ * it: it needs all the agent's tags, a sign-in to the provider and room on its plan.
+ */
+export function waitingFor(
+  agent: { runnerTags: string[] | null },
+  provider: string,
+  online: Pick<MachineRow, "tags" | "engines" | "providers" | "planUsage" | "plans">[],
+  at: number,
+) {
+  if (!online.length) return "Waiting for a machine to come online";
+  const tags = agent.runnerTags ?? [];
+  const tagged = online.filter((m) => tags.every((tag) => m.tags.includes(tag)));
+  if (!tagged.length) return `Waiting for a machine tagged ${tags.join(", ")}`;
+  const signed = tagged.filter((m) => canRun(m, provider));
+  if (!signed.length) return `Waiting for a machine signed in to ${providerName(provider)}`;
+  const resets = signed.map((m) => resetsAt(m, provider, at) ?? 0);
+  if (resets.every(Boolean)) {
+    const minutes = Math.ceil((Math.min(...resets) - at) / 60_000);
+    const when = minutes < 60 ? `${minutes} min` : `${Math.round(minutes / 60)} h`;
+    return `Waiting: ${providerName(provider)}'s usage limit resets in ${when}`;
+  }
+  return null;
+}
+
+export function cleanTags(tags: unknown, label = "Tags"): string[] {
+  if (!Array.isArray(tags)) return [];
+  const out = new Set<string>();
+  for (const tag of tags) {
+    const value = String(tag).trim().toLowerCase();
+    if (!TAG.test(value))
+      throw badRequest(`${label} must be short lowercase words like employer-a`);
+    out.add(value);
+  }
+  if (out.size > 20) throw badRequest(`At most 20 ${label.toLowerCase()}`);
+  return [...out];
+}
+
+export interface MachineEnrolInput {
+  name: string;
+  tags?: unknown;
+  capacity?: number;
+  version?: string;
+  /** A one-time token from the Machines page: the machine is approved without a pairing code. */
+  setupToken?: string;
+}
+
+/**
+ * A runner asks to join. It gets a secret it keeps and a pairing code it shows; the machine
+ * can't do anything until the owner approves a matching code in the app, unless it brings a
+ * setup token the owner made, which approves it at once.
+ */
+export async function enrolMachine(db: HubDb, input: MachineEnrolInput, now: number) {
+  const name = cleanText(String(input.name ?? ""), "Machine name", 60);
+  const tags = cleanTags(input.tags);
+  const capacity = Math.min(Math.max(Math.floor(input.capacity ?? 2), 1), 16);
+  const id = newId();
+  // Claimed first, in one statement, so the same token can't add two machines.
+  const setup = input.setupToken
+    ? await claimSetupToken(db, String(input.setupToken).trim(), id, now)
+    : null;
+  if (!setup) {
+    await db
+      .delete(machines)
+      .where(and(eq(machines.status, "pending"), lt(machines.createdAt, now - PENDING_TTL)))
+      .run();
+    const pending = await db
+      .select({ id: machines.id })
+      .from(machines)
+      .where(eq(machines.status, "pending"))
+      .all();
+    if (pending.length >= MAX_PENDING)
+      throw new ServiceError(
+        "CONFLICT",
+        "Too many machines are waiting for approval; approve or remove some first",
+      );
+  }
+  const token = randomToken(MACHINE_TOKEN_PREFIX);
+  const digits = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
+  const pairingCode = String(digits % 1_000_000).padStart(6, "0");
+  await commit(db, [
+    db.insert(machines).values({
+      id,
+      name,
+      status: setup ? "active" : "pending",
+      pairingCode,
+      tokenHash: await sha256Hex(token),
+      tags,
+      capacity,
+      version: input.version?.slice(0, 40) ?? null,
+      lastSeenAt: now,
+      approvedAt: setup ? now : null,
+      createdAt: now,
+      updatedAt: now,
+    }),
+    ...audit(
+      db,
+      [
+        {
+          actorId: setup?.createdById ?? null,
+          action: "machine.enrol",
+          entityType: "machine",
+          entityId: id,
+          data: { name, tags, ...(setup ? { setupTokenId: setup.id } : {}) },
+        },
+      ],
+      now,
+    ),
+  ]);
+  return { id, token, pairingCode, status: setup ? "active" : "pending" };
+}
+
+/** Marks a valid, unused setup token as used by this machine, or says why it can't be. */
+async function claimSetupToken(db: HubDb, token: string, machineId: string, now: number) {
+  if (!token.startsWith(SETUP_TOKEN_PREFIX))
+    throw badRequest("That isn't a setup token; copy the command from Machines again");
+  const claimed = await db
+    .update(machineSetupTokens)
+    .set({ usedAt: now, machineId })
+    .where(
+      and(
+        eq(machineSetupTokens.tokenHash, await sha256Hex(token)),
+        isNull(machineSetupTokens.usedAt),
+        gt(machineSetupTokens.expiresAt, now),
+      ),
+    )
+    .returning({ id: machineSetupTokens.id, createdById: machineSetupTokens.createdById })
+    .get();
+  if (!claimed)
+    throw badRequest(
+      "This setup command has expired or was already used; copy a new one from Machines",
+    );
+  return claimed;
+}
+
+/** The owner asks for a setup command: a token that adds one machine, approved, within the hour. */
+export async function createSetupToken(ctx: Ctx) {
+  const { db, now } = ctx;
+  await requireOwner(ctx);
+  const id = newId();
+  const token = randomToken(SETUP_TOKEN_PREFIX);
+  const expiresAt = now + SETUP_TOKEN_TTL;
+  await commit(db, [
+    db.delete(machineSetupTokens).where(lt(machineSetupTokens.expiresAt, now)),
+    db.insert(machineSetupTokens).values({
+      id,
+      tokenHash: await sha256Hex(token),
+      createdById: ctx.actorId,
+      expiresAt,
+      createdAt: now,
+    }),
+    ...audit(db, [event(ctx, "machine.setupToken.create", "machine_setup_token", id)], now),
+  ]);
+  return { token, expiresAt };
+}
+
+/** The machine a runner secret belongs to, unless it was revoked. */
+export async function machineForToken(db: HubDb, token: string) {
+  if (!token.startsWith(MACHINE_TOKEN_PREFIX)) return null;
+  const row = await db
+    .select()
+    .from(machines)
+    .where(eq(machines.tokenHash, await sha256Hex(token)))
+    .get();
+  return row && row.status !== "revoked" ? row : null;
+}
+
+async function requireOwner(ctx: Ctx) {
+  const actor = await ctx.db.select().from(users).where(eq(users.id, ctx.actorId)).get();
+  if (actor?.kind !== "owner") throw forbidden("Only the owner manages machines");
+}
+
+async function loadMachine(ctx: Ctx, id: string) {
+  const row = await ctx.db.select().from(machines).where(eq(machines.id, id)).get();
+  if (!row) throw notFound("Machine");
+  return row;
+}
+
+/** The owner confirms the code shown on the machine. */
+export async function approveMachine(ctx: Ctx, id: string, pairingCode: string) {
+  const { db, now } = ctx;
+  await requireOwner(ctx);
+  const machine = await loadMachine(ctx, id);
+  if (machine.status !== "pending")
+    throw new ServiceError("CONFLICT", `This machine is already ${machine.status}`);
+  if (machine.pairingCode !== pairingCode.trim())
+    throw badRequest("That code doesn't match the one on the machine");
+  await commit(db, [
+    db
+      .update(machines)
+      .set({ status: "active", pairingCode: "", approvedAt: now, updatedAt: now })
+      .where(eq(machines.id, id)),
+    ...audit(
+      db,
+      [event(ctx, "machine.approve", "machine", id, { name: machineName(machine) })],
+      now,
+    ),
+  ]);
+  return id;
+}
+
+/**
+ * Renames or retags a machine. A name is the owner's own for it: an empty one, or the one the
+ * machine enrolled with, goes back to that original name.
+ */
+export async function updateMachine(
+  ctx: Ctx,
+  id: string,
+  input: { name?: string | null; tags?: string[] | null },
+) {
+  const { db, now } = ctx;
+  await requireOwner(ctx);
+  const machine = await loadMachine(ctx, id);
+  const set: Partial<typeof machines.$inferInsert> = { updatedAt: now };
+  if (input.name != null) {
+    const name = input.name.trim() ? cleanText(input.name, "Machine name", 60) : null;
+    set.displayName = name === machine.name ? null : name;
+  }
+  if (input.tags != null) set.tags = cleanTags(input.tags);
+  await commit(db, [
+    db.update(machines).set(set).where(eq(machines.id, id)),
+    ...audit(
+      db,
+      [
+        event(ctx, "machine.update", "machine", id, {
+          from: { name: machineName(machine), tags: machine.tags },
+          to: {
+            name: set.displayName === undefined ? undefined : machineName({ ...machine, ...set }),
+            tags: set.tags,
+          },
+        }),
+      ],
+      now,
+    ),
+  ]);
+  return id;
+}
+
+/** Asks a machine's runner to install the latest from this hub once its runs finish. */
+export async function upgradeMachine(ctx: Ctx, id: string) {
+  const { db, now } = ctx;
+  await requireOwner(ctx);
+  const machine = await loadMachine(ctx, id);
+  await commit(db, [
+    db.update(machines).set({ upgradeRequestedAt: now }).where(eq(machines.id, id)),
+    ...audit(
+      db,
+      [event(ctx, "machine.upgrade", "machine", id, { name: machineName(machine) })],
+      now,
+    ),
+  ]);
+  return id;
+}
+
+/**
+ * Removes a machine: its secret stops working, and its runs fail, which ends their tokens.
+ * A pending one is simply forgotten.
+ */
+export async function revokeMachine(ctx: Ctx, id: string) {
+  const { db, now } = ctx;
+  await requireOwner(ctx);
+  const machine = await loadMachine(ctx, id);
+  await commit(db, [
+    machine.status === "pending"
+      ? db.delete(machines).where(eq(machines.id, id))
+      : db.update(machines).set({ status: "revoked", updatedAt: now }).where(eq(machines.id, id)),
+    db
+      .update(runs)
+      .set({ status: "failed", error: "The machine was removed", endedAt: now, updatedAt: now })
+      .where(and(eq(runs.machineId, id), eq(runs.status, "running"))),
+    // Runs waiting for this machine, like a paused session's answer, start afresh elsewhere.
+    db
+      .update(runs)
+      .set({ machineId: null, sessionId: null, updatedAt: now })
+      .where(and(eq(runs.machineId, id), eq(runs.status, "queued"))),
+    ...audit(
+      db,
+      [event(ctx, "machine.revoke", "machine", id, { name: machineName(machine) })],
+      now,
+    ),
+  ]);
+  return id;
+}
+
+export function listMachines(db: HubDb) {
+  return db.select().from(machines).orderBy(asc(machines.createdAt)).all();
+}

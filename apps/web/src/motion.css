@@ -1,0 +1,265 @@
+/* biome-ignore-all lint/complexity/noImportantStyles: reduced motion must beat inline styles and utilities */
+/*
+ * Motion, in Linear's spirit: quick, small and never in the way. Things appear with a short fade
+ * and at most a few pixels of travel; nothing lingers. Each `--animate-*` token below
+ * becomes an `animate-*` utility, and everything collapses to an instant change when the
+ * system asks for reduced motion.
+ */
+
+@theme {
+  --ease-snappy: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(0.3, 1.4, 0.6, 1);
+
+  --animate-fade-in: fade-in 160ms var(--ease-snappy) backwards;
+  --animate-fade-out: fade-out 120ms var(--ease-snappy) forwards;
+  --animate-dialog-in: dialog-in 200ms var(--ease-snappy) backwards;
+  --animate-pop-in: pop-in 140ms var(--ease-snappy) backwards;
+  --animate-rise-in: rise-in 220ms var(--ease-snappy) backwards;
+  --animate-sink-out: sink-out 140ms var(--ease-snappy) forwards;
+  --animate-reveal: reveal 180ms var(--ease-snappy) backwards;
+  --animate-drawer-in: drawer-in 240ms var(--ease-snappy) backwards;
+  --animate-badge-in: badge-in 220ms var(--ease-spring) backwards;
+  --animate-grow-x: grow-x 700ms var(--ease-snappy) backwards;
+  --animate-typing: typing 1.2s ease-in-out infinite;
+  --animate-think: think 1.6s ease-in-out infinite;
+  /* Placeholders wait a beat, so a fast load goes straight to content without a flash. */
+  --animate-skeleton-in: fade-in 240ms var(--ease-snappy) 180ms backwards;
+  --animate-tile-in:
+    pop-in 260ms var(--ease-snappy) 90ms backwards, float 6s ease-in-out 400ms infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  /* Modals and the command menu settle into place from slightly smaller and higher. */
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(-6px) scale(0.98);
+    }
+  }
+  /* Popovers: menus under the cursor, the formatting toolbar. */
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  /* Bars that come up from the bottom edge: toasts and the bulk-edit bar. */
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+  @keyframes sink-out {
+    to {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+  }
+  /* Content that unfolds below its trigger: sub-navigation, disclosures. */
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      transform: translateY(-3px);
+    }
+  }
+  @keyframes drawer-in {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+  @keyframes badge-in {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+  }
+  /* The three dots of someone typing. */
+  @keyframes typing {
+    0%,
+    60%,
+    100% {
+      opacity: 0.3;
+      transform: none;
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-3px);
+    }
+  }
+  /* An agent at work: a slow, small breath. */
+  @keyframes think {
+    50% {
+      opacity: 0.6;
+      transform: scale(0.92);
+    }
+  }
+  @keyframes float {
+    50% {
+      transform: translateY(-2px);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  /* Progress bars fill from empty; keyframes win over the inline width they end on. */
+  @keyframes grow-x {
+    from {
+      width: 0;
+    }
+  }
+}
+
+/*
+ * Every control eases between its rest, hover and focus colors. Utilities like `transition-all`
+ * still win, being in a later layer. Command-menu options stay instant, so arrowing through them
+ * keeps up with the keyboard.
+ */
+@layer base {
+  a,
+  button:not([role="option"]),
+  input,
+  textarea,
+  select,
+  summary,
+  label {
+    transition-property: color, background-color, border-color, outline-color, box-shadow, opacity;
+    transition-duration: 120ms;
+    transition-timing-function: var(--ease-snappy);
+  }
+}
+
+/* Disclosures (history, details) unfold rather than snap open, growing to fit where supported. */
+details[open] > :not(summary) {
+  animation: var(--animate-reveal);
+}
+@supports selector(::details-content) {
+  :root {
+    interpolate-size: allow-keywords;
+  }
+  details::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size 220ms var(--ease-snappy),
+      content-visibility 220ms allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+  }
+}
+
+/* Content being replaced by a newer result dims after a beat, then comes back as it lands. */
+.stale {
+  opacity: 0.55;
+  transition: opacity 200ms var(--ease-snappy) 150ms;
+}
+.fresh {
+  transition: opacity 160ms var(--ease-snappy);
+}
+
+/* Loading placeholders: a soft highlight sweeping across. */
+.skeleton {
+  background:
+    linear-gradient(
+      90deg,
+      var(--color-raised) 25%,
+      color-mix(in srgb, var(--color-raised), var(--color-ink) 6%) 50%,
+      var(--color-raised) 75%
+    )
+    0 0 / 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* While the owner waits on the hub: a thin bar sweeping along the top, after a beat so quick
+   requests show nothing. */
+.loading-bar {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 60;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  animation: var(--animate-skeleton-in);
+}
+.loading-bar::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  background: var(--color-accent);
+  animation: loading-sweep 1.1s var(--ease-snappy) infinite;
+}
+@keyframes loading-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* The cards in an empty state's illustration. */
+.empty-card {
+  border-radius: 12px;
+  border: 1px solid var(--color-line);
+  background: linear-gradient(180deg, var(--color-raised), var(--color-panel));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-ink) 6%, transparent),
+    0 10px 24px -12px rgb(0 0 0 / 0.45);
+}
+.empty-ghost {
+  mask-image: linear-gradient(to bottom, black 30%, transparent 95%);
+}
+.empty-tile {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-ink) 8%, transparent),
+    0 0 0 4px var(--color-canvas),
+    0 12px 28px -10px rgb(0 0 0 / 0.5),
+    0 0 24px -4px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+.empty-glow {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--color-accent) 8%, transparent),
+    transparent
+  );
+  pointer-events: none;
+}
+
+/* Switching light and dark cross-fades the whole page (see theme.ts). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: var(--ease-snappy);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after,
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

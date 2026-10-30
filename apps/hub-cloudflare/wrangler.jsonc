@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "yapm",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // The web app is served as static assets; the Worker handles the API and GraphQL.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/graphql", "/mcp", "/install.sh"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yapm",
+      // Replace with the id printed by `wrangler d1 create yapm`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../packages/schema/migrations"
+    }
+  ],
+  // Live updates: one Durable Object fans change events out to every open app and runner.
+  "durable_objects": {
+    "bindings": [{ "name": "LIVE", "class_name": "LiveHub" }]
+  },
+  // SQLite-backed classes are what the free plan supports.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveHub"] }],
+  // The scheduler: cycles, recurring issues and other time-based work.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "YAPM_VERSION": "dev"
+  },
+  "observability": { "enabled": true }
+}

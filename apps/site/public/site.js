@@ -145,61 +145,6 @@ const SCENARIOS = [
       text: "Head of Relocation filed it the week you landed, and the Visa Specialist got it done. Nothing needed from you.",
     },
   },
-  {
-    chip: "Moonlight for two clients",
-    ask: "fix the checkout bug for parsnip and review okay labs pr today dont mix there code",
-    title: "Clear today's client work for Parsnip and Okay Labs",
-    team: { key: "ENG", name: "Engineering" },
-    id: "ENG-1",
-    agent: { name: "Engineering Lead", charter: "client work, kept apart per client" },
-    priority: "High",
-    label: "Clients",
-    due: "Today",
-    goal: "Splitting today's work by client",
-    plan: "Two clients, two laptops. Each gets its own engineer, who only runs on that client's machine.",
-    reports: [
-      {
-        name: "Parsnip Engineer",
-        charter: "Parsnip's code, on the Parsnip laptop",
-        id: "ENG-2",
-        task: "Fix the double charge at Parsnip checkout",
-        machine: "parsnip-macbook",
-        done: "opened PR #482 with the fix and a test",
-      },
-      {
-        name: "Okay Labs Engineer",
-        charter: "Okay Labs' code, on the Okay Labs laptop",
-        id: "ENG-3",
-        task: "Review Okay Labs' rate-limit PR",
-        machine: "okaylabs-thinkpad",
-        done: "posted 6 review comments on PR #91, one blocking",
-      },
-    ],
-    isolation:
-      "Parsnip Engineer only runs on parsnip-macbook, Okay Labs Engineer only on okaylabs-thinkpad, each machine with its own sign-in. Neither client's code reaches the other's machine.",
-    work: "Found it: the pay button retries without an idempotency key, so slow networks charge twice. The fix is ready; its test needs a migration on staging.",
-    request: {
-      from: "Parsnip Engineer",
-      title: "Run the migration on Parsnip's staging database",
-      action: "tool:Bash",
-      on: "pnpm db:migrate --env staging",
-    },
-    done: "Both done. Parsnip: PR #482 is green and ready for your review. Okay Labs: review posted, one blocking comment on retries. Nothing crossed between the two.",
-    lesson: "Parsnip staging migrations are safe to run before tests.",
-    reject: {
-      reason: "never touch parsnip staging ask their dba",
-      reply:
-        "Understood. I drafted the request to Parsnip's DBA in your voice; it's on the issue for you to send.",
-      lesson: "Parsnip staging changes go through their DBA.",
-    },
-    ritualBy: "Engineering Lead",
-    ritual: "Weekdays: standup notes for each client",
-    later: {
-      id: "ENG-14",
-      title: "Parsnip on-call handover",
-      text: "Engineering Lead wrote Monday's handover from the week's PRs, on the Parsnip laptop only. Okay Labs never saw a line of it.",
-    },
-  },
 ];
 
 const $ = (name) => document.querySelector(`[data-${name}]`);
@@ -424,13 +369,9 @@ async function play(s) {
       event(s.agent.name, `hired <b>${esc(r.name)}</b> and gave them ${r.id}`);
       await next(800);
     }
-    if (s.isolation) {
-      note("Runs on", s.isolation);
-      await next(1100);
-    }
     run(lead, "Done", false);
     for (const r of reports) {
-      r.run = addRun(r.name, r.machine ? `${r.task} · ${r.machine}` : r.task);
+      r.run = addRun(r.name, r.task);
       run(r.run, "Running", true);
       r.st.dataset.s = "progress";
       await next(350);
@@ -452,7 +393,6 @@ async function play(s) {
     <p class="sheet-k">Request from <b>${esc(asker)}</b></p>
     <p class="sheet-t">${esc(s.request.title)}</p>
     <p class="sheet-on"><span>Permission</span><code>${s.request.action}</code></p>
-    ${s.request.on ? `<p class="sheet-on"><span>On</span><code>${esc(s.request.on)}</code></p>` : ""}
     <p class="sheet-on"><span>Issue</span>${s.id} ${esc(s.title)}</p>
     <div class="sheet-a">
       <button type="button" class="b b-ok" data-answer="approve">Approve once</button>
